@@ -1,0 +1,21 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$TOOL_INPUT\" | grep -q '\\.rs\"'; then cargo check 2>&1 | tail -20; fi",
+            "timeout": 30000
+          },
+          {
+            "type": "command",
+            "command": "if echo \"$TOOL_INPUT\" | grep -q '\\.rs\"'; then cargo clippy -- -D warnings 2>&1 | tail -20; fi",
+            "timeout": 30000
+          }
+        ]
+      }
+    ]
+  }
+}
