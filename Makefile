@@ -29,7 +29,7 @@ mutants-list:
 
 mutants-module:
 	@test -n "$(MOD)" || (echo "Usage: make mutants-module MOD=src/model/" && exit 1)
-	cargo mutants -f "$(MOD)" --timeout 60
+	cargo mutants --file "$(MOD)**/*.rs" --timeout 60
 
 ci: fmt lint test coverage
 	@echo "All CI checks passed"

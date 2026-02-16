@@ -93,9 +93,10 @@ Common modes for POTA:
 | CW | `CW` | 3-digit (e.g. `599`) |
 | FT8 | `FT8` | dB (e.g. `-10`) |
 | FT4 | `FT4` | dB (e.g. `-10`) |
+| JS8 | `JS8` | dB (e.g. `-10`) |
 | FM | `FM` | 2-digit (e.g. `59`) |
 | AM | `AM` | 2-digit (e.g. `59`) |
 | PSK31 | `PSK31` | 3-digit (e.g. `599`) |
 | RTTY | `RTTY` | 3-digit (e.g. `599`) |
 
-Note: FT8/FT4 use `SUBMODE` in ADIF. For POTA, if both `MODE` and `SUBMODE` are present, POTA uses `SUBMODE`. For simplicity, duklog writes these as `MODE` since POTA accepts it.
+Note: FT8/FT4/JS8 use `SUBMODE` in ADIF. For POTA, if both `MODE` and `SUBMODE` are present, POTA uses `SUBMODE`. For simplicity, duklog writes these as `MODE` since POTA accepts it.

@@ -9,8 +9,8 @@ paths:
 - Every `pub fn` must have tests covering both success and failure paths
 - Validation functions must test both valid and invalid inputs
 - Use **quickcheck** for functions that accept string inputs
+- Use **quickcheck** for numeric threshold/boundary logic (prefer properties over hand-written boundary values)
 - Assert on **specific values**, not just `is_ok()` / `is_empty()` — critical for mutation testing
-- Test **boundary values** (e.g., 9, 10, 11 QSOs for activation threshold)
 - Use `tempfile::tempdir()` for all storage tests — never write to real paths
 - Tests must be deterministic and fast
 - After implementing a module: `make mutants-module MOD=src/<module>/` — no surviving mutants

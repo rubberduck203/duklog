@@ -1,7 +1,7 @@
 ---
 name: commit
 description: Commit changes after running CI checks
-disable-model-invocation: true
+disable-model-invocation: false
 allowed-tools: Bash, Read, Grep, Glob
 ---
 

@@ -14,7 +14,7 @@ Three categories of data:
 ### Per-Log (set at log creation, rarely changes)
 - `station_callsign` — callsign used on air
 - `operator` — individual operator callsign (may equal station_callsign)
-- `park_ref` — POTA park reference (format: `[A-Z]{1,3}-\d{4,5}`, e.g. `K-0001`)
+- `park_ref` — optional POTA park reference (format: `[A-Z]{1,3}-\d{4,5}`, e.g. `K-0001`)
 - `grid_square` — Maidenhead locator
 - `log_id` — unique identifier
 - `created_at` — UTC timestamp
@@ -50,7 +50,7 @@ Where `length` is the byte length of `value`.
 ### RST Defaults by Mode
 - SSB/FM/AM: `59` (2-digit)
 - CW/PSK31/RTTY: `599` (3-digit)
-- FT8/FT4: `-10` (dB)
+- FT8/FT4/JS8: `-10` (dB)
 
 ## Storage
 
