@@ -40,7 +40,9 @@ User Input → TUI Event Loop → Model Mutation → Auto-Save (Storage)
 - **XDG storage**: Logs stored in `~/.local/share/duklog/logs/` following XDG Base Directory spec. One JSON file per log.
 - **Auto-save**: Every model mutation triggers a save. No explicit "save" action needed — prevents data loss during field operation.
 - **PostToolUse hooks**: `cargo check` and `cargo clippy` run automatically after every `.rs` file edit, providing immediate compilation and lint feedback. Tests and mutation testing are too slow for hooks and run explicitly via `make` targets.
-- **Adversarial code review**: `code-review` subagent runs before every PR to catch issues the developer is blind to.
+- **Adversarial code review**: `code-review` subagent (Sonnet) runs before every PR to catch issues the developer is blind to.
+- **Token-optimized CLAUDE.md**: Only always-needed content (62 lines) lives in CLAUDE.md. Domain knowledge, testing rules, and ADIF specs are in `.claude/rules/` with path-scoped loading. Coding standards are a skill preloaded into the code-review subagent.
+- **Continuous learning**: `/learn-from-feedback` skill processes PR comments and user corrections into the appropriate knowledge store (rules, skills, or auto memory) so mistakes don't recur.
 
 ## Dependencies
 

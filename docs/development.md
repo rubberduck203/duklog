@@ -70,30 +70,43 @@ Run all checks (formatting, linting, tests, coverage) before committing:
 make ci
 ```
 
-## Code Review
+## Claude Code Integration
 
-Before creating a PR, invoke the `code-review` subagent:
+### Skills
 
-```
-Use the code-review subagent to review this branch
-```
+| Skill | Invocation | Purpose |
+|---|---|---|
+| `/commit` | Manual | Run CI, stage files, commit with trailer |
+| `/create-pr` | Manual | Run code review, then create PR |
+| `/learn-from-feedback` | Manual or auto | Process PR/user feedback into project knowledge |
+| `coding-standards` | Auto (Claude) | Background knowledge for reviews and implementation |
 
-This performs an adversarial review against project standards, runs CI and mutation testing, and reports blockers, suggestions, and nits.
+### Subagents
+
+| Agent | Model | Purpose |
+|---|---|---|
+| `code-review` | Sonnet | Adversarial pre-PR code review |
+| `run-ci` | Haiku | Run CI/mutants, return concise pass/fail summary |
+
+### Rules (conditional context)
+
+| Rule | Loads when | Content |
+|---|---|---|
+| `testing.md` | Working on `src/**/*.rs` | Testing requirements, coverage exclusions |
+| `domain.md` | Working on `src/model/`, `src/adif/`, `src/storage/` | Data model, ADIF format, POTA rules |
+
+### Hooks
+
+PostToolUse hooks run `cargo check` and `cargo clippy` after every `.rs` file edit.
 
 ## Project Standards
 
-See [CLAUDE.md](../CLAUDE.md) for the full coding standards reference, including:
-
-- Coding style (functional approach, match over if-let, no unwrap in lib code)
-- Testing requirements (specific assertions, boundary values, quickcheck)
-- Documentation requirements (rustdoc on all pub items)
-- Error handling patterns (thiserror per module)
+See [CLAUDE.md](../CLAUDE.md) for always-loaded standards (coding style, error handling, git workflow). Additional standards are loaded conditionally from `.claude/rules/` and `.claude/skills/` when relevant.
 
 ## Git Workflow
 
 1. Create a feature branch off `main`
 2. Implement the feature with tests
-3. Run `make ci` — all checks must pass
-4. Run `make mutants` for changed modules — no surviving mutants
-5. Run the `code-review` subagent — fix all blockers
-6. Create a PR to `main`
+3. `/commit` — runs CI checks and commits
+4. `/create-pr` — runs code review subagent, then creates PR
+5. After PR feedback: `/learn-from-feedback` to update project knowledge
