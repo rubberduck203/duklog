@@ -17,14 +17,14 @@ pub fn export_adif(log: &Log, path: &Path) -> Result<(), StorageError> {
 /// Format: `~/duklog-{PARK}-{YYYYMMDD}.adif` when a park ref is set,
 /// or `~/duklog-{CALLSIGN}-{YYYYMMDD}.adif` otherwise.
 ///
-/// Returns `StorageError::NoDataDir` if the home directory cannot be
+/// Returns `StorageError::NoHomeDir` if the home directory cannot be
 /// determined.
 pub fn default_export_path(log: &Log) -> Result<PathBuf, StorageError> {
     let prefix = log.park_ref.as_deref().unwrap_or(&log.station_callsign);
     let date = log.created_at.format("%Y%m%d");
     let filename = format!("duklog-{prefix}-{date}.adif");
 
-    let home = dirs::home_dir().ok_or(StorageError::NoDataDir)?;
+    let home = dirs::home_dir().ok_or(StorageError::NoHomeDir)?;
     Ok(home.join(filename))
 }
 

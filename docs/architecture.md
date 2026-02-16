@@ -29,7 +29,7 @@ User Input → TUI Event Loop → Model Mutation → Auto-Save (Storage)
 1. **Input**: Crossterm captures keyboard events
 2. **Dispatch**: TUI event loop routes events to the active screen
 3. **Model**: Screen handlers mutate the domain model (Log, Qso)
-4. **Persistence**: After every model mutation, storage layer auto-saves to JSON
+4. **Persistence**: After every model mutation, storage layer auto-saves to JSONL
 5. **Export**: User-triggered ADIF export calls the pure ADIF writer, then writes to disk
 
 ## Design Decisions

@@ -19,6 +19,10 @@ pub enum StorageError {
     #[error("could not determine XDG data directory")]
     NoDataDir,
 
+    /// The platform does not provide a home directory.
+    #[error("could not determine home directory")]
+    NoHomeDir,
+
     /// A JSONL log file exists but contains no metadata line.
     #[error("log file is empty: {0}")]
     EmptyLogFile(PathBuf),

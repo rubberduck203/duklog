@@ -75,8 +75,12 @@ impl LogManager {
     }
 
     /// Returns the file path for a given log ID.
+    ///
+    /// Replaces `/` in the log ID with `_` to prevent path traversal
+    /// (callsigns may contain `/`, e.g. `W1AW/P`).
     fn log_path(&self, log_id: &str) -> PathBuf {
-        self.base_path.join(format!("{log_id}.jsonl"))
+        let safe_id = log_id.replace('/', "_");
+        self.base_path.join(format!("{safe_id}.jsonl"))
     }
 
     /// Writes a complete log to disk (metadata + all QSOs).
@@ -125,7 +129,10 @@ impl LogManager {
         let mut logs: Vec<Log> = fs::read_dir(&self.base_path)?
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
-            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "jsonl"))
+            .filter(|entry| {
+                let path = entry.path();
+                path.is_file() && path.extension().is_some_and(|ext| ext == "jsonl")
+            })
             .map(|entry| load_log_from_path(&entry.path()))
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -435,5 +442,18 @@ mod tests {
 
         let loaded = manager.load_log("no-park").unwrap();
         assert_eq!(loaded.park_ref, None);
+    }
+
+    // --- Path safety ---
+
+    #[test]
+    fn log_id_with_slash_round_trips() {
+        let (_dir, manager) = make_manager();
+        let mut log = make_log();
+        log.log_id = "W1AW/P-20260216-120000".to_string();
+        manager.save_log(&log).unwrap();
+
+        let loaded = manager.load_log("W1AW/P-20260216-120000").unwrap();
+        assert_eq!(loaded.log_id, "W1AW/P-20260216-120000");
     }
 }
