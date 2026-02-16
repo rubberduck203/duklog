@@ -50,7 +50,7 @@ Where `length` is the byte length of `value`.
 ### RST Defaults by Mode
 - SSB/FM/AM: `59` (2-digit)
 - CW/PSK31/RTTY: `599` (3-digit)
-- FT8/FT4: `-10` (dB)
+- FT8/FT4/JS8: `-10` (dB)
 
 ## Storage
 

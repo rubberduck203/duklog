@@ -184,6 +184,7 @@ dependencies = [
  "quickcheck",
  "quickcheck_macros",
  "ratatui",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",
