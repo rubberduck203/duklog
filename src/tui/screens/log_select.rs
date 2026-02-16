@@ -228,144 +228,154 @@ mod tests {
         }
     }
 
-    // --- Construction ---
+    mod construction {
+        use super::*;
 
-    #[test]
-    fn new_starts_empty() {
-        let state = LogSelectState::new();
-        assert!(state.logs().is_empty());
-        assert_eq!(state.selected(), None);
-        assert_eq!(state.error(), None);
-    }
-
-    // --- Load ---
-
-    #[test]
-    fn load_populates_from_manager() {
-        let dir = tempfile::tempdir().unwrap();
-        let manager = LogManager::with_path(dir.path()).unwrap();
-        let log = make_log("test", "W1AW", Some("K-0001"));
-        manager.save_log(&log).unwrap();
-
-        let mut state = LogSelectState::new();
-        state.load(&manager).unwrap();
-        assert_eq!(state.logs().len(), 1);
-        assert_eq!(state.selected(), Some(0));
-    }
-
-    #[test]
-    fn load_empty_directory() {
-        let dir = tempfile::tempdir().unwrap();
-        let manager = LogManager::with_path(dir.path()).unwrap();
-
-        let mut state = LogSelectState::new();
-        state.load(&manager).unwrap();
-        assert!(state.logs().is_empty());
-        assert_eq!(state.selected(), None);
-    }
-
-    // --- Navigation keys ---
-
-    #[test]
-    fn down_moves_selection() {
-        let mut state = make_populated_state();
-        let action = state.handle_key(press(KeyCode::Down));
-        assert_eq!(action, Action::None);
-        assert_eq!(state.selected(), Some(1));
-    }
-
-    #[test]
-    fn up_moves_selection() {
-        let mut state = make_populated_state();
-        state.selected = Some(2);
-        let action = state.handle_key(press(KeyCode::Up));
-        assert_eq!(action, Action::None);
-        assert_eq!(state.selected(), Some(1));
-    }
-
-    #[test]
-    fn down_at_bottom_is_noop() {
-        let mut state = make_populated_state();
-        state.selected = Some(2);
-        let action = state.handle_key(press(KeyCode::Down));
-        assert_eq!(action, Action::None);
-        assert_eq!(state.selected(), Some(2));
-    }
-
-    #[test]
-    fn up_at_top_is_noop() {
-        let mut state = make_populated_state();
-        let action = state.handle_key(press(KeyCode::Up));
-        assert_eq!(action, Action::None);
-        assert_eq!(state.selected(), Some(0));
-    }
-
-    #[test]
-    fn navigation_on_empty_list_is_noop() {
-        let mut state = LogSelectState::new();
-        assert_eq!(state.handle_key(press(KeyCode::Up)), Action::None);
-        assert_eq!(state.handle_key(press(KeyCode::Down)), Action::None);
-        assert_eq!(state.handle_key(press(KeyCode::Enter)), Action::None);
-    }
-
-    // --- Enter selects ---
-
-    #[test]
-    fn enter_selects_current_log() {
-        let mut state = make_populated_state();
-        let action = state.handle_key(press(KeyCode::Enter));
-        match action {
-            Action::SelectLog(log) => assert_eq!(log.log_id, "log1"),
-            other => panic!("expected SelectLog, got {other:?}"),
+        #[test]
+        fn new_starts_empty() {
+            let state = LogSelectState::new();
+            assert!(state.logs().is_empty());
+            assert_eq!(state.selected(), None);
+            assert_eq!(state.error(), None);
         }
     }
 
-    // --- n creates new ---
+    mod load {
+        use super::*;
 
-    #[test]
-    fn n_navigates_to_log_create() {
-        let mut state = make_populated_state();
-        let action = state.handle_key(press(KeyCode::Char('n')));
-        assert_eq!(action, Action::Navigate(Screen::LogCreate));
+        #[test]
+        fn populates_from_manager() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            let log = make_log("test", "W1AW", Some("K-0001"));
+            manager.save_log(&log).unwrap();
+
+            let mut state = LogSelectState::new();
+            state.load(&manager).unwrap();
+            assert_eq!(state.logs().len(), 1);
+            assert_eq!(state.selected(), Some(0));
+        }
+
+        #[test]
+        fn empty_directory() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+
+            let mut state = LogSelectState::new();
+            state.load(&manager).unwrap();
+            assert!(state.logs().is_empty());
+            assert_eq!(state.selected(), None);
+        }
+
+        #[test]
+        fn clears_error() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            let mut state = LogSelectState::new();
+            state.set_error("old error".into());
+            state.load(&manager).unwrap();
+            assert_eq!(state.error(), None);
+        }
     }
 
-    // --- q/Esc quits ---
+    mod navigation {
+        use super::*;
 
-    #[test]
-    fn q_quits() {
-        let mut state = make_populated_state();
-        assert_eq!(state.handle_key(press(KeyCode::Char('q'))), Action::Quit);
+        #[test]
+        fn down_moves_selection() {
+            let mut state = make_populated_state();
+            let action = state.handle_key(press(KeyCode::Down));
+            assert_eq!(action, Action::None);
+            assert_eq!(state.selected(), Some(1));
+        }
+
+        #[test]
+        fn up_moves_selection() {
+            let mut state = make_populated_state();
+            state.selected = Some(2);
+            let action = state.handle_key(press(KeyCode::Up));
+            assert_eq!(action, Action::None);
+            assert_eq!(state.selected(), Some(1));
+        }
+
+        #[test]
+        fn down_at_bottom_is_noop() {
+            let mut state = make_populated_state();
+            state.selected = Some(2);
+            let action = state.handle_key(press(KeyCode::Down));
+            assert_eq!(action, Action::None);
+            assert_eq!(state.selected(), Some(2));
+        }
+
+        #[test]
+        fn up_at_top_is_noop() {
+            let mut state = make_populated_state();
+            let action = state.handle_key(press(KeyCode::Up));
+            assert_eq!(action, Action::None);
+            assert_eq!(state.selected(), Some(0));
+        }
+
+        #[test]
+        fn empty_list_is_noop() {
+            let mut state = LogSelectState::new();
+            assert_eq!(state.handle_key(press(KeyCode::Up)), Action::None);
+            assert_eq!(state.handle_key(press(KeyCode::Down)), Action::None);
+            assert_eq!(state.handle_key(press(KeyCode::Enter)), Action::None);
+        }
     }
 
-    #[test]
-    fn esc_quits() {
-        let mut state = make_populated_state();
-        assert_eq!(state.handle_key(press(KeyCode::Esc)), Action::Quit);
+    mod selection {
+        use super::*;
+
+        #[test]
+        fn enter_selects_current_log() {
+            let mut state = make_populated_state();
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::SelectLog(log) => assert_eq!(log.log_id, "log1"),
+                other => panic!("expected SelectLog, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn n_navigates_to_log_create() {
+            let mut state = make_populated_state();
+            let action = state.handle_key(press(KeyCode::Char('n')));
+            assert_eq!(action, Action::Navigate(Screen::LogCreate));
+        }
     }
 
-    // --- Unhandled keys ---
+    mod quit {
+        use super::*;
 
-    #[test]
-    fn unhandled_key_returns_none() {
-        let mut state = make_populated_state();
-        assert_eq!(state.handle_key(press(KeyCode::Char('x'))), Action::None);
+        #[test]
+        fn q_quits() {
+            let mut state = make_populated_state();
+            assert_eq!(state.handle_key(press(KeyCode::Char('q'))), Action::Quit);
+        }
+
+        #[test]
+        fn esc_quits() {
+            let mut state = make_populated_state();
+            assert_eq!(state.handle_key(press(KeyCode::Esc)), Action::Quit);
+        }
+
+        #[test]
+        fn unhandled_key_returns_none() {
+            let mut state = make_populated_state();
+            assert_eq!(state.handle_key(press(KeyCode::Char('x'))), Action::None);
+        }
     }
 
-    #[test]
-    fn error_returns_set_value() {
-        let mut state = LogSelectState::new();
-        assert_eq!(state.error(), None);
-        state.set_error("storage failed".into());
-        assert_eq!(state.error(), Some("storage failed"));
-    }
+    mod error {
+        use super::*;
 
-    #[test]
-    fn load_clears_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let manager = LogManager::with_path(dir.path()).unwrap();
-        let mut state = LogSelectState::new();
-        state.set_error("old error".into());
-        state.load(&manager).unwrap();
-        assert_eq!(state.error(), None);
+        #[test]
+        fn returns_set_value() {
+            let mut state = LogSelectState::new();
+            assert_eq!(state.error(), None);
+            state.set_error("storage failed".into());
+            assert_eq!(state.error(), Some("storage failed"));
+        }
     }
 }

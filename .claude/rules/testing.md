@@ -13,6 +13,8 @@ paths:
 - Assert on **specific values**, not just `is_ok()` / `is_empty()` — critical for mutation testing
 - Use `tempfile::tempdir()` for all storage tests — never write to real paths
 - Tests must be deterministic and fast
+- **Organize tests with submodules** (`mod typing { ... }`, `mod validation { ... }`), not section comments (`// --- Typing ---`)
+- **Extract test helpers** to reduce repetition — tests are code too; refactor shared setup into helper functions
 - After implementing a module: `make mutants-module MOD=src/<module>/` — no surviving mutants
 - Minimum 90% line coverage enforced by `make coverage`
 

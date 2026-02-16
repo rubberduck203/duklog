@@ -199,176 +199,188 @@ mod tests {
         ])
     }
 
-    // --- Focus management ---
+    mod focus {
+        use super::*;
 
-    #[test]
-    fn focus_starts_at_zero() {
-        let form = make_form();
-        assert_eq!(form.focus(), 0);
+        #[test]
+        fn starts_at_zero() {
+            let form = make_form();
+            assert_eq!(form.focus(), 0);
+        }
+
+        #[test]
+        fn next_advances() {
+            let mut form = make_form();
+            form.focus_next();
+            assert_eq!(form.focus(), 1);
+            form.focus_next();
+            assert_eq!(form.focus(), 2);
+        }
+
+        #[test]
+        fn next_wraps() {
+            let mut form = make_form();
+            form.focus_next();
+            form.focus_next();
+            form.focus_next();
+            assert_eq!(form.focus(), 0);
+        }
+
+        #[test]
+        fn prev_wraps() {
+            let mut form = make_form();
+            form.focus_prev();
+            assert_eq!(form.focus(), 2);
+        }
+
+        #[test]
+        fn prev_decrements() {
+            let mut form = make_form();
+            form.focus_next();
+            form.focus_next();
+            form.focus_prev();
+            assert_eq!(form.focus(), 1);
+        }
+
+        #[test]
+        fn next_empty_form_is_noop() {
+            let mut form = Form::new(vec![]);
+            form.focus_next();
+            assert_eq!(form.focus(), 0);
+        }
+
+        #[test]
+        fn prev_empty_form_is_noop() {
+            let mut form = Form::new(vec![]);
+            form.focus_prev();
+            assert_eq!(form.focus(), 0);
+        }
     }
 
-    #[test]
-    fn focus_next_advances() {
-        let mut form = make_form();
-        form.focus_next();
-        assert_eq!(form.focus(), 1);
-        form.focus_next();
-        assert_eq!(form.focus(), 2);
+    mod editing {
+        use super::*;
+
+        #[test]
+        fn insert_char_appends_to_focused() {
+            let mut form = make_form();
+            form.insert_char('W');
+            form.insert_char('1');
+            assert_eq!(form.value(0), "W1");
+            assert_eq!(form.value(1), "");
+        }
+
+        #[test]
+        fn insert_char_on_different_focus() {
+            let mut form = make_form();
+            form.focus_next();
+            form.insert_char('A');
+            assert_eq!(form.value(0), "");
+            assert_eq!(form.value(1), "A");
+        }
+
+        #[test]
+        fn delete_char_removes_last() {
+            let mut form = make_form();
+            form.insert_char('A');
+            form.insert_char('B');
+            form.delete_char();
+            assert_eq!(form.value(0), "A");
+        }
+
+        #[test]
+        fn delete_char_on_empty_is_noop() {
+            let mut form = make_form();
+            form.delete_char();
+            assert_eq!(form.value(0), "");
+        }
     }
 
-    #[test]
-    fn focus_next_wraps() {
-        let mut form = make_form();
-        form.focus_next();
-        form.focus_next();
-        form.focus_next();
-        assert_eq!(form.focus(), 0);
+    mod errors {
+        use super::*;
+
+        #[test]
+        fn set_error_on_field() {
+            let mut form = make_form();
+            form.set_error(0, "bad callsign".into());
+            assert!(form.has_errors());
+            assert_eq!(form.fields()[0].error, Some("bad callsign".into()));
+        }
+
+        #[test]
+        fn clear_errors_removes_all() {
+            let mut form = make_form();
+            form.set_error(0, "err1".into());
+            form.set_error(1, "err2".into());
+            assert!(form.has_errors());
+            form.clear_errors();
+            assert!(!form.has_errors());
+        }
+
+        #[test]
+        fn has_errors_false_when_clean() {
+            let form = make_form();
+            assert!(!form.has_errors());
+        }
+
+        #[test]
+        fn set_error_out_of_bounds_is_noop() {
+            let mut form = make_form();
+            form.set_error(99, "nope".into());
+            assert!(!form.has_errors());
+        }
     }
 
-    #[test]
-    fn focus_prev_wraps() {
-        let mut form = make_form();
-        form.focus_prev();
-        assert_eq!(form.focus(), 2);
+    mod values {
+        use super::*;
+
+        #[test]
+        fn returns_all_field_values() {
+            let mut form = make_form();
+            form.insert_char('A');
+            form.focus_next();
+            form.insert_char('B');
+            assert_eq!(form.values(), vec!["A", "B", ""]);
+        }
+
+        #[test]
+        fn out_of_bounds_returns_empty() {
+            let form = make_form();
+            assert_eq!(form.value(99), "");
+        }
     }
 
-    #[test]
-    fn focus_prev_decrements() {
-        let mut form = make_form();
-        form.focus_next();
-        form.focus_next();
-        form.focus_prev();
-        assert_eq!(form.focus(), 1);
+    mod reset {
+        use super::*;
+
+        #[test]
+        fn clears_values_errors_and_focus() {
+            let mut form = make_form();
+            form.insert_char('X');
+            form.focus_next();
+            form.set_error(0, "err".into());
+            form.reset();
+            assert_eq!(form.value(0), "");
+            assert_eq!(form.focus(), 0);
+            assert!(!form.has_errors());
+        }
     }
 
-    #[test]
-    fn focus_next_empty_form_is_noop() {
-        let mut form = Form::new(vec![]);
-        form.focus_next();
-        assert_eq!(form.focus(), 0);
-    }
+    mod fields_accessor {
+        use super::*;
 
-    #[test]
-    fn focus_prev_empty_form_is_noop() {
-        let mut form = Form::new(vec![]);
-        form.focus_prev();
-        assert_eq!(form.focus(), 0);
-    }
+        #[test]
+        fn returns_correct_labels() {
+            let form = make_form();
+            let labels: Vec<&str> = form.fields().iter().map(|f| f.label.as_str()).collect();
+            assert_eq!(labels, vec!["Callsign", "Operator", "Park Ref"]);
+        }
 
-    // --- Character insert/delete ---
-
-    #[test]
-    fn insert_char_appends_to_focused() {
-        let mut form = make_form();
-        form.insert_char('W');
-        form.insert_char('1');
-        assert_eq!(form.value(0), "W1");
-        assert_eq!(form.value(1), "");
-    }
-
-    #[test]
-    fn insert_char_on_different_focus() {
-        let mut form = make_form();
-        form.focus_next();
-        form.insert_char('A');
-        assert_eq!(form.value(0), "");
-        assert_eq!(form.value(1), "A");
-    }
-
-    #[test]
-    fn delete_char_removes_last() {
-        let mut form = make_form();
-        form.insert_char('A');
-        form.insert_char('B');
-        form.delete_char();
-        assert_eq!(form.value(0), "A");
-    }
-
-    #[test]
-    fn delete_char_on_empty_is_noop() {
-        let mut form = make_form();
-        form.delete_char();
-        assert_eq!(form.value(0), "");
-    }
-
-    // --- Error management ---
-
-    #[test]
-    fn set_error_on_field() {
-        let mut form = make_form();
-        form.set_error(0, "bad callsign".into());
-        assert!(form.has_errors());
-        assert_eq!(form.fields()[0].error, Some("bad callsign".into()));
-    }
-
-    #[test]
-    fn clear_errors_removes_all() {
-        let mut form = make_form();
-        form.set_error(0, "err1".into());
-        form.set_error(1, "err2".into());
-        assert!(form.has_errors());
-        form.clear_errors();
-        assert!(!form.has_errors());
-    }
-
-    #[test]
-    fn has_errors_false_when_clean() {
-        let form = make_form();
-        assert!(!form.has_errors());
-    }
-
-    #[test]
-    fn set_error_out_of_bounds_is_noop() {
-        let mut form = make_form();
-        form.set_error(99, "nope".into());
-        assert!(!form.has_errors());
-    }
-
-    // --- Values ---
-
-    #[test]
-    fn values_returns_all_field_values() {
-        let mut form = make_form();
-        form.insert_char('A');
-        form.focus_next();
-        form.insert_char('B');
-        assert_eq!(form.values(), vec!["A", "B", ""]);
-    }
-
-    #[test]
-    fn value_out_of_bounds_returns_empty() {
-        let form = make_form();
-        assert_eq!(form.value(99), "");
-    }
-
-    // --- Reset ---
-
-    #[test]
-    fn reset_clears_values_errors_and_focus() {
-        let mut form = make_form();
-        form.insert_char('X');
-        form.focus_next();
-        form.set_error(0, "err".into());
-        form.reset();
-        assert_eq!(form.value(0), "");
-        assert_eq!(form.focus(), 0);
-        assert!(!form.has_errors());
-    }
-
-    // --- Fields accessor ---
-
-    #[test]
-    fn fields_returns_correct_labels() {
-        let form = make_form();
-        let labels: Vec<&str> = form.fields().iter().map(|f| f.label.as_str()).collect();
-        assert_eq!(labels, vec!["Callsign", "Operator", "Park Ref"]);
-    }
-
-    #[test]
-    fn field_required_flags() {
-        let form = make_form();
-        assert!(form.fields()[0].required);
-        assert!(form.fields()[1].required);
-        assert!(!form.fields()[2].required);
+        #[test]
+        fn required_flags() {
+            let form = make_form();
+            assert!(form.fields()[0].required);
+            assert!(form.fields()[1].required);
+            assert!(!form.fields()[2].required);
+        }
     }
 }

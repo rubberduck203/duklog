@@ -276,315 +276,308 @@ mod tests {
         log
     }
 
-    #[test]
-    fn new_starts_on_log_select() {
-        let (_dir, app) = make_app();
-        assert_eq!(app.screen(), Screen::LogSelect);
-        assert!(!app.should_quit());
-        assert!(app.current_log().is_none());
+    fn type_string(app: &mut App, s: &str) {
+        for ch in s.chars() {
+            app.handle_key(press(KeyCode::Char(ch)));
+        }
     }
 
-    #[test]
-    fn q_on_log_select_quits() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Char('q')));
-        assert!(app.should_quit());
+    fn fill_create_form(app: &mut App) {
+        type_string(app, "W1AW");
+        app.handle_key(press(KeyCode::Tab));
+        type_string(app, "W1AW");
+        app.handle_key(press(KeyCode::Tab));
+        app.handle_key(press(KeyCode::Tab));
+        type_string(app, "FN31");
     }
 
-    #[test]
-    fn esc_on_log_select_quits() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Esc));
-        assert!(app.should_quit());
+    mod construction {
+        use super::*;
+
+        #[test]
+        fn starts_on_log_select() {
+            let (_dir, app) = make_app();
+            assert_eq!(app.screen(), Screen::LogSelect);
+            assert!(!app.should_quit());
+            assert!(app.current_log().is_none());
+        }
+
+        #[test]
+        fn screen_labels_match_expected() {
+            let expected = [
+                (Screen::LogSelect, "Log Select"),
+                (Screen::LogCreate, "Log Create"),
+                (Screen::QsoEntry, "QSO Entry"),
+                (Screen::QsoList, "QSO List"),
+                (Screen::Export, "Export"),
+                (Screen::Help, "Help"),
+            ];
+            for (screen, label) in expected {
+                assert_eq!(screen.label(), label, "{screen:?} label mismatch");
+            }
+        }
     }
 
-    #[test]
-    fn question_mark_navigates_to_help() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Char('?')));
-        assert_eq!(app.screen(), Screen::Help);
-        assert!(!app.should_quit());
-    }
+    mod accessors {
+        use super::*;
 
-    #[test]
-    fn q_on_help_navigates_to_log_select() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Char('?')));
-        assert_eq!(app.screen(), Screen::Help);
-
-        app.handle_key(press(KeyCode::Char('q')));
-        assert_eq!(app.screen(), Screen::LogSelect);
-        assert!(!app.should_quit());
-    }
-
-    #[test]
-    fn esc_on_help_navigates_to_log_select() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Char('?')));
-        app.handle_key(press(KeyCode::Esc));
-        assert_eq!(app.screen(), Screen::LogSelect);
-        assert!(!app.should_quit());
-    }
-
-    #[test]
-    fn question_mark_on_help_stays_on_help() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Char('?')));
-        app.handle_key(press(KeyCode::Char('?')));
-        assert_eq!(app.screen(), Screen::Help);
-    }
-
-    #[test]
-    fn release_events_are_ignored() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(release(KeyCode::Char('q')));
-        assert!(!app.should_quit());
-        assert_eq!(app.screen(), Screen::LogSelect);
-    }
-
-    #[test]
-    fn unhandled_key_is_ignored() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Char('x')));
-        assert_eq!(app.screen(), Screen::LogSelect);
-        assert!(!app.should_quit());
-    }
-
-    #[test]
-    fn q_on_non_log_select_screens_navigates_back() {
-        let non_log_select = [Screen::QsoEntry, Screen::QsoList, Screen::Export];
-        for screen in non_log_select {
+        #[test]
+        fn current_log_returns_set_log() {
             let (_dir, mut app) = make_app();
-            app.screen = screen;
+            assert!(app.current_log().is_none());
+
+            let log = Log {
+                station_callsign: "W1AW".into(),
+                operator: "W1AW".into(),
+                park_ref: None,
+                grid_square: "FN31pr".into(),
+                qsos: vec![],
+                created_at: chrono::Utc::now(),
+                log_id: "test".into(),
+            };
+            app.current_log = Some(log.clone());
+            assert_eq!(app.current_log().unwrap().log_id, "test");
+        }
+
+        #[test]
+        fn manager_accessor_returns_manager() {
+            let (_dir, app) = make_app();
+            let _manager = app.manager();
+        }
+    }
+
+    mod global_keys {
+        use super::*;
+
+        #[test]
+        fn q_on_log_select_quits() {
+            let (_dir, mut app) = make_app();
             app.handle_key(press(KeyCode::Char('q')));
-            assert_eq!(
-                app.screen(),
-                Screen::LogSelect,
-                "q on {screen:?} should navigate to LogSelect"
-            );
-            assert!(!app.should_quit());
+            assert!(app.should_quit());
         }
-    }
 
-    #[test]
-    fn esc_on_non_log_select_screens_navigates_back() {
-        let non_log_select = [Screen::QsoEntry, Screen::QsoList, Screen::Export];
-        for screen in non_log_select {
+        #[test]
+        fn esc_on_log_select_quits() {
             let (_dir, mut app) = make_app();
-            app.screen = screen;
             app.handle_key(press(KeyCode::Esc));
-            assert_eq!(
-                app.screen(),
-                Screen::LogSelect,
-                "Esc on {screen:?} should navigate to LogSelect"
-            );
+            assert!(app.should_quit());
+        }
+
+        #[test]
+        fn question_mark_navigates_to_help() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('?')));
+            assert_eq!(app.screen(), Screen::Help);
             assert!(!app.should_quit());
         }
-    }
 
-    #[test]
-    fn screen_labels_match_expected() {
-        let expected = [
-            (Screen::LogSelect, "Log Select"),
-            (Screen::LogCreate, "Log Create"),
-            (Screen::QsoEntry, "QSO Entry"),
-            (Screen::QsoList, "QSO List"),
-            (Screen::Export, "Export"),
-            (Screen::Help, "Help"),
-        ];
-        for (screen, label) in expected {
-            assert_eq!(screen.label(), label, "{screen:?} label mismatch");
+        #[test]
+        fn q_on_help_navigates_to_log_select() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('?')));
+            assert_eq!(app.screen(), Screen::Help);
+
+            app.handle_key(press(KeyCode::Char('q')));
+            assert_eq!(app.screen(), Screen::LogSelect);
+            assert!(!app.should_quit());
+        }
+
+        #[test]
+        fn esc_on_help_navigates_to_log_select() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('?')));
+            app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.screen(), Screen::LogSelect);
+            assert!(!app.should_quit());
+        }
+
+        #[test]
+        fn question_mark_on_help_stays_on_help() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('?')));
+            app.handle_key(press(KeyCode::Char('?')));
+            assert_eq!(app.screen(), Screen::Help);
+        }
+
+        #[test]
+        fn release_events_are_ignored() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(release(KeyCode::Char('q')));
+            assert!(!app.should_quit());
+            assert_eq!(app.screen(), Screen::LogSelect);
+        }
+
+        #[test]
+        fn unhandled_key_is_ignored() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('x')));
+            assert_eq!(app.screen(), Screen::LogSelect);
+            assert!(!app.should_quit());
+        }
+
+        #[test]
+        fn q_on_non_log_select_screens_navigates_back() {
+            let non_log_select = [Screen::QsoEntry, Screen::QsoList, Screen::Export];
+            for screen in non_log_select {
+                let (_dir, mut app) = make_app();
+                app.screen = screen;
+                app.handle_key(press(KeyCode::Char('q')));
+                assert_eq!(
+                    app.screen(),
+                    Screen::LogSelect,
+                    "q on {screen:?} should navigate to LogSelect"
+                );
+                assert!(!app.should_quit());
+            }
+        }
+
+        #[test]
+        fn esc_on_non_log_select_screens_navigates_back() {
+            let non_log_select = [Screen::QsoEntry, Screen::QsoList, Screen::Export];
+            for screen in non_log_select {
+                let (_dir, mut app) = make_app();
+                app.screen = screen;
+                app.handle_key(press(KeyCode::Esc));
+                assert_eq!(
+                    app.screen(),
+                    Screen::LogSelect,
+                    "Esc on {screen:?} should navigate to LogSelect"
+                );
+                assert!(!app.should_quit());
+            }
         }
     }
 
-    #[test]
-    fn current_log_returns_set_log() {
-        let (_dir, mut app) = make_app();
-        assert!(app.current_log().is_none());
+    mod log_create_integration {
+        use super::*;
 
-        let log = Log {
-            station_callsign: "W1AW".into(),
-            operator: "W1AW".into(),
-            park_ref: None,
-            grid_square: "FN31pr".into(),
-            qsos: vec![],
-            created_at: chrono::Utc::now(),
-            log_id: "test".into(),
-        };
-        app.current_log = Some(log.clone());
-        assert_eq!(app.current_log().unwrap().log_id, "test");
-    }
-
-    #[test]
-    fn manager_accessor_returns_manager() {
-        let (_dir, app) = make_app();
-        let _manager = app.manager();
-    }
-
-    // --- LogCreate screen integration ---
-
-    #[test]
-    fn n_on_log_select_navigates_to_log_create() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Char('n')));
-        assert_eq!(app.screen(), Screen::LogCreate);
-    }
-
-    #[test]
-    fn esc_on_log_create_returns_to_log_select() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Char('n')));
-        assert_eq!(app.screen(), Screen::LogCreate);
-        app.handle_key(press(KeyCode::Esc));
-        assert_eq!(app.screen(), Screen::LogSelect);
-    }
-
-    #[test]
-    fn q_on_log_create_types_q_not_quit() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Char('n')));
-        assert_eq!(app.screen(), Screen::LogCreate);
-        // 'q' should be typed into the form, not quit or navigate
-        app.handle_key(press(KeyCode::Char('q')));
-        assert_eq!(app.screen(), Screen::LogCreate);
-        assert!(!app.should_quit());
-    }
-
-    #[test]
-    fn question_mark_on_log_create_types_not_help() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Char('n')));
-        app.handle_key(press(KeyCode::Char('?')));
-        // Should stay on LogCreate, not go to Help
-        assert_eq!(app.screen(), Screen::LogCreate);
-    }
-
-    #[test]
-    fn form_reset_on_navigate_to_log_create() {
-        let (_dir, mut app) = make_app();
-        // Navigate to create, type something
-        app.handle_key(press(KeyCode::Char('n')));
-        app.handle_key(press(KeyCode::Char('X')));
-        // Go back
-        app.handle_key(press(KeyCode::Esc));
-        // Navigate to create again — should be reset
-        app.handle_key(press(KeyCode::Char('n')));
-        assert_eq!(app.log_create.form().value(0), "");
-    }
-
-    #[test]
-    fn valid_create_log_saves_and_navigates() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Char('n')));
-
-        // Fill form: callsign
-        for ch in "W1AW".chars() {
-            app.handle_key(press(KeyCode::Char(ch)));
-        }
-        app.handle_key(press(KeyCode::Tab));
-        // operator
-        for ch in "W1AW".chars() {
-            app.handle_key(press(KeyCode::Char(ch)));
-        }
-        app.handle_key(press(KeyCode::Tab));
-        // skip park ref
-        app.handle_key(press(KeyCode::Tab));
-        // grid square
-        for ch in "FN31".chars() {
-            app.handle_key(press(KeyCode::Char(ch)));
+        #[test]
+        fn n_on_log_select_navigates_to_log_create() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('n')));
+            assert_eq!(app.screen(), Screen::LogCreate);
         }
 
-        app.handle_key(press(KeyCode::Enter));
-        assert_eq!(app.screen(), Screen::QsoEntry);
-        assert!(app.current_log().is_some());
-        assert_eq!(app.current_log().unwrap().station_callsign, "W1AW");
-    }
-
-    #[test]
-    fn invalid_create_log_stays_on_form() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Char('n')));
-        // Submit with empty fields
-        app.handle_key(press(KeyCode::Enter));
-        assert_eq!(app.screen(), Screen::LogCreate);
-        assert!(app.current_log().is_none());
-    }
-
-    // --- LogSelect navigation ---
-
-    #[test]
-    fn select_log_navigates_to_qso_entry() {
-        let dir = tempfile::tempdir().unwrap();
-        let manager = LogManager::with_path(dir.path()).unwrap();
-        save_test_log(&manager, "test-log");
-        let mut app = App::new(manager).unwrap();
-
-        // Enter selects the first log
-        app.handle_key(press(KeyCode::Enter));
-        assert_eq!(app.screen(), Screen::QsoEntry);
-        assert_eq!(app.current_log().unwrap().log_id, "test-log");
-    }
-
-    #[test]
-    fn enter_on_empty_log_list_is_noop() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Enter));
-        assert_eq!(app.screen(), Screen::LogSelect);
-    }
-
-    #[test]
-    fn log_list_reloads_on_return_to_select() {
-        let dir = tempfile::tempdir().unwrap();
-        let manager = LogManager::with_path(dir.path()).unwrap();
-        let mut app = App::new(manager).unwrap();
-        assert!(app.log_select.logs().is_empty());
-
-        // Save a log externally
-        save_test_log(app.manager(), "new-log");
-
-        // Navigate away and back
-        app.handle_key(press(KeyCode::Char('n')));
-        app.handle_key(press(KeyCode::Esc));
-        assert_eq!(app.screen(), Screen::LogSelect);
-        assert_eq!(app.log_select.logs().len(), 1);
-    }
-
-    #[test]
-    fn tab_cycles_form_fields_in_log_create() {
-        let (_dir, mut app) = make_app();
-        app.handle_key(press(KeyCode::Char('n')));
-        assert_eq!(app.log_create.form().focus(), 0);
-        app.handle_key(press(KeyCode::Tab));
-        assert_eq!(app.log_create.form().focus(), 1);
-        app.handle_key(shift_press(KeyCode::BackTab));
-        assert_eq!(app.log_create.form().focus(), 0);
-    }
-
-    #[test]
-    fn create_log_persists_to_storage() {
-        let dir = tempfile::tempdir().unwrap();
-        let manager = LogManager::with_path(dir.path()).unwrap();
-        let mut app = App::new(manager).unwrap();
-
-        // Create a log through the form
-        app.handle_key(press(KeyCode::Char('n')));
-        for ch in "W1AW".chars() {
-            app.handle_key(press(KeyCode::Char(ch)));
+        #[test]
+        fn esc_on_log_create_returns_to_log_select() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('n')));
+            assert_eq!(app.screen(), Screen::LogCreate);
+            app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.screen(), Screen::LogSelect);
         }
-        app.handle_key(press(KeyCode::Tab));
-        for ch in "W1AW".chars() {
-            app.handle_key(press(KeyCode::Char(ch)));
-        }
-        app.handle_key(press(KeyCode::Tab));
-        app.handle_key(press(KeyCode::Tab));
-        for ch in "FN31".chars() {
-            app.handle_key(press(KeyCode::Char(ch)));
-        }
-        app.handle_key(press(KeyCode::Enter));
 
-        // Verify it was persisted
-        let logs = app.manager().list_logs().unwrap();
-        assert_eq!(logs.len(), 1);
-        assert_eq!(logs[0].station_callsign, "W1AW");
+        #[test]
+        fn q_on_log_create_types_q_not_quit() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('n')));
+            assert_eq!(app.screen(), Screen::LogCreate);
+            app.handle_key(press(KeyCode::Char('q')));
+            assert_eq!(app.screen(), Screen::LogCreate);
+            assert!(!app.should_quit());
+        }
+
+        #[test]
+        fn question_mark_on_log_create_types_not_help() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('n')));
+            app.handle_key(press(KeyCode::Char('?')));
+            assert_eq!(app.screen(), Screen::LogCreate);
+        }
+
+        #[test]
+        fn form_reset_on_navigate_to_log_create() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('n')));
+            app.handle_key(press(KeyCode::Char('X')));
+            app.handle_key(press(KeyCode::Esc));
+            app.handle_key(press(KeyCode::Char('n')));
+            assert_eq!(app.log_create.form().value(0), "");
+        }
+
+        #[test]
+        fn valid_create_log_saves_and_navigates() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('n')));
+            fill_create_form(&mut app);
+
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert!(app.current_log().is_some());
+            assert_eq!(app.current_log().unwrap().station_callsign, "W1AW");
+        }
+
+        #[test]
+        fn invalid_create_log_stays_on_form() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('n')));
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::LogCreate);
+            assert!(app.current_log().is_none());
+        }
+
+        #[test]
+        fn tab_cycles_form_fields() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('n')));
+            assert_eq!(app.log_create.form().focus(), 0);
+            app.handle_key(press(KeyCode::Tab));
+            assert_eq!(app.log_create.form().focus(), 1);
+            app.handle_key(shift_press(KeyCode::BackTab));
+            assert_eq!(app.log_create.form().focus(), 0);
+        }
+
+        #[test]
+        fn create_log_persists_to_storage() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            let mut app = App::new(manager).unwrap();
+
+            app.handle_key(press(KeyCode::Char('n')));
+            fill_create_form(&mut app);
+            app.handle_key(press(KeyCode::Enter));
+
+            let logs = app.manager().list_logs().unwrap();
+            assert_eq!(logs.len(), 1);
+            assert_eq!(logs[0].station_callsign, "W1AW");
+        }
+    }
+
+    mod log_select_integration {
+        use super::*;
+
+        #[test]
+        fn select_log_navigates_to_qso_entry() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            save_test_log(&manager, "test-log");
+            let mut app = App::new(manager).unwrap();
+
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert_eq!(app.current_log().unwrap().log_id, "test-log");
+        }
+
+        #[test]
+        fn enter_on_empty_log_list_is_noop() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::LogSelect);
+        }
+
+        #[test]
+        fn log_list_reloads_on_return_to_select() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            let mut app = App::new(manager).unwrap();
+            assert!(app.log_select.logs().is_empty());
+
+            save_test_log(app.manager(), "new-log");
+
+            app.handle_key(press(KeyCode::Char('n')));
+            app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.screen(), Screen::LogSelect);
+            assert_eq!(app.log_select.logs().len(), 1);
+        }
     }
 }
