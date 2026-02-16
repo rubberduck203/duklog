@@ -20,7 +20,11 @@ pub fn export_adif(log: &Log, path: &Path) -> Result<(), StorageError> {
 /// Returns `StorageError::NoHomeDir` if the home directory cannot be
 /// determined.
 pub fn default_export_path(log: &Log) -> Result<PathBuf, StorageError> {
-    let prefix = log.park_ref.as_deref().unwrap_or(&log.station_callsign);
+    let prefix = log
+        .park_ref
+        .as_deref()
+        .unwrap_or(&log.station_callsign)
+        .replace('/', "_");
     let date = log.created_at.format("%Y%m%d");
     let filename = format!("duklog-{prefix}-{date}.adif");
 
@@ -120,6 +124,15 @@ mod tests {
         let path = default_export_path(&log).unwrap();
         let filename = path.file_name().unwrap().to_str().unwrap();
         assert_eq!(filename, "duklog-W1AW-20260216.adif");
+    }
+
+    #[test]
+    fn default_path_without_park_sanitizes_portable_callsign() {
+        let mut log = make_log_without_park();
+        log.station_callsign = "W1AW/P".to_string();
+        let path = default_export_path(&log).unwrap();
+        let filename = path.file_name().unwrap().to_str().unwrap();
+        assert_eq!(filename, "duklog-W1AW_P-20260216.adif");
     }
 
     #[test]
