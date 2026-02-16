@@ -11,7 +11,7 @@ use super::validation::{
 pub struct Log {
     pub station_callsign: String,
     pub operator: String,
-    pub park_ref: String,
+    pub park_ref: Option<String>,
     pub grid_square: String,
     pub qsos: Vec<Qso>,
     pub created_at: DateTime<Utc>,
@@ -21,20 +21,24 @@ pub struct Log {
 impl Log {
     /// Creates a new log, validating all fields.
     ///
-    /// Generates `log_id` as `"{park_ref}-{YYYYMMDD-HHMMSS}"`.
+    /// Generates `log_id` as `"{park_ref}-{YYYYMMDD-HHMMSS}"` when a park ref
+    /// is provided, or `"{callsign}-{YYYYMMDD-HHMMSS}"` otherwise.
     pub fn new(
         station_callsign: String,
         operator: String,
-        park_ref: String,
+        park_ref: Option<String>,
         grid_square: String,
     ) -> Result<Self, ValidationError> {
         validate_callsign(&station_callsign)?;
         validate_callsign(&operator)?;
-        validate_park_ref(&park_ref)?;
+        if let Some(ref park) = park_ref {
+            validate_park_ref(park)?;
+        }
         validate_grid_square(&grid_square)?;
 
         let now = Utc::now();
-        let log_id = format!("{}-{}", park_ref, now.format("%Y%m%d-%H%M%S"));
+        let id_prefix = park_ref.as_deref().unwrap_or(&station_callsign);
+        let log_id = format!("{}-{}", id_prefix, now.format("%Y%m%d-%H%M%S"));
 
         Ok(Self {
             station_callsign,
@@ -79,6 +83,7 @@ impl Log {
 #[cfg(test)]
 mod tests {
     use chrono::{NaiveDate, TimeZone};
+    use quickcheck_macros::quickcheck;
 
     use super::*;
     use crate::model::band::Band;
@@ -88,7 +93,7 @@ mod tests {
         Log::new(
             "W1AW".to_string(),
             "W1AW".to_string(),
-            "K-0001".to_string(),
+            Some("K-0001".to_string()),
             "FN31".to_string(),
         )
         .unwrap()
@@ -115,14 +120,27 @@ mod tests {
     // --- Construction validation ---
 
     #[test]
-    fn valid_log_creation() {
+    fn valid_log_creation_with_park() {
         let log = make_log();
         assert_eq!(log.station_callsign, "W1AW");
         assert_eq!(log.operator, "W1AW");
-        assert_eq!(log.park_ref, "K-0001");
+        assert_eq!(log.park_ref, Some("K-0001".to_string()));
         assert_eq!(log.grid_square, "FN31");
         assert_eq!(log.qsos.len(), 0);
         assert!(log.log_id.starts_with("K-0001-"));
+    }
+
+    #[test]
+    fn valid_log_creation_without_park() {
+        let log = Log::new(
+            "W1AW".to_string(),
+            "W1AW".to_string(),
+            None,
+            "FN31".to_string(),
+        )
+        .unwrap();
+        assert_eq!(log.park_ref, None);
+        assert!(log.log_id.starts_with("W1AW-"));
     }
 
     #[test]
@@ -130,7 +148,7 @@ mod tests {
         let result = Log::new(
             String::new(),
             "W1AW".to_string(),
-            "K-0001".to_string(),
+            Some("K-0001".to_string()),
             "FN31".to_string(),
         );
         assert_eq!(result, Err(ValidationError::EmptyCallsign));
@@ -141,7 +159,7 @@ mod tests {
         let result = Log::new(
             "W1AW".to_string(),
             String::new(),
-            "K-0001".to_string(),
+            Some("K-0001".to_string()),
             "FN31".to_string(),
         );
         assert_eq!(result, Err(ValidationError::EmptyCallsign));
@@ -152,7 +170,7 @@ mod tests {
         let result = Log::new(
             "W1AW".to_string(),
             "W1AW".to_string(),
-            "bad".to_string(),
+            Some("bad".to_string()),
             "FN31".to_string(),
         );
         assert_eq!(
@@ -166,7 +184,7 @@ mod tests {
         let result = Log::new(
             "W1AW".to_string(),
             "W1AW".to_string(),
-            "K-0001".to_string(),
+            Some("K-0001".to_string()),
             "ZZ99".to_string(),
         );
         assert_eq!(
@@ -196,7 +214,7 @@ mod tests {
         assert_eq!(log.qsos.len(), 1);
     }
 
-    // --- Activation boundary tests (using qso_count_on_date) ---
+    // --- Activation tests (qso_count_on_date) ---
 
     #[test]
     fn qso_count_on_date_filters_correctly() {
@@ -212,41 +230,33 @@ mod tests {
         assert_eq!(log.qso_count_on_date(date2), 1);
     }
 
-    fn make_log_with_n_qsos(n: usize) -> (Log, NaiveDate) {
+    fn make_log_with_n_qsos_on_date(n: usize, date: NaiveDate) -> Log {
         let mut log = make_log();
-        let date = NaiveDate::from_ymd_opt(2026, 6, 15).unwrap();
         for _ in 0..n {
             log.add_qso(make_qso_on_date(date));
         }
-        (log, date)
+        log
     }
 
-    #[test]
-    fn activation_at_9_qsos() {
-        let (log, date) = make_log_with_n_qsos(9);
-        assert_eq!(log.qso_count_on_date(date), 9);
-        // Simulate needs_for_activation / is_activated using qso_count_on_date
-        let count = log.qso_count_on_date(date);
-        assert_eq!(10_usize.saturating_sub(count), 1);
-        assert!(count < 10);
+    #[quickcheck]
+    fn qso_count_on_date_equals_added_count(n: u8) -> bool {
+        let n = n as usize;
+        let date = NaiveDate::from_ymd_opt(2026, 6, 15).unwrap();
+        let log = make_log_with_n_qsos_on_date(n, date);
+        log.qso_count_on_date(date) == n
     }
 
-    #[test]
-    fn activation_at_10_qsos() {
-        let (log, date) = make_log_with_n_qsos(10);
-        assert_eq!(log.qso_count_on_date(date), 10);
+    #[quickcheck]
+    fn activation_threshold_property(n: u8) -> bool {
+        let n = n as usize;
+        let date = NaiveDate::from_ymd_opt(2026, 6, 15).unwrap();
+        let log = make_log_with_n_qsos_on_date(n, date);
         let count = log.qso_count_on_date(date);
-        assert_eq!(10_usize.saturating_sub(count), 0);
-        assert!(count >= 10);
-    }
+        let needs = 10_usize.saturating_sub(count);
+        let activated = count >= 10;
 
-    #[test]
-    fn activation_at_11_qsos() {
-        let (log, date) = make_log_with_n_qsos(11);
-        assert_eq!(log.qso_count_on_date(date), 11);
-        let count = log.qso_count_on_date(date);
-        assert_eq!(10_usize.saturating_sub(count), 0);
-        assert!(count >= 10);
+        // Verify all three are consistent
+        count == n && needs == 10_usize.saturating_sub(n) && activated == (n >= 10)
     }
 
     #[test]
@@ -315,59 +325,25 @@ mod tests {
         assert_eq!(log.qso_count_today(), 0);
     }
 
-    #[test]
-    fn qso_count_today_with_qsos() {
+    #[quickcheck]
+    fn qso_count_today_matches_added(n: u8) -> bool {
         let mut log = make_log();
-        add_today_qsos(&mut log, 3);
-        assert_eq!(log.qso_count_today(), 3);
+        add_today_qsos(&mut log, n as usize);
+        log.qso_count_today() == n as usize
     }
 
-    #[test]
-    fn needs_for_activation_at_0() {
-        let log = make_log();
-        assert_eq!(log.needs_for_activation(), 10);
+    #[quickcheck]
+    fn needs_for_activation_property(n: u8) -> bool {
+        let mut log = make_log();
+        add_today_qsos(&mut log, n as usize);
+        log.needs_for_activation() == 10_usize.saturating_sub(n as usize)
     }
 
-    #[test]
-    fn needs_for_activation_at_9() {
+    #[quickcheck]
+    fn is_activated_property(n: u8) -> bool {
         let mut log = make_log();
-        add_today_qsos(&mut log, 9);
-        assert_eq!(log.needs_for_activation(), 1);
-    }
-
-    #[test]
-    fn needs_for_activation_at_10() {
-        let mut log = make_log();
-        add_today_qsos(&mut log, 10);
-        assert_eq!(log.needs_for_activation(), 0);
-    }
-
-    #[test]
-    fn needs_for_activation_at_11() {
-        let mut log = make_log();
-        add_today_qsos(&mut log, 11);
-        assert_eq!(log.needs_for_activation(), 0);
-    }
-
-    #[test]
-    fn is_activated_at_9() {
-        let mut log = make_log();
-        add_today_qsos(&mut log, 9);
-        assert!(!log.is_activated());
-    }
-
-    #[test]
-    fn is_activated_at_10() {
-        let mut log = make_log();
-        add_today_qsos(&mut log, 10);
-        assert!(log.is_activated());
-    }
-
-    #[test]
-    fn is_activated_at_11() {
-        let mut log = make_log();
-        add_today_qsos(&mut log, 11);
-        assert!(log.is_activated());
+        add_today_qsos(&mut log, n as usize);
+        log.is_activated() == (n as usize >= 10)
     }
 
     // --- Serde ---
@@ -388,6 +364,20 @@ mod tests {
         .unwrap();
         log.add_qso(qso);
 
+        let json = serde_json::to_string(&log).unwrap();
+        let deserialized: Log = serde_json::from_str(&json).unwrap();
+        assert_eq!(log, deserialized);
+    }
+
+    #[test]
+    fn serde_round_trip_without_park() {
+        let log = Log::new(
+            "W1AW".to_string(),
+            "W1AW".to_string(),
+            None,
+            "FN31".to_string(),
+        )
+        .unwrap();
         let json = serde_json::to_string(&log).unwrap();
         let deserialized: Log = serde_json::from_str(&json).unwrap();
         assert_eq!(log, deserialized);
