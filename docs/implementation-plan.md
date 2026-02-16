@@ -398,11 +398,29 @@ Per ADIF spec, OPERATOR is "individual operator callsign (if different from stat
 - Shows default export path, QSO count, confirmation prompt
 - Calls `storage::export_adif()`, shows success/error
 
-### 3.9 Polish (`feature/polish`)
+### 3.9 Delete Log (`feature/delete-log`)
+**Files**: `src/tui/screens/log_select.rs`, `src/tui/app.rs`, `src/tui/action.rs`
+
+- Add `d` keybinding on Log Select screen to delete the highlighted log
+- Show confirmation prompt before deleting (e.g. "Delete K-0001 2026-02-16? y/n")
+- Call `LogManager::delete_log()` on confirmation, reload the log list
+- Handle edge cases: empty list (no-op), deleting the only log (selection becomes `None`)
+- Tests: delete updates list, cancel preserves list, empty list no-op
+
+### 3.10 Duplicate Log Detection (`feature/duplicate-detection`)
+**Files**: `src/model/qso.rs`, `src/tui/screens/qso_entry.rs`
+
+- Detect duplicate QSOs: same `their_call` + `band` + `mode` within the current log session
+- On duplicate detection, show a warning in the status area but still allow the QSO to be logged (operator may intentionally work the same station on the same band/mode)
+- `Log::find_duplicates(&self, qso: &Qso) -> Vec<&Qso>` — returns matching QSOs for display
+- Case-insensitive callsign comparison for duplicate matching
+- Tests: exact match detected, different band/mode not flagged, case-insensitive matching, empty log returns no duplicates
+
+### 3.11 Polish (`feature/polish`)
 **Files**: `src/tui/widgets/status_bar.rs`, `src/tui/screens/help.rs`, various
 
 - Status bar widget on all screens: park, callsign, QSO count, activation status (green when activated)
-- Help screen: full keybinding reference
+- Help screen: full keybinding reference (including `d` for delete on log select)
 - Error handling polish: all errors display gracefully, no panics in normal operation
 - Final `make mutants` pass across entire codebase
 - Complete all `docs/` files
@@ -424,7 +442,11 @@ Phase 1 → Phase 2 → 3.1 Data Model → 3.2 ADIF Writer → 3.3 Storage
                                                               ↓
                                                          3.8 Export
                                                               ↓
-                                                         3.9 Polish
+                                                3.9 Delete Log (after 3.5)
+                                                              ↓
+                                                3.10 Duplicate Detection (after 3.6)
+                                                              ↓
+                                                        3.11 Polish
 ```
 
 ## Reference Documentation
@@ -445,7 +467,7 @@ These are distilled from the official docs and should be consulted during implem
 **After each step**: `make ci` passes (fmt, lint, test, coverage)
 **After each module**: `make mutants` — no surviving mutants
 **Before each PR**: `/code-review` passes with no blockers
-**End-to-end acceptance** (after 3.9):
+**End-to-end acceptance** (after 3.11):
 1. Launch → select/create log → log 10 QSOs → see "ACTIVATED" → export ADIF
 2. Quit and relaunch → session restored → switch between logs
 3. Inspect ADIF file: all required POTA fields present, correct format
