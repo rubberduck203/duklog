@@ -10,7 +10,7 @@ use super::validation::{
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Log {
     pub station_callsign: String,
-    pub operator: String,
+    pub operator: Option<String>,
     pub park_ref: Option<String>,
     pub grid_square: String,
     pub qsos: Vec<Qso>,
@@ -21,16 +21,21 @@ pub struct Log {
 impl Log {
     /// Creates a new log, validating all fields.
     ///
+    /// When `operator` is `Some`, it is validated as a callsign. `None` means
+    /// the operator is the same as the station callsign (the common solo case).
+    ///
     /// Generates `log_id` as `"{park_ref}-{YYYYMMDD-HHMMSS}"` when a park ref
     /// is provided, or `"{callsign}-{YYYYMMDD-HHMMSS}"` otherwise.
     pub fn new(
         station_callsign: String,
-        operator: String,
+        operator: Option<String>,
         park_ref: Option<String>,
         grid_square: String,
     ) -> Result<Self, ValidationError> {
         validate_callsign(&station_callsign)?;
-        validate_callsign(&operator)?;
+        if let Some(ref op) = operator {
+            validate_callsign(op)?;
+        }
         if let Some(ref park) = park_ref {
             validate_park_ref(park)?;
         }
@@ -92,7 +97,7 @@ mod tests {
     fn make_log() -> Log {
         Log::new(
             "W1AW".to_string(),
-            "W1AW".to_string(),
+            Some("W1AW".to_string()),
             Some("K-0001".to_string()),
             "FN31".to_string(),
         )
@@ -123,7 +128,7 @@ mod tests {
     fn valid_log_creation_with_park() {
         let log = make_log();
         assert_eq!(log.station_callsign, "W1AW");
-        assert_eq!(log.operator, "W1AW");
+        assert_eq!(log.operator, Some("W1AW".to_string()));
         assert_eq!(log.park_ref, Some("K-0001".to_string()));
         assert_eq!(log.grid_square, "FN31");
         assert_eq!(log.qsos.len(), 0);
@@ -134,11 +139,12 @@ mod tests {
     fn valid_log_creation_without_park() {
         let log = Log::new(
             "W1AW".to_string(),
-            "W1AW".to_string(),
+            Some("W1AW".to_string()),
             None,
             "FN31".to_string(),
         )
         .unwrap();
+        assert_eq!(log.operator, Some("W1AW".to_string()));
         assert_eq!(log.park_ref, None);
         assert!(log.log_id.starts_with("W1AW-"));
     }
@@ -147,7 +153,7 @@ mod tests {
     fn invalid_station_callsign() {
         let result = Log::new(
             String::new(),
-            "W1AW".to_string(),
+            Some("W1AW".to_string()),
             Some("K-0001".to_string()),
             "FN31".to_string(),
         );
@@ -158,7 +164,7 @@ mod tests {
     fn invalid_operator() {
         let result = Log::new(
             "W1AW".to_string(),
-            String::new(),
+            Some(String::new()),
             Some("K-0001".to_string()),
             "FN31".to_string(),
         );
@@ -166,10 +172,22 @@ mod tests {
     }
 
     #[test]
+    fn none_operator_succeeds() {
+        let log = Log::new(
+            "W1AW".to_string(),
+            None,
+            Some("K-0001".to_string()),
+            "FN31".to_string(),
+        )
+        .unwrap();
+        assert_eq!(log.operator, None);
+    }
+
+    #[test]
     fn invalid_park_ref() {
         let result = Log::new(
             "W1AW".to_string(),
-            "W1AW".to_string(),
+            Some("W1AW".to_string()),
             Some("bad".to_string()),
             "FN31".to_string(),
         );
@@ -183,7 +201,7 @@ mod tests {
     fn invalid_grid_square() {
         let result = Log::new(
             "W1AW".to_string(),
-            "W1AW".to_string(),
+            Some("W1AW".to_string()),
             Some("K-0001".to_string()),
             "ZZ99".to_string(),
         );
@@ -373,7 +391,7 @@ mod tests {
     fn serde_round_trip_without_park() {
         let log = Log::new(
             "W1AW".to_string(),
-            "W1AW".to_string(),
+            Some("W1AW".to_string()),
             None,
             "FN31".to_string(),
         )
@@ -381,5 +399,20 @@ mod tests {
         let json = serde_json::to_string(&log).unwrap();
         let deserialized: Log = serde_json::from_str(&json).unwrap();
         assert_eq!(log, deserialized);
+    }
+
+    #[test]
+    fn serde_round_trip_none_operator() {
+        let log = Log::new(
+            "W1AW".to_string(),
+            None,
+            Some("K-0001".to_string()),
+            "FN31".to_string(),
+        )
+        .unwrap();
+        let json = serde_json::to_string(&log).unwrap();
+        let deserialized: Log = serde_json::from_str(&json).unwrap();
+        assert_eq!(log, deserialized);
+        assert_eq!(deserialized.operator, None);
     }
 }
