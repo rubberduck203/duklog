@@ -11,7 +11,7 @@ use crate::model::{Log, Qso};
 /// Serializable log metadata (everything except QSOs).
 ///
 /// Used as the first line of each JSONL log file.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct LogMetadata {
     station_callsign: String,
     operator: String,

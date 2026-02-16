@@ -29,11 +29,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new(manager);
     let result = app.run(&mut terminal);
 
-    restore_terminal()?;
-    result.map_err(Into::into)
+    let restore_result = restore_terminal();
+    match result {
+        Err(e) => Err(e.into()),
+        Ok(()) => restore_result.map_err(Into::into),
+    }
 }
 
 fn restore_terminal() -> Result<(), io::Error> {
-    disable_raw_mode()?;
-    execute!(stdout(), LeaveAlternateScreen)
+    let raw_result = disable_raw_mode();
+    let screen_result = execute!(stdout(), LeaveAlternateScreen);
+    raw_result.and(screen_result)
 }

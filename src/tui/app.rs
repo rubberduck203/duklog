@@ -11,7 +11,7 @@ use crate::storage::LogManager;
 use super::error::AppError;
 
 /// All screens the app can navigate between.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Screen {
     /// List and select existing logs.
     LogSelect,

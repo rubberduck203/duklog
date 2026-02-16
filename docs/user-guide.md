@@ -38,7 +38,7 @@ duklog is an offline logging tool for POTA (Parks on the Air) activations. It ru
 
 ## Data Storage
 
-- **Log files**: `~/.local/share/duklog/logs/` (one JSON file per log)
+- **Log files**: `~/.local/share/duklog/logs/` (one JSONL file per log)
 - **ADIF exports**: Default path is `~/duklog-{PARK}-{YYYYMMDD}.adif`
 - Logs are auto-saved after every change — no manual save needed
 
