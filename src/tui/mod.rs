@@ -1,12 +1,9 @@
-// TUI: App state, event loop, screens, widgets
+//! TUI: App state, event loop, screens, widgets.
 
+pub mod app;
+pub mod error;
 pub mod screens;
 pub mod widgets;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn placeholder() {
-        assert_eq!(2 + 2, 4);
-    }
-}
+pub use app::App;
+pub use error::AppError;
