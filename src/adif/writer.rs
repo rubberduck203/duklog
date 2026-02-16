@@ -6,18 +6,18 @@ use tokio_util::codec::Encoder;
 use super::error::AdifError;
 use crate::model::{Log, Qso};
 
-/// Encodes a tag into the buffer.
+// Encodes a tag into the buffer.
 fn encode(encoder: &mut TagEncoder, buf: &mut BytesMut, tag: Tag) -> Result<(), AdifError> {
     encoder.encode(tag, buf)?;
     Ok(())
 }
 
-/// Creates a field tag from a name and value.
+// Creates a field tag from a name and value.
 fn field_tag(name: &str, value: impl Into<Datum>) -> Tag {
     Tag::Field(Field::new(name, value))
 }
 
-/// Converts a `BytesMut` buffer to a `String`.
+// Converts a BytesMut buffer to a String.
 fn buf_to_string(buf: BytesMut) -> Result<String, AdifError> {
     Ok(String::from_utf8(buf.into())?)
 }
@@ -108,6 +108,11 @@ pub fn format_qso(log: &Log, qso: &Qso) -> Result<String, AdifError> {
         &mut encoder,
         &mut buf,
         field_tag("RST_RCVD", qso.rst_rcvd.as_str()),
+    )?;
+    encode(
+        &mut encoder,
+        &mut buf,
+        field_tag("MY_GRIDSQUARE", log.grid_square.as_str()),
     )?;
 
     if let Some(ref park) = log.park_ref {
@@ -287,6 +292,7 @@ mod tests {
         assert!(record.contains("<MODE:3>SSB"));
         assert!(record.contains("<RST_SENT:2>59"));
         assert!(record.contains("<RST_RCVD:2>59"));
+        assert!(record.contains("<MY_GRIDSQUARE:4>FN31"));
     }
 
     #[test]
@@ -319,11 +325,13 @@ mod tests {
 
         assert!(record.contains("<SIG:4>POTA"));
         assert!(record.contains("<SIG_INFO:6>K-1234"));
+        // P2P: both activator and hunter park fields present
+        assert!(record.contains("<MY_SIG_INFO:6>K-0001"));
     }
 
     #[test]
     fn qso_without_their_park_excludes_sig() {
-        let record = format_qso(&make_log_without_park(), &make_qso()).unwrap();
+        let record = format_qso(&make_log(), &make_qso()).unwrap();
 
         assert!(!record.contains("<SIG:"));
         assert!(!record.contains("<SIG_INFO:"));
@@ -385,7 +393,7 @@ mod tests {
 
     #[quickcheck]
     fn qso_call_field_has_correct_byte_length(call: String) -> bool {
-        // Skip invalid callsigns (empty or containing control chars)
+        // Skip strings that fail callsign validation or contain ADIF delimiters
         if call.is_empty() || call.len() > 20 || call.contains('<') || call.contains('>') {
             return true;
         }

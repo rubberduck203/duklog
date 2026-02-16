@@ -5,7 +5,7 @@
 //! storage layer handles writing to disk.
 
 mod error;
-/// High-level ADIF document formatting.
+// High-level ADIF document formatting.
 mod writer;
 
 pub use error::AdifError;
