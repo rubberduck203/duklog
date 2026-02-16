@@ -12,7 +12,7 @@ src/
   lib.rs        Module re-exports, run() entry point
   model/        Domain types: Log, Qso, Band, Mode, validation
   adif/         ADIF file format writer (pure functions, no I/O)
-  storage/      JSON persistence to XDG paths, ADIF file export
+  storage/      JSONL persistence to XDG paths, ADIF file export
   tui/          Application state, event loop, UI rendering
     screens/    Individual screen implementations
     widgets/    Reusable UI components
@@ -35,9 +35,9 @@ User Input → TUI Event Loop → Model Mutation → Auto-Save (Storage)
 ## Design Decisions
 
 - **No async runtime**: The TUI is synchronous. Crossterm's event polling is sufficient for a keyboard-driven logger. No need for tokio/async-std complexity.
-- **No `difa` crate**: ADIF writing is trivial string formatting (`<NAME:len>value`). A dependency would add more complexity than it saves.
+- **`difa` crate for ADIF**: Uses the `difa` crate with `TagEncoder` and `BytesMut` for spec-compliant ADIF encoding.
 - **Pure ADIF module**: `src/adif/` contains only pure formatting functions with no I/O. The storage module handles file writes. This makes ADIF logic fully unit-testable.
-- **XDG storage**: Logs stored in `~/.local/share/duklog/logs/` following XDG Base Directory spec. One JSON file per log.
+- **JSONL storage**: Each log is a single `.jsonl` file in `~/.local/share/duklog/logs/` (XDG). Line 1 is log metadata, lines 2+ are QSO records. Appending a QSO is a single-line file append — no read/rewrite needed.
 - **Auto-save**: Every model mutation triggers a save. No explicit "save" action needed — prevents data loss during field operation.
 - **PostToolUse hooks**: `cargo check` and `cargo clippy` run automatically after every `.rs` file edit, providing immediate compilation and lint feedback. Tests and mutation testing are too slow for hooks and run explicitly via `make` targets.
 - **Adversarial code review**: `code-review` subagent (Sonnet) runs before every PR to catch issues the developer is blind to.
@@ -52,5 +52,7 @@ User Input → TUI Event Loop → Model Mutation → Auto-Save (Storage)
 | crossterm | Terminal backend (input, raw mode) |
 | chrono | UTC timestamps, date formatting |
 | serde / serde_json | JSON serialization for log persistence |
+| dirs | XDG Base Directory paths for platform-native storage |
+| difa | ADIF v3.1.6 tag encoding |
 | thiserror | Ergonomic error types per module |
 | mutants | `#[mutants::skip]` attribute for untestable functions |
