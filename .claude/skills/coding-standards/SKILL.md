@@ -1,7 +1,6 @@
 ---
 name: coding-standards
 description: duklog coding standards, testing requirements, and review checklist. Use when reviewing code, writing tests, or checking quality.
-user-invocable: false
 ---
 
 # duklog Coding Standards

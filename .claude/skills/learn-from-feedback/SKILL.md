@@ -1,8 +1,6 @@
 ---
 name: learn-from-feedback
 description: Process PR feedback, user corrections, or code review findings and update project memory, rules, and standards accordingly. Use proactively after receiving PR review comments, user corrections, or when patterns emerge from code review.
-user-invocable: true
-argument-hint: "[PR number or description of feedback]"
 ---
 
 # Learn from Feedback
