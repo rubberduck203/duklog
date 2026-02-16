@@ -1,0 +1,375 @@
+//! Log creation screen — form for entering new log session details.
+
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::Frame;
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::{Color, Style};
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Borders, Paragraph};
+
+use crate::model::{Log, validate_callsign, validate_grid_square, validate_park_ref};
+use crate::tui::action::Action;
+use crate::tui::app::Screen;
+use crate::tui::widgets::form::{Form, FormField, draw_form};
+
+/// Field index for station callsign.
+const CALLSIGN: usize = 0;
+/// Field index for operator callsign.
+const OPERATOR: usize = 1;
+/// Field index for POTA park reference.
+const PARK_REF: usize = 2;
+/// Field index for Maidenhead grid square.
+const GRID_SQUARE: usize = 3;
+
+/// State for the log creation screen.
+#[derive(Debug, Clone)]
+pub struct LogCreateState {
+    form: Form,
+}
+
+impl Default for LogCreateState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LogCreateState {
+    /// Creates a new log creation form with empty fields.
+    pub fn new() -> Self {
+        Self {
+            form: Form::new(vec![
+                FormField::new("Station Callsign", true),
+                FormField::new("Operator", true),
+                FormField::new("Park Ref (e.g. K-0001)", false),
+                FormField::new("Grid Square (e.g. FN31)", true),
+            ]),
+        }
+    }
+
+    /// Handles a key event, returning an [`Action`] for the app to apply.
+    pub fn handle_key(&mut self, key: KeyEvent) -> Action {
+        match key.code {
+            KeyCode::Tab => {
+                self.form.focus_next();
+                Action::None
+            }
+            KeyCode::BackTab => {
+                self.form.focus_prev();
+                Action::None
+            }
+            KeyCode::Char(ch) => {
+                self.form.insert_char(ch);
+                Action::None
+            }
+            KeyCode::Backspace => {
+                self.form.delete_char();
+                Action::None
+            }
+            KeyCode::Esc => Action::Navigate(Screen::LogSelect),
+            KeyCode::Enter => self.submit(),
+            _ => Action::None,
+        }
+    }
+
+    /// Returns a reference to the form for rendering.
+    pub fn form(&self) -> &Form {
+        &self.form
+    }
+
+    /// Resets the form to its initial empty state.
+    pub fn reset(&mut self) {
+        self.form.reset();
+    }
+
+    /// Validates all fields and attempts to create a [`Log`].
+    fn submit(&mut self) -> Action {
+        self.form.clear_errors();
+
+        let callsign = self.form.value(CALLSIGN).to_string();
+        let operator = self.form.value(OPERATOR).to_string();
+        let park_ref_str = self.form.value(PARK_REF).to_string();
+        let grid_square = self.form.value(GRID_SQUARE).to_string();
+
+        // Validate each field individually to show all errors at once.
+        if let Err(e) = validate_callsign(&callsign) {
+            self.form.set_error(CALLSIGN, e.to_string());
+        }
+        if let Err(e) = validate_callsign(&operator) {
+            self.form.set_error(OPERATOR, e.to_string());
+        }
+        if !park_ref_str.is_empty()
+            && let Err(e) = validate_park_ref(&park_ref_str)
+        {
+            self.form.set_error(PARK_REF, e.to_string());
+        }
+        if let Err(e) = validate_grid_square(&grid_square) {
+            self.form.set_error(GRID_SQUARE, e.to_string());
+        }
+
+        if self.form.has_errors() {
+            return Action::None;
+        }
+
+        let park_ref = (!park_ref_str.is_empty()).then_some(park_ref_str);
+
+        // All individual validations passed, so Log::new should succeed.
+        match Log::new(callsign, operator, park_ref, grid_square) {
+            Ok(log) => Action::CreateLog(log),
+            Err(e) => {
+                // Shouldn't happen since we validated above, but handle gracefully.
+                self.form.set_error(CALLSIGN, e.to_string());
+                Action::None
+            }
+        }
+    }
+}
+
+/// Renders the log creation screen.
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[mutants::skip]
+pub fn draw_log_create(state: &LogCreateState, frame: &mut Frame, area: Rect) {
+    let block = Block::default()
+        .title(" Create New Log ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let [form_area, _spacer, footer_area] = Layout::vertical([
+        Constraint::Length(12),
+        Constraint::Min(0),
+        Constraint::Length(1),
+    ])
+    .areas(inner);
+
+    draw_form(state.form(), frame, form_area);
+
+    let footer = Paragraph::new(Line::from(
+        "Tab/Shift+Tab: next/prev  Enter: create  Esc: cancel",
+    ))
+    .style(Style::default().fg(Color::DarkGray));
+    frame.render_widget(footer, footer_area);
+}
+
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers};
+
+    use super::*;
+
+    fn press(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    fn shift_press(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::SHIFT,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    fn fill_valid_form(state: &mut LogCreateState) {
+        // Callsign: W1AW
+        for ch in "W1AW".chars() {
+            state.handle_key(press(KeyCode::Char(ch)));
+        }
+        // Tab to operator
+        state.handle_key(press(KeyCode::Tab));
+        // Operator: W1AW
+        for ch in "W1AW".chars() {
+            state.handle_key(press(KeyCode::Char(ch)));
+        }
+        // Tab to park ref (skip)
+        state.handle_key(press(KeyCode::Tab));
+        // Tab to grid square
+        state.handle_key(press(KeyCode::Tab));
+        // Grid: FN31
+        for ch in "FN31".chars() {
+            state.handle_key(press(KeyCode::Char(ch)));
+        }
+    }
+
+    // --- Typing ---
+
+    #[test]
+    fn typing_chars_fills_focused_field() {
+        let mut state = LogCreateState::new();
+        state.handle_key(press(KeyCode::Char('W')));
+        state.handle_key(press(KeyCode::Char('1')));
+        assert_eq!(state.form().value(CALLSIGN), "W1");
+    }
+
+    #[test]
+    fn backspace_deletes_char() {
+        let mut state = LogCreateState::new();
+        state.handle_key(press(KeyCode::Char('A')));
+        state.handle_key(press(KeyCode::Char('B')));
+        state.handle_key(press(KeyCode::Backspace));
+        assert_eq!(state.form().value(CALLSIGN), "A");
+    }
+
+    // --- Tab cycling ---
+
+    #[test]
+    fn tab_cycles_focus_forward() {
+        let mut state = LogCreateState::new();
+        assert_eq!(state.form().focus(), CALLSIGN);
+        state.handle_key(press(KeyCode::Tab));
+        assert_eq!(state.form().focus(), OPERATOR);
+        state.handle_key(press(KeyCode::Tab));
+        assert_eq!(state.form().focus(), PARK_REF);
+        state.handle_key(press(KeyCode::Tab));
+        assert_eq!(state.form().focus(), GRID_SQUARE);
+        state.handle_key(press(KeyCode::Tab));
+        assert_eq!(state.form().focus(), CALLSIGN);
+    }
+
+    #[test]
+    fn backtab_cycles_focus_backward() {
+        let mut state = LogCreateState::new();
+        state.handle_key(shift_press(KeyCode::BackTab));
+        assert_eq!(state.form().focus(), GRID_SQUARE);
+    }
+
+    // --- Esc ---
+
+    #[test]
+    fn esc_navigates_back() {
+        let mut state = LogCreateState::new();
+        let action = state.handle_key(press(KeyCode::Esc));
+        assert_eq!(action, Action::Navigate(Screen::LogSelect));
+    }
+
+    // --- Valid submit ---
+
+    #[test]
+    fn valid_submit_creates_log() {
+        let mut state = LogCreateState::new();
+        fill_valid_form(&mut state);
+        let action = state.handle_key(press(KeyCode::Enter));
+        match action {
+            Action::CreateLog(log) => {
+                assert_eq!(log.station_callsign, "W1AW");
+                assert_eq!(log.operator, "W1AW");
+                assert_eq!(log.park_ref, None);
+                assert_eq!(log.grid_square, "FN31");
+            }
+            other => panic!("expected CreateLog, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn valid_submit_with_park_ref() {
+        let mut state = LogCreateState::new();
+        // Callsign
+        for ch in "W1AW".chars() {
+            state.handle_key(press(KeyCode::Char(ch)));
+        }
+        state.handle_key(press(KeyCode::Tab));
+        // Operator
+        for ch in "W1AW".chars() {
+            state.handle_key(press(KeyCode::Char(ch)));
+        }
+        state.handle_key(press(KeyCode::Tab));
+        // Park ref
+        for ch in "K-0001".chars() {
+            state.handle_key(press(KeyCode::Char(ch)));
+        }
+        state.handle_key(press(KeyCode::Tab));
+        // Grid
+        for ch in "FN31".chars() {
+            state.handle_key(press(KeyCode::Char(ch)));
+        }
+
+        let action = state.handle_key(press(KeyCode::Enter));
+        match action {
+            Action::CreateLog(log) => {
+                assert_eq!(log.park_ref, Some("K-0001".to_string()));
+            }
+            other => panic!("expected CreateLog, got {other:?}"),
+        }
+    }
+
+    // --- Invalid submit ---
+
+    #[test]
+    fn empty_submit_shows_all_errors() {
+        let mut state = LogCreateState::new();
+        let action = state.handle_key(press(KeyCode::Enter));
+        assert_eq!(action, Action::None);
+        assert!(state.form().has_errors());
+        // Callsign, operator, grid square should all have errors
+        assert!(state.form().fields()[CALLSIGN].error.is_some());
+        assert!(state.form().fields()[OPERATOR].error.is_some());
+        assert!(state.form().fields()[PARK_REF].error.is_none()); // optional
+        assert!(state.form().fields()[GRID_SQUARE].error.is_some());
+    }
+
+    #[test]
+    fn invalid_park_ref_shows_error() {
+        let mut state = LogCreateState::new();
+        // Fill valid callsign, operator, grid
+        fill_valid_form(&mut state);
+        // Go back to park ref and type invalid value
+        state.handle_key(shift_press(KeyCode::BackTab));
+        assert_eq!(state.form().focus(), PARK_REF);
+        for ch in "bad".chars() {
+            state.handle_key(press(KeyCode::Char(ch)));
+        }
+
+        let action = state.handle_key(press(KeyCode::Enter));
+        assert_eq!(action, Action::None);
+        assert!(state.form().fields()[PARK_REF].error.is_some());
+        assert!(state.form().fields()[CALLSIGN].error.is_none());
+    }
+
+    #[test]
+    fn empty_park_ref_is_accepted() {
+        let mut state = LogCreateState::new();
+        fill_valid_form(&mut state);
+        let action = state.handle_key(press(KeyCode::Enter));
+        assert!(matches!(action, Action::CreateLog(_)));
+    }
+
+    #[test]
+    fn errors_cleared_on_resubmit() {
+        let mut state = LogCreateState::new();
+        // First submit with errors
+        state.handle_key(press(KeyCode::Enter));
+        assert!(state.form().has_errors());
+        // Fill valid values
+        fill_valid_form(&mut state);
+        // Resubmit
+        let action = state.handle_key(press(KeyCode::Enter));
+        assert!(matches!(action, Action::CreateLog(_)));
+        assert!(!state.form().has_errors());
+    }
+
+    // --- Reset ---
+
+    #[test]
+    fn reset_clears_form() {
+        let mut state = LogCreateState::new();
+        state.handle_key(press(KeyCode::Char('X')));
+        state.reset();
+        assert_eq!(state.form().value(CALLSIGN), "");
+        assert_eq!(state.form().focus(), 0);
+    }
+
+    // --- Unhandled key ---
+
+    #[test]
+    fn unhandled_key_returns_none() {
+        let mut state = LogCreateState::new();
+        let action = state.handle_key(press(KeyCode::F(1)));
+        assert_eq!(action, Action::None);
+    }
+}
