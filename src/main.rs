@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
     let manager = LogManager::new()?;
-    let mut app = App::new(manager);
+    let mut app = App::new(manager)?;
     let result = app.run(&mut terminal);
 
     let restore_result = restore_terminal();

@@ -364,6 +364,17 @@ Each step is a separate feature branch + PR. Run `/code-review` before each PR.
 - **Form widget**: reusable labeled text input with focus state and error display
 - Tab/Shift-Tab navigation, Enter to submit
 
+### 3.5.1 Make Operator Optional (`feature/optional-operator`)
+**Files**: `src/model/log.rs`, `src/adif/writer.rs`, `src/storage/manager.rs`, `src/tui/screens/log_create.rs`
+
+Per ADIF spec, OPERATOR is "individual operator callsign (if different from station)" and POTA rules only require both fields for club activations. Make `Log.operator` an `Option<String>`:
+
+- **Model**: Change `Log.operator` from `String` to `Option<String>`. `Log::new()` accepts `Option<String>`, validates only if `Some`. Skip operator validation when `None`.
+- **ADIF writer**: Emit `OPERATOR` tag only when `Some` and different from `station_callsign`. When `None`, omit the tag entirely.
+- **Storage**: Backward-compatible — existing JSONL files with a string `operator` field deserialize into `Some(operator)`. New logs with no operator serialize as `null`.
+- **TUI LogCreate**: Change operator form field from required to optional. When left empty, pass `None` to `Log::new()`.
+- **Tests**: Update all affected tests across model, ADIF, storage, and TUI modules.
+
 ### 3.6 QSO Entry Screen (`feature/qso-entry`)
 **Files**: `src/tui/screens/qso_entry.rs`
 
@@ -406,6 +417,8 @@ Phase 1 → Phase 2 → 3.1 Data Model → 3.2 ADIF Writer → 3.3 Storage
                                                          3.4 TUI Shell
                                                               ↓
                                                     3.5 Log Management
+                                                              ↓
+                                                  3.5.1 Optional Operator
                                                               ↓
                                               3.6 QSO Entry  ←→  3.7 QSO List (parallel)
                                                               ↓

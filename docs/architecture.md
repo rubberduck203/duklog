@@ -32,6 +32,32 @@ User Input → TUI Event Loop → Model Mutation → Auto-Save (Storage)
 4. **Persistence**: After every model mutation, storage layer auto-saves to JSONL
 5. **Export**: User-triggered ADIF export calls the pure ADIF writer, then writes to disk
 
+## Screen Architecture
+
+The TUI uses match-based dispatch with an `Action` enum rather than a `Screen` trait. With only 6 screens, a trait adds indirection for no benefit.
+
+### Action Enum
+
+Each screen module exports a state struct whose `handle_key` method returns an `Action`:
+
+```
+Action::None           — no state change
+Action::Navigate(s)    — switch to screen s
+Action::SelectLog(l)   — open existing log l
+Action::CreateLog(l)   — persist and open new log l
+Action::Quit           — exit the application
+```
+
+The `App` calls `apply_action` to interpret these, keeping all global state transitions in one place.
+
+### Key Handling
+
+Global keys (`?` for help) are intercepted by `App` before delegation, except on form-based screens (LogCreate) where all keys are forwarded to the screen's `handle_key`. Each screen owns its own state and key bindings.
+
+### Form Widget
+
+`widgets/form.rs` provides a reusable `Form` with `FormField` entries. It handles focus cycling, character insert/delete, per-field errors, and rendering. Screens like LogCreate wrap a `Form` and add validation logic on submit.
+
 ## Design Decisions
 
 - **No async runtime**: The TUI is synchronous. Crossterm's event polling is sufficient for a keyboard-driven logger. No need for tokio/async-std complexity.

@@ -1,1 +1,5 @@
-// TUI widgets: status_bar, form
+//! Reusable TUI widgets.
+
+pub mod form;
+
+pub use form::{Form, FormField, draw_form};
