@@ -72,10 +72,10 @@ make ci
 
 ## Code Review
 
-Before creating a PR, run the code review agent:
+Before creating a PR, invoke the `code-review` subagent:
 
 ```
-/code-review
+Use the code-review subagent to review this branch
 ```
 
 This performs an adversarial review against project standards, runs CI and mutation testing, and reports blockers, suggestions, and nits.
@@ -95,5 +95,5 @@ See [CLAUDE.md](../CLAUDE.md) for the full coding standards reference, including
 2. Implement the feature with tests
 3. Run `make ci` — all checks must pass
 4. Run `make mutants` for changed modules — no surviving mutants
-5. Run `/code-review` — fix all blockers
+5. Run the `code-review` subagent — fix all blockers
 6. Create a PR to `main`

@@ -163,7 +163,7 @@ Where `length` is the byte length of `value`.
 - Feature branches off `main`, one per implementation step
 - Run `make ci` before every commit
 - Run `make mutants` per module after implementation
-- Run `/code-review` before creating PRs
+- Run the `code-review` subagent before creating PRs
 - PRs to `main` with descriptive titles and summaries
 
 ## Reference Documentation

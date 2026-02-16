@@ -40,7 +40,7 @@ User Input → TUI Event Loop → Model Mutation → Auto-Save (Storage)
 - **XDG storage**: Logs stored in `~/.local/share/duklog/logs/` following XDG Base Directory spec. One JSON file per log.
 - **Auto-save**: Every model mutation triggers a save. No explicit "save" action needed — prevents data loss during field operation.
 - **PostToolUse hooks**: `cargo check` and `cargo clippy` run automatically after every `.rs` file edit, providing immediate compilation and lint feedback. Tests and mutation testing are too slow for hooks and run explicitly via `make` targets.
-- **Adversarial code review**: `/code-review` slash command runs before every PR to catch issues the developer is blind to.
+- **Adversarial code review**: `code-review` subagent runs before every PR to catch issues the developer is blind to.
 
 ## Dependencies
 
