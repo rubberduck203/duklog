@@ -1,7 +1,7 @@
 ---
 name: create-pr
 description: Create a pull request after code review
-disable-model-invocation: true
+disable-model-invocation: false
 allowed-tools: Bash, Read, Grep, Glob, Task
 ---
 
