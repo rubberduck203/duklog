@@ -2,5 +2,21 @@
 name = "duklog"
 version = "0.1.0"
 edition = "2024"
+description = "Offline ham radio logging TUI for POTA activations"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
 
 [dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+crossterm = "0.28"
+mutants = "0.0.3"
+ratatui = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+quickcheck = "1"
+quickcheck_macros = "1"
+tempfile = "3"
