@@ -4,17 +4,19 @@ Reference: https://www.adif.org/316/ADIF_316.htm (ADIF v3.1.6)
 
 ## File Structure
 
-An ADI file has two sections separated by `<EOH>` (end-of-header):
+An ADI file has two sections separated by `<eoh>` (end-of-header).
+duklog uses the [`difa`](https://crates.io/crates/difa) crate for ADIF encoding,
+which outputs lowercase markers (`<eoh>`, `<eor>`) per the case-insensitive spec:
 
 ```
 <ADIF_VER:5>3.1.6
 <PROGRAMID:6>duklog
 <PROGRAMVERSION:5>0.1.0
 <CREATED_TIMESTAMP:15>20260216 120000
-<EOH>
+<eoh>
 
-<CALL:4>W1AW <QSO_DATE:8>20260216 <TIME_ON:6>143000 <BAND:3>20M <MODE:3>SSB <RST_SENT:2>59 <RST_RCVD:2>59 <EOR>
-<CALL:6>KD9XYZ <QSO_DATE:8>20260216 <TIME_ON:6>144500 <BAND:3>20M <MODE:2>CW <RST_SENT:3>599 <RST_RCVD:3>599 <EOR>
+<CALL:4>W1AW<QSO_DATE:8>20260216<TIME_ON:6>143000<BAND:3>20M<MODE:3>SSB<RST_SENT:2>59<RST_RCVD:2>59<eor>
+<CALL:6>KD9XYZ<QSO_DATE:8>20260216<TIME_ON:6>144500<BAND:3>20M<MODE:2>CW<RST_SENT:3>599<RST_RCVD:3>599<eor>
 ```
 
 ## Field Syntax
@@ -26,8 +28,8 @@ An ADI file has two sections separated by `<EOH>` (end-of-header):
 - The integer after the colon is the **byte length** of the value
 - Field names are case-insensitive
 - Whitespace between fields is ignored
-- Records end with `<EOR>`
-- Header ends with `<EOH>`
+- Records end with `<EOR>` (case-insensitive; difa writes `<eor>`)
+- Header ends with `<EOH>` (case-insensitive; difa writes `<eoh>`)
 
 ## Header Fields
 
