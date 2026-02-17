@@ -263,8 +263,15 @@ impl QsoEntryState {
 }
 
 /// Cycles through a slice to find the next or previous element.
+///
+/// # Panics
+///
+/// Panics if `current` is not found in `items`.
 fn cycle<T: PartialEq + Copy>(items: &[T], current: T, forward: bool) -> T {
-    let pos = items.iter().position(|&x| x == current).unwrap_or(0);
+    let pos = items
+        .iter()
+        .position(|&x| x == current)
+        .expect("current must be in items");
     let next = if forward {
         (pos + 1) % items.len()
     } else {
