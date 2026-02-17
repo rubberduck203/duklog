@@ -114,7 +114,6 @@ impl LogSelectState {
 }
 
 /// Renders the log selection screen.
-#[cfg_attr(coverage_nightly, coverage(off))]
 #[mutants::skip]
 pub fn draw_log_select(state: &LogSelectState, frame: &mut Frame, area: Rect) {
     let block = Block::default()
@@ -364,6 +363,72 @@ mod tests {
         fn unhandled_key_returns_none() {
             let mut state = make_populated_state();
             assert_eq!(state.handle_key(press(KeyCode::Char('x'))), Action::None);
+        }
+    }
+
+    mod rendering {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        use super::*;
+
+        fn buffer_to_string(buf: &ratatui::buffer::Buffer) -> String {
+            let mut s = String::new();
+            for y in 0..buf.area.height {
+                for x in 0..buf.area.width {
+                    s.push(buf[(x, y)].symbol().chars().next().unwrap_or(' '));
+                }
+                s.push('\n');
+            }
+            s
+        }
+
+        fn render_log_select(state: &LogSelectState, width: u16, height: u16) -> String {
+            let backend = TestBackend::new(width, height);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal
+                .draw(|frame| {
+                    draw_log_select(state, frame, frame.area());
+                })
+                .unwrap();
+            buffer_to_string(terminal.backend().buffer())
+        }
+
+        #[test]
+        fn renders_empty_state() {
+            let state = LogSelectState::new();
+            let output = render_log_select(&state, 60, 10);
+            assert!(
+                output.contains("No logs found"),
+                "should show empty message"
+            );
+            assert!(output.contains("Select Log"), "should show title");
+        }
+
+        #[test]
+        fn renders_log_table() {
+            let state = make_populated_state();
+            let output = render_log_select(&state, 60, 12);
+            assert!(output.contains("K-0001"), "should show park ref");
+            assert!(output.contains("W1AW"), "should show callsign");
+            assert!(output.contains("N0CALL"), "should show second callsign");
+            assert!(output.contains("Park"), "should show table header");
+            assert!(output.contains("Callsign"), "should show table header");
+        }
+
+        #[test]
+        fn renders_footer() {
+            let state = make_populated_state();
+            let output = render_log_select(&state, 60, 12);
+            assert!(output.contains("n: new"), "should show footer keybindings");
+        }
+
+        #[test]
+        fn renders_error_message() {
+            let mut state = make_populated_state();
+            state.set_error("disk full".into());
+            let output = render_log_select(&state, 60, 12);
+            assert!(output.contains("disk full"), "should show error message");
         }
     }
 

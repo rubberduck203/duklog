@@ -22,7 +22,9 @@ description: duklog coding standards, testing requirements, and review checklist
 - 90% minimum line coverage
 
 ## Coverage Exclusions
-- Allowed: `main.rs` setup, TUI `render()` methods, `#[mutants::skip]` functions
+- Allowed: `main.rs` setup, event loop methods requiring a real terminal
+- Test `draw_*` functions with `TestBackend` render tests (not excluded from coverage)
+- Keep `#[mutants::skip]` on draw functions (mutation testing visual layout isn't productive)
 - Never exclude: `src/model/`, `src/adif/`, `src/storage/`, `handle_key()` methods
 
 ## ADIF/POTA Correctness
