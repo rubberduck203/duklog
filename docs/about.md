@@ -38,3 +38,65 @@ I would expect a day's development to easily cost $100+ (and that's without doin
 Is that worth it? Probably. It's about what my time costs an hour, so it would be equivalent to paying for an extra hour of work a day and getting an awful lot more in return for it.
 
 As I now have to return to billable work, I will attempt to set off a task in the morning, then another after the usage reset moving forward.
+
+Below are the original notes I gave to claude to get the project started.
+
+```text
+# references
+
+## tools i want to use
+
+Mutation testing
+https://mutants.rs/cautions.html
+Code coverage
+https://github.com/taiki-e/cargo-llvm-cov
+Property based testing (QuickCheck)
+https://github.com/BurntSushi/quickcheck
+
+TUI
+https://ratatui.rs/ (edited) 
+
+## domain references
+
+ADIF parsing
+https://docs.rs/difa/0.1.1/difa/
+
+POTA logging
+https://docs.pota.app/docs/activator_reference/submitting_logs.html
+
+https://docs.pota.app/docs/rules.html#logging-requirements
+
+https://docs.pota.app/docs/activator_reference/ADIF_for_POTA_reference.html
+
+ADIF reference
+https://www.adif.org/
+
+https://www.adif.org/316/ADIF_316.htm
+
+
+
+# about the data
+
+There are three categories of data. 
+
+
+Per log: will not change after the log is created (unless an error was made in creation). Ex: station and operator callsign, POTA park, ARRL section, Maidenhead locator, etc. 
+Slow moving: Things like band and mode. They may change during operation, but not often. They're still part of the QSO record, but don't need entered every time because it would be redundant. 
+Fast moving: Actual contact details that change for each record, other operator’s callsign, signal report sent/rcvd, etc. 
+
+# coding guidance
+
+Dependency documentation can be retrieved locally by building it with cargo. 
+
+We care about not just test coverage, but good tests. Use the code coverage and mutation tools to ensure all code is covered and that the tests fail if bugs are introduced into production code. Tests should be deterministic and fast. 
+
+Project documentation is of upmost importance, both code documentation and dev/user markdown documentation. No item is complete without updating the docs.  (edited) 
+Chris McClellan  [11:07 AM]
+Rust style guide
+
+Prefer a functional approach. This means
+
+prefer iterators over loops (map/reduce)
+prefer expressions over return
+Prefer match over if let -> return
+```
