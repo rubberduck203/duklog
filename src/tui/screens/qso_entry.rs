@@ -263,8 +263,15 @@ impl QsoEntryState {
 }
 
 /// Cycles through a slice to find the next or previous element.
+///
+/// # Panics
+///
+/// Panics if `current` is not found in `items`.
 fn cycle<T: PartialEq + Copy>(items: &[T], current: T, forward: bool) -> T {
-    let pos = items.iter().position(|&x| x == current).unwrap_or(0);
+    let pos = items
+        .iter()
+        .position(|&x| x == current)
+        .expect("current must be in items");
     let next = if forward {
         (pos + 1) % items.len()
     } else {
@@ -274,7 +281,6 @@ fn cycle<T: PartialEq + Copy>(items: &[T], current: T, forward: bool) -> T {
 }
 
 /// Renders the QSO entry screen.
-#[cfg_attr(coverage_nightly, coverage(off))]
 #[mutants::skip]
 pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Frame, area: Rect) {
     let block = Block::default()
@@ -1076,6 +1082,189 @@ mod tests {
             assert_eq!(state.form().value(RST_SENT), "59");
             assert!(state.recent_qsos().is_empty());
             assert_eq!(state.error(), None);
+        }
+    }
+
+    mod rendering {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        use super::*;
+
+        fn buffer_to_string(buf: &ratatui::buffer::Buffer) -> String {
+            let mut s = String::new();
+            for y in 0..buf.area.height {
+                for x in 0..buf.area.width {
+                    s.push(buf[(x, y)].symbol().chars().next().unwrap_or(' '));
+                }
+                s.push('\n');
+            }
+            s
+        }
+
+        fn render_qso_entry(
+            state: &QsoEntryState,
+            log: Option<&Log>,
+            width: u16,
+            height: u16,
+        ) -> String {
+            let backend = TestBackend::new(width, height);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal
+                .draw(|frame| {
+                    draw_qso_entry(state, log, frame, frame.area());
+                })
+                .unwrap();
+            buffer_to_string(terminal.backend().buffer())
+        }
+
+        fn make_log() -> Log {
+            Log::new(
+                "W1AW".to_string(),
+                None,
+                Some("K-0001".to_string()),
+                "FN31".to_string(),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn renders_title_and_form_fields() {
+            let state = QsoEntryState::new();
+            let output = render_qso_entry(&state, None, 80, 30);
+            assert!(output.contains("QSO Entry"), "should show title");
+            assert!(
+                output.contains("Their Callsign"),
+                "should show callsign field"
+            );
+            assert!(output.contains("RST Sent"), "should show RST Sent field");
+            assert!(output.contains("RST Rcvd"), "should show RST Rcvd field");
+        }
+
+        #[test]
+        fn renders_header_with_log_context() {
+            let state = QsoEntryState::new();
+            let log = make_log();
+            let output = render_qso_entry(&state, Some(&log), 80, 30);
+            assert!(
+                output.contains("W1AW"),
+                "should show station callsign in header"
+            );
+            assert!(output.contains("K-0001"), "should show park ref in header");
+            assert!(
+                output.contains("Band:"),
+                "should show band indicator in header"
+            );
+            assert!(
+                output.contains("Mode:"),
+                "should show mode indicator in header"
+            );
+        }
+
+        #[test]
+        fn renders_activation_progress() {
+            let state = QsoEntryState::new();
+            let log = make_log();
+            let output = render_qso_entry(&state, Some(&log), 80, 30);
+            assert!(
+                output.contains("QSOs today: 0 / 10"),
+                "should show activation progress"
+            );
+            assert!(output.contains("needed"), "should show needed count");
+        }
+
+        #[test]
+        fn renders_activated_status() {
+            let state = QsoEntryState::new();
+            let mut log = make_log();
+            for i in 0..10 {
+                let mut qso = make_qso(&format!("W{i}AW"), Band::M20, Mode::Ssb);
+                qso.timestamp = Utc::now();
+                log.add_qso(qso);
+            }
+            let output = render_qso_entry(&state, Some(&log), 80, 30);
+            assert!(
+                output.contains("Activated!"),
+                "should show activated status"
+            );
+        }
+
+        #[test]
+        fn renders_recent_qsos() {
+            let mut state = QsoEntryState::new();
+            state.add_recent_qso(make_qso("W3ABC", Band::M20, Mode::Ssb));
+            state.add_recent_qso(make_qso("KD9XYZ", Band::M40, Mode::Cw));
+            let output = render_qso_entry(&state, None, 80, 30);
+            assert!(output.contains("Recent QSOs"), "should show recent section");
+            assert!(output.contains("W3ABC"), "should show first recent QSO");
+            assert!(output.contains("KD9XYZ"), "should show second recent QSO");
+        }
+
+        #[test]
+        fn renders_error_message() {
+            let mut state = QsoEntryState::new();
+            state.set_error("save failed".into());
+            let output = render_qso_entry(&state, None, 80, 30);
+            assert!(output.contains("save failed"), "should show error message");
+        }
+
+        #[test]
+        fn renders_footer_keybindings() {
+            let state = QsoEntryState::new();
+            let output = render_qso_entry(&state, None, 80, 30);
+            assert!(
+                output.contains("Alt+b/m"),
+                "should show band/mode keybindings"
+            );
+            assert!(
+                output.contains("Enter: log"),
+                "should show submit keybinding"
+            );
+        }
+
+        #[test]
+        fn renders_p2p_in_recent() {
+            let mut state = QsoEntryState::new();
+            let qso = Qso::new(
+                "W3ABC".to_string(),
+                "59".to_string(),
+                "59".to_string(),
+                Band::M20,
+                Mode::Ssb,
+                Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
+                String::new(),
+                Some("K-5678".to_string()),
+            )
+            .unwrap();
+            state.add_recent_qso(qso);
+            let output = render_qso_entry(&state, None, 80, 30);
+            assert!(
+                output.contains("P2P K-5678"),
+                "should show P2P park reference"
+            );
+        }
+
+        #[test]
+        fn renders_without_log_context() {
+            let state = QsoEntryState::new();
+            let output = render_qso_entry(&state, None, 80, 30);
+            // Should render without crashing, just no header info
+            assert!(output.contains("QSO Entry"), "should still show title");
+            assert!(
+                !output.contains("Band:"),
+                "should not show band without log"
+            );
+        }
+
+        #[test]
+        fn renders_park_dash_when_no_park_ref() {
+            let state = QsoEntryState::new();
+            let log = Log::new("W1AW".to_string(), None, None, "FN31".to_string()).unwrap();
+            let output = render_qso_entry(&state, Some(&log), 80, 30);
+            assert!(
+                output.contains("W1AW @ -"),
+                "should show dash for missing park"
+            );
         }
     }
 

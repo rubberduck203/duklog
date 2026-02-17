@@ -128,7 +128,6 @@ impl LogCreateState {
 }
 
 /// Renders the log creation screen.
-#[cfg_attr(coverage_nightly, coverage(off))]
 #[mutants::skip]
 pub fn draw_log_create(state: &LogCreateState, frame: &mut Frame, area: Rect) {
     let block = Block::default()
@@ -387,6 +386,69 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert!(matches!(action, Action::CreateLog(_)));
             assert!(!state.form().has_errors());
+        }
+    }
+
+    mod rendering {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        use super::*;
+
+        fn buffer_to_string(buf: &ratatui::buffer::Buffer) -> String {
+            let mut s = String::new();
+            for y in 0..buf.area.height {
+                for x in 0..buf.area.width {
+                    s.push(buf[(x, y)].symbol().chars().next().unwrap_or(' '));
+                }
+                s.push('\n');
+            }
+            s
+        }
+
+        fn render_log_create(state: &LogCreateState, width: u16, height: u16) -> String {
+            let backend = TestBackend::new(width, height);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal
+                .draw(|frame| {
+                    draw_log_create(state, frame, frame.area());
+                })
+                .unwrap();
+            buffer_to_string(terminal.backend().buffer())
+        }
+
+        #[test]
+        fn renders_title_and_fields() {
+            let state = LogCreateState::new();
+            let output = render_log_create(&state, 60, 20);
+            assert!(output.contains("Create New Log"), "should show title");
+            assert!(
+                output.contains("Station Callsign"),
+                "should show callsign field"
+            );
+            assert!(
+                output.contains("Grid Square"),
+                "should show grid square field"
+            );
+        }
+
+        #[test]
+        fn renders_footer() {
+            let state = LogCreateState::new();
+            let output = render_log_create(&state, 60, 20);
+            assert!(
+                output.contains("Enter: create"),
+                "should show footer keybindings"
+            );
+        }
+
+        #[test]
+        fn renders_field_values() {
+            let mut state = LogCreateState::new();
+            fill_valid_form(&mut state);
+            let output = render_log_create(&state, 60, 20);
+            assert!(output.contains("W1AW"), "should show typed callsign");
+            assert!(output.contains("FN31"), "should show typed grid square");
         }
     }
 

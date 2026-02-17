@@ -189,8 +189,8 @@ impl App {
                 self.current_log = Some(log);
                 self.screen = Screen::QsoEntry;
             }
-            Action::AddQso(qso) => {
-                if let Some(ref mut log) = self.current_log {
+            Action::AddQso(qso) => match self.current_log {
+                Some(ref mut log) => {
                     if let Err(e) = self.manager.append_qso(&log.log_id, &qso) {
                         self.qso_entry.set_error(format!("Failed to save QSO: {e}"));
                         return;
@@ -199,7 +199,10 @@ impl App {
                     self.qso_entry.add_recent_qso(qso);
                     self.qso_entry.clear_fast_fields();
                 }
-            }
+                None => {
+                    self.qso_entry.set_error("No active log selected".into());
+                }
+            },
         }
     }
 
@@ -761,6 +764,20 @@ mod tests {
             // Manually trigger Navigate(QsoEntry) through apply_action
             app.apply_action(Action::Navigate(Screen::QsoEntry));
             assert_eq!(app.screen(), Screen::QsoEntry);
+        }
+
+        #[test]
+        fn add_qso_without_active_log_shows_error() {
+            let (_dir, mut app) = make_app();
+            // Force into QsoEntry without selecting a log
+            app.screen = Screen::QsoEntry;
+            assert!(app.current_log().is_none());
+
+            type_string(&mut app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+
+            assert!(app.qso_entry.error().is_some());
+            assert!(app.qso_entry.error().unwrap().contains("No active log"),);
         }
 
         #[test]

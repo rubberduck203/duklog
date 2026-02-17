@@ -18,15 +18,36 @@ paths:
 - After implementing a module: `make mutants-module MOD=src/<module>/` — no surviving mutants
 - Minimum 90% line coverage enforced by `make coverage`
 
+## TUI Render Testing
+
+Test `draw_*` functions by rendering into a `TestBackend` buffer and asserting key content appears:
+
+```rust
+use ratatui::backend::TestBackend;
+use ratatui::Terminal;
+
+let backend = TestBackend::new(80, 24);
+let mut terminal = Terminal::new(backend).unwrap();
+terminal.draw(|frame| {
+    draw_my_widget(&state, frame, frame.area());
+}).unwrap();
+let content = buffer_to_string(terminal.backend().buffer());
+assert!(content.contains("expected text"));
+```
+
+Use a `buffer_to_string` helper (in `mod rendering` test submodules) to extract text from `Buffer`.
+
+Keep `#[mutants::skip]` on draw functions — mutation testing visual layout isn't productive.
+
 ## Coverage Exclusions
 
-Use `#[cfg_attr(coverage_nightly, coverage(off))]` for:
+Use `#[cfg_attr(coverage_nightly, coverage(off))]` only for:
 - `main.rs` terminal setup/teardown
-- TUI `render()` methods (visual output, tested by eye)
-- Functions also marked `#[mutants::skip]`
+- Event loop methods that call `event::read()` (require a real terminal)
 
 Never exclude from coverage:
 - `src/model/` — 100% coverage target
 - `src/adif/` — pure functions, fully testable
 - `src/storage/` — use tempfile for isolation
 - `handle_key()` methods in TUI — contains real logic
+- `draw_*` functions — use `TestBackend` render tests

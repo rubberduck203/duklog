@@ -148,7 +148,6 @@ impl Form {
 }
 
 /// Renders a form within the given area.
-#[cfg_attr(coverage_nightly, coverage(off))]
 #[mutants::skip]
 pub fn draw_form(form: &Form, frame: &mut Frame, area: Rect) {
     let row_height = 3_u16;
@@ -433,6 +432,80 @@ mod tests {
             assert_eq!(form.value(0), "");
             assert_eq!(form.focus(), 0);
             assert!(!form.has_errors());
+        }
+    }
+
+    mod rendering {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        use super::*;
+
+        fn buffer_to_string(buf: &ratatui::buffer::Buffer) -> String {
+            let mut s = String::new();
+            for y in 0..buf.area.height {
+                for x in 0..buf.area.width {
+                    s.push(buf[(x, y)].symbol().chars().next().unwrap_or(' '));
+                }
+                s.push('\n');
+            }
+            s
+        }
+
+        fn render_form(form: &Form, width: u16, height: u16) -> String {
+            let backend = TestBackend::new(width, height);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal
+                .draw(|frame| {
+                    draw_form(form, frame, frame.area());
+                })
+                .unwrap();
+            buffer_to_string(terminal.backend().buffer())
+        }
+
+        #[test]
+        fn renders_field_labels() {
+            let form = make_form();
+            let output = render_form(&form, 40, 9);
+            assert!(output.contains("Callsign *"), "should show required label");
+            assert!(output.contains("Operator *"), "should show required label");
+            assert!(
+                output.contains("Park Ref"),
+                "should show optional label without asterisk"
+            );
+            assert!(
+                !output.contains("Park Ref *"),
+                "optional field should not have asterisk"
+            );
+        }
+
+        #[test]
+        fn renders_field_values() {
+            let mut form = make_form();
+            form.set_value(0, "W1AW");
+            form.set_value(1, "KD9XYZ");
+            let output = render_form(&form, 40, 9);
+            assert!(output.contains("W1AW"), "should render callsign value");
+            assert!(output.contains("KD9XYZ"), "should render operator value");
+        }
+
+        #[test]
+        fn renders_cursor_on_focused_field() {
+            let form = make_form();
+            let output = render_form(&form, 40, 9);
+            // The focused field should contain the block cursor character
+            assert!(output.contains('\u{2588}'), "should show cursor block");
+        }
+
+        #[test]
+        fn renders_error_message() {
+            let mut form = make_form();
+            form.set_error(0, "invalid callsign".into());
+            let output = render_form(&form, 40, 9);
+            assert!(
+                output.contains("invalid callsign"),
+                "should render error text"
+            );
         }
     }
 
