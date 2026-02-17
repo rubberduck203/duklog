@@ -1,11 +1,11 @@
+use std::path::Path;
+
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::layout::{Alignment, Constraint, Flex, Layout};
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::{Frame, Terminal};
-
-use std::path::Path;
 
 use crate::model::Log;
 use crate::storage::{self, LogManager};
@@ -198,15 +198,18 @@ impl App {
                 self.current_log = Some(log);
                 self.screen = Screen::QsoEntry;
             }
-            Action::ExportLog => {
-                if let Some(ref log) = self.current_log {
+            Action::ExportLog => match self.current_log {
+                Some(ref log) => {
                     let path = Path::new(self.export.path());
                     match storage::export_adif(log, path) {
                         Ok(()) => self.export.set_success(),
                         Err(e) => self.export.set_error(e.to_string()),
                     }
                 }
-            }
+                None => {
+                    self.export.set_error("No active log selected".into());
+                }
+            },
             Action::AddQso(qso) => match self.current_log {
                 Some(ref mut log) => {
                     if let Err(e) = self.manager.append_qso(&log.log_id, &qso) {
@@ -937,12 +940,16 @@ mod tests {
         }
 
         #[test]
-        fn export_without_current_log_is_noop() {
+        fn export_without_current_log_shows_error() {
             let (_dir, mut app) = make_app();
             app.screen = Screen::Export;
             app.apply_action(Action::ExportLog);
-            // No crash, status stays Ready
-            assert_eq!(app.export.status(), &ExportStatus::Ready);
+            match app.export.status() {
+                ExportStatus::Error(msg) => {
+                    assert!(msg.contains("No active log"));
+                }
+                other => panic!("expected Error, got {other:?}"),
+            }
         }
 
         #[test]

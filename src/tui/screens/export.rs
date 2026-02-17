@@ -66,7 +66,7 @@ impl ExportState {
     }
 
     /// Handles a key event, returning an [`Action`] for the app to apply.
-    pub fn handle_key(&self, key: KeyEvent) -> Action {
+    pub fn handle_key(&mut self, key: KeyEvent) -> Action {
         match self.status {
             ExportStatus::Ready => match key.code {
                 KeyCode::Enter => Action::ExportLog,
@@ -291,28 +291,28 @@ mod tests {
 
         #[test]
         fn enter_when_ready_returns_export() {
-            let state = ExportState::new();
+            let mut state = ExportState::new();
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::ExportLog);
         }
 
         #[test]
         fn esc_when_ready_returns_to_qso_entry() {
-            let state = ExportState::new();
+            let mut state = ExportState::new();
             let action = state.handle_key(press(KeyCode::Esc));
             assert_eq!(action, Action::Navigate(Screen::QsoEntry));
         }
 
         #[test]
         fn q_when_ready_returns_to_qso_entry() {
-            let state = ExportState::new();
+            let mut state = ExportState::new();
             let action = state.handle_key(press(KeyCode::Char('q')));
             assert_eq!(action, Action::Navigate(Screen::QsoEntry));
         }
 
         #[test]
         fn unhandled_key_when_ready_returns_none() {
-            let state = ExportState::new();
+            let mut state = ExportState::new();
             let action = state.handle_key(press(KeyCode::Char('x')));
             assert_eq!(action, Action::None);
         }
