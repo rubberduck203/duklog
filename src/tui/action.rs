@@ -1,6 +1,6 @@
 //! Actions returned by screen event handlers.
 
-use crate::model::Log;
+use crate::model::{Log, Qso};
 
 use super::app::Screen;
 
@@ -18,6 +18,8 @@ pub enum Action {
     SelectLog(Log),
     /// Create and persist a new log, then make it active.
     CreateLog(Log),
+    /// Add a QSO to the active log.
+    AddQso(Qso),
     /// Quit the application.
     Quit,
 }

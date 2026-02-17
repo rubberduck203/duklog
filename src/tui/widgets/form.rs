@@ -49,6 +49,13 @@ impl Form {
         self.focus
     }
 
+    /// Sets focus to the given field index. No-op if out of bounds.
+    pub fn set_focus(&mut self, index: usize) {
+        if index < self.fields.len() {
+            self.focus = index;
+        }
+    }
+
     /// Moves focus to the next field, wrapping around.
     pub fn focus_next(&mut self) {
         if self.fields.is_empty() {
@@ -96,6 +103,20 @@ impl Form {
     /// Returns `true` if any field has an error set.
     pub fn has_errors(&self) -> bool {
         self.fields.iter().any(|f| f.error.is_some())
+    }
+
+    /// Sets the value of the field at `index`. No-op if out of bounds.
+    pub fn set_value(&mut self, index: usize, value: impl Into<String>) {
+        if let Some(field) = self.fields.get_mut(index) {
+            field.value = value.into();
+        }
+    }
+
+    /// Clears the value of the field at `index`. No-op if out of bounds.
+    pub fn clear_value(&mut self, index: usize) {
+        if let Some(field) = self.fields.get_mut(index) {
+            field.value.clear();
+        }
     }
 
     /// Returns the value of the field at `index`, or an empty string if out of bounds.
@@ -255,6 +276,27 @@ mod tests {
             form.focus_prev();
             assert_eq!(form.focus(), 0);
         }
+
+        #[test]
+        fn set_focus_changes_focus() {
+            let mut form = make_form();
+            form.set_focus(2);
+            assert_eq!(form.focus(), 2);
+        }
+
+        #[test]
+        fn set_focus_out_of_bounds_is_noop() {
+            let mut form = make_form();
+            form.set_focus(99);
+            assert_eq!(form.focus(), 0);
+        }
+
+        #[test]
+        fn set_focus_at_len_is_noop() {
+            let mut form = make_form();
+            form.set_focus(form.fields().len());
+            assert_eq!(form.focus(), 0);
+        }
     }
 
     mod editing {
@@ -346,6 +388,35 @@ mod tests {
         fn out_of_bounds_returns_empty() {
             let form = make_form();
             assert_eq!(form.value(99), "");
+        }
+
+        #[test]
+        fn set_value_replaces_field() {
+            let mut form = make_form();
+            form.set_value(0, "W1AW");
+            assert_eq!(form.value(0), "W1AW");
+        }
+
+        #[test]
+        fn set_value_out_of_bounds_is_noop() {
+            let mut form = make_form();
+            form.set_value(99, "nope");
+            assert_eq!(form.values(), vec!["", "", ""]);
+        }
+
+        #[test]
+        fn clear_value_empties_field() {
+            let mut form = make_form();
+            form.set_value(1, "hello");
+            form.clear_value(1);
+            assert_eq!(form.value(1), "");
+        }
+
+        #[test]
+        fn clear_value_out_of_bounds_is_noop() {
+            let mut form = make_form();
+            form.clear_value(99);
+            assert_eq!(form.values(), vec!["", "", ""]);
         }
     }
 
