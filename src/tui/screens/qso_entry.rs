@@ -66,19 +66,33 @@ impl QsoEntryState {
 
     /// Handles a key event, returning an [`Action`] for the app to apply.
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
-        // Ctrl+B/M cycle band/mode regardless of focused field
-        if key.modifiers.contains(KeyModifiers::CONTROL) {
-            return match key.code {
+        // Alt+B/M cycle band/mode forward; Shift+Alt+B/M cycle backward
+        if key.modifiers == KeyModifiers::ALT {
+            match key.code {
                 KeyCode::Char('b') => {
                     self.cycle_band(true);
-                    Action::None
+                    return Action::None;
                 }
                 KeyCode::Char('m') => {
                     self.cycle_mode(true);
-                    Action::None
+                    return Action::None;
                 }
-                _ => Action::None,
-            };
+                _ => {}
+            }
+        }
+        const ALT_SHIFT: KeyModifiers = KeyModifiers::ALT.union(KeyModifiers::SHIFT);
+        if key.modifiers == ALT_SHIFT {
+            match key.code {
+                KeyCode::Char('B') => {
+                    self.cycle_band(false);
+                    return Action::None;
+                }
+                KeyCode::Char('M') => {
+                    self.cycle_mode(false);
+                    return Action::None;
+                }
+                _ => {}
+            }
         }
 
         match key.code {
@@ -382,7 +396,7 @@ pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Fram
 
     // Footer
     let footer = Paragraph::new(Line::from(
-        "Tab: next  Ctrl+b/m: band/mode  Enter: log  Esc: back",
+        "Tab: next  Alt+b/m: band/mode  Shift+Alt: reverse  Enter: log  Esc: back",
     ))
     .style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, footer_area);
@@ -413,10 +427,19 @@ mod tests {
         }
     }
 
-    fn ctrl_press(code: KeyCode) -> KeyEvent {
+    fn alt_press(code: KeyCode) -> KeyEvent {
         KeyEvent {
             code,
-            modifiers: KeyModifiers::CONTROL,
+            modifiers: KeyModifiers::ALT,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    fn shift_alt_press(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::ALT | KeyModifiers::SHIFT,
             kind: KeyEventKind::Press,
             state: KeyEventState::NONE,
         }
@@ -553,18 +576,35 @@ mod tests {
         use super::*;
 
         #[test]
-        fn ctrl_b_cycles_forward() {
+        fn alt_b_cycles_forward() {
             let mut state = QsoEntryState::new();
             assert_eq!(state.band(), Band::M20);
-            state.handle_key(ctrl_press(KeyCode::Char('b')));
+            state.handle_key(alt_press(KeyCode::Char('b')));
             assert_eq!(state.band(), Band::M17);
+        }
+
+        #[test]
+        fn shift_alt_b_cycles_backward() {
+            let mut state = QsoEntryState::new();
+            assert_eq!(state.band(), Band::M20);
+            state.handle_key(shift_alt_press(KeyCode::Char('B')));
+            assert_eq!(state.band(), Band::M30);
         }
 
         #[test]
         fn wraps_forward() {
             let mut state = QsoEntryState::new();
             for _ in 0..Band::all().len() {
-                state.handle_key(ctrl_press(KeyCode::Char('b')));
+                state.handle_key(alt_press(KeyCode::Char('b')));
+            }
+            assert_eq!(state.band(), Band::M20);
+        }
+
+        #[test]
+        fn wraps_backward() {
+            let mut state = QsoEntryState::new();
+            for _ in 0..Band::all().len() {
+                state.handle_key(shift_alt_press(KeyCode::Char('B')));
             }
             assert_eq!(state.band(), Band::M20);
         }
@@ -578,9 +618,9 @@ mod tests {
         }
 
         #[test]
-        fn unhandled_ctrl_key_returns_none() {
+        fn unhandled_alt_falls_through() {
             let mut state = QsoEntryState::new();
-            let action = state.handle_key(ctrl_press(KeyCode::Char('x')));
+            let action = state.handle_key(alt_press(KeyCode::Char('x')));
             assert_eq!(action, Action::None);
         }
     }
@@ -589,18 +629,35 @@ mod tests {
         use super::*;
 
         #[test]
-        fn ctrl_m_cycles_forward() {
+        fn alt_m_cycles_forward() {
             let mut state = QsoEntryState::new();
             assert_eq!(state.mode(), Mode::Ssb);
-            state.handle_key(ctrl_press(KeyCode::Char('m')));
+            state.handle_key(alt_press(KeyCode::Char('m')));
             assert_eq!(state.mode(), Mode::Cw);
+        }
+
+        #[test]
+        fn shift_alt_m_cycles_backward() {
+            let mut state = QsoEntryState::new();
+            assert_eq!(state.mode(), Mode::Ssb);
+            state.handle_key(shift_alt_press(KeyCode::Char('M')));
+            assert_eq!(state.mode(), Mode::Digi);
         }
 
         #[test]
         fn wraps_forward() {
             let mut state = QsoEntryState::new();
             for _ in 0..Mode::all().len() {
-                state.handle_key(ctrl_press(KeyCode::Char('m')));
+                state.handle_key(alt_press(KeyCode::Char('m')));
+            }
+            assert_eq!(state.mode(), Mode::Ssb);
+        }
+
+        #[test]
+        fn wraps_backward() {
+            let mut state = QsoEntryState::new();
+            for _ in 0..Mode::all().len() {
+                state.handle_key(shift_alt_press(KeyCode::Char('M')));
             }
             assert_eq!(state.mode(), Mode::Ssb);
         }
@@ -636,7 +693,7 @@ mod tests {
             assert_eq!(state.form().value(RST_RCVD), "59");
 
             // Switch to CW
-            state.handle_key(ctrl_press(KeyCode::Char('m')));
+            state.handle_key(alt_press(KeyCode::Char('m')));
             assert_eq!(state.mode(), Mode::Cw);
             assert_eq!(state.form().value(RST_SENT), "599");
             assert_eq!(state.form().value(RST_RCVD), "599");
@@ -652,7 +709,7 @@ mod tests {
             type_string(&mut state, "57");
 
             // Switch to CW — RST Sent should keep "57", RST Rcvd should update
-            state.handle_key(ctrl_press(KeyCode::Char('m')));
+            state.handle_key(alt_press(KeyCode::Char('m')));
             assert_eq!(state.form().value(RST_SENT), "57");
             assert_eq!(state.form().value(RST_RCVD), "599");
         }
@@ -672,7 +729,7 @@ mod tests {
             state.handle_key(press(KeyCode::Backspace));
             type_string(&mut state, "55");
 
-            state.handle_key(ctrl_press(KeyCode::Char('m')));
+            state.handle_key(alt_press(KeyCode::Char('m')));
             assert_eq!(state.form().value(RST_SENT), "57");
             assert_eq!(state.form().value(RST_RCVD), "55");
         }
@@ -800,8 +857,8 @@ mod tests {
         fn submit_with_different_band_and_mode() {
             let mut state = QsoEntryState::new();
             fill_valid_callsign(&mut state);
-            state.handle_key(ctrl_press(KeyCode::Char('b'))); // 20M -> 17M
-            state.handle_key(ctrl_press(KeyCode::Char('m'))); // SSB -> CW
+            state.handle_key(alt_press(KeyCode::Char('b'))); // 20M -> 17M
+            state.handle_key(alt_press(KeyCode::Char('m'))); // SSB -> CW
             let action = state.handle_key(press(KeyCode::Enter));
             match action {
                 Action::AddQso(qso) => {
@@ -850,8 +907,8 @@ mod tests {
         #[test]
         fn band_mode_persist() {
             let mut state = QsoEntryState::new();
-            state.handle_key(ctrl_press(KeyCode::Char('b'))); // cycle band
-            state.handle_key(ctrl_press(KeyCode::Char('m'))); // cycle mode
+            state.handle_key(alt_press(KeyCode::Char('b'))); // cycle band
+            state.handle_key(alt_press(KeyCode::Char('m'))); // cycle mode
             let band = state.band();
             let mode = state.mode();
 
@@ -863,7 +920,7 @@ mod tests {
         #[test]
         fn rst_matches_current_mode_after_clear() {
             let mut state = QsoEntryState::new();
-            state.handle_key(ctrl_press(KeyCode::Char('m'))); // SSB -> CW
+            state.handle_key(alt_press(KeyCode::Char('m'))); // SSB -> CW
             assert_eq!(state.mode(), Mode::Cw);
 
             state.clear_fast_fields();
@@ -1007,8 +1064,8 @@ mod tests {
         fn resets_to_defaults() {
             let mut state = QsoEntryState::new();
             fill_valid_callsign(&mut state);
-            state.handle_key(ctrl_press(KeyCode::Char('b')));
-            state.handle_key(ctrl_press(KeyCode::Char('m')));
+            state.handle_key(alt_press(KeyCode::Char('b')));
+            state.handle_key(alt_press(KeyCode::Char('m')));
             state.add_recent_qso(make_qso("W1AW", Band::M20, Mode::Ssb));
             state.set_error("some error".into());
 
