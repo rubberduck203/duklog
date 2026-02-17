@@ -5,11 +5,14 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::{Frame, Terminal};
 
+use std::path::Path;
+
 use crate::model::Log;
-use crate::storage::LogManager;
+use crate::storage::{self, LogManager};
 
 use super::action::Action;
 use super::error::AppError;
+use super::screens::export::{ExportState, draw_export};
 use super::screens::log_create::{LogCreateState, draw_log_create};
 use super::screens::log_select::{LogSelectState, draw_log_select};
 use super::screens::qso_entry::{QsoEntryState, draw_qso_entry};
@@ -54,6 +57,7 @@ pub struct App {
     log_select: LogSelectState,
     log_create: LogCreateState,
     qso_entry: QsoEntryState,
+    export: ExportState,
 }
 
 impl App {
@@ -72,6 +76,7 @@ impl App {
             log_select,
             log_create: LogCreateState::new(),
             qso_entry: QsoEntryState::new(),
+            export: ExportState::new(),
         })
     }
 
@@ -102,6 +107,9 @@ impl App {
             Screen::LogCreate => draw_log_create(&self.log_create, frame, area),
             Screen::QsoEntry => {
                 draw_qso_entry(&self.qso_entry, self.current_log.as_ref(), frame, area);
+            }
+            Screen::Export => {
+                draw_export(&self.export, self.current_log.as_ref(), frame, area);
             }
             _ => self.draw_placeholder(frame),
         }
@@ -152,6 +160,7 @@ impl App {
             Screen::LogSelect => self.log_select.handle_key(key),
             Screen::LogCreate => self.log_create.handle_key(key),
             Screen::QsoEntry => self.qso_entry.handle_key(key),
+            Screen::Export => self.export.handle_key(key),
             _ => match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => Action::Navigate(Screen::LogSelect),
                 _ => Action::None,
@@ -189,6 +198,15 @@ impl App {
                 self.current_log = Some(log);
                 self.screen = Screen::QsoEntry;
             }
+            Action::ExportLog => {
+                if let Some(ref log) = self.current_log {
+                    let path = Path::new(self.export.path());
+                    match storage::export_adif(log, path) {
+                        Ok(()) => self.export.set_success(),
+                        Err(e) => self.export.set_error(e.to_string()),
+                    }
+                }
+            }
             Action::AddQso(qso) => match self.current_log {
                 Some(ref mut log) => {
                     if let Err(e) = self.manager.append_qso(&log.log_id, &qso) {
@@ -225,6 +243,10 @@ impl App {
                     self.qso_entry.set_log_context(log);
                 }
                 self.screen = Screen::QsoEntry;
+            }
+            Screen::Export => {
+                self.export.prepare(self.current_log.as_ref());
+                self.screen = Screen::Export;
             }
             other => self.screen = other,
         }
@@ -446,7 +468,7 @@ mod tests {
 
         #[test]
         fn q_on_placeholder_screens_navigates_back() {
-            let placeholder_screens = [Screen::QsoList, Screen::Export];
+            let placeholder_screens = [Screen::QsoList];
             for screen in placeholder_screens {
                 let (_dir, mut app) = make_app();
                 app.screen = screen;
@@ -462,7 +484,7 @@ mod tests {
 
         #[test]
         fn esc_on_placeholder_screens_navigates_back() {
-            let placeholder_screens = [Screen::QsoList, Screen::Export];
+            let placeholder_screens = [Screen::QsoList];
             for screen in placeholder_screens {
                 let (_dir, mut app) = make_app();
                 app.screen = screen;
@@ -798,6 +820,146 @@ mod tests {
             // Should show error, QSO not added
             assert!(app.qso_entry.error().is_some());
             assert_eq!(app.current_log().unwrap().qsos.len(), 0);
+        }
+    }
+
+    mod export_integration {
+        use super::*;
+        use crate::tui::screens::export::ExportStatus;
+
+        fn make_app_with_log() -> (tempfile::TempDir, App) {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            save_test_log(&manager, "test-log");
+            let mut app = App::new(manager).unwrap();
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            (dir, app)
+        }
+
+        fn alt_press(code: KeyCode) -> KeyEvent {
+            KeyEvent {
+                code,
+                modifiers: KeyModifiers::ALT,
+                kind: KeyEventKind::Press,
+                state: KeyEventState::NONE,
+            }
+        }
+
+        #[test]
+        fn alt_x_navigates_to_export() {
+            let (_dir, mut app) = make_app_with_log();
+            app.handle_key(alt_press(KeyCode::Char('x')));
+            assert_eq!(app.screen(), Screen::Export);
+        }
+
+        #[test]
+        fn export_screen_shows_path_and_count() {
+            let (_dir, mut app) = make_app_with_log();
+            // Add a QSO first
+            type_string(&mut app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.current_log().unwrap().qsos.len(), 1);
+
+            app.handle_key(alt_press(KeyCode::Char('x')));
+            assert_eq!(app.screen(), Screen::Export);
+            assert_eq!(app.export.qso_count(), 1);
+            assert!(!app.export.path().is_empty());
+        }
+
+        #[test]
+        fn export_log_writes_file() {
+            let (_dir, mut app) = make_app_with_log();
+            type_string(&mut app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+
+            // Navigate to export to populate the default path
+            app.handle_key(alt_press(KeyCode::Char('x')));
+            assert_eq!(app.screen(), Screen::Export);
+
+            // Override path to a temp directory so we don't pollute ~/
+            let export_dir = tempfile::tempdir().unwrap();
+            let export_path = export_dir.path().join("test.adif");
+            app.export.set_path(export_path.display().to_string());
+
+            app.apply_action(Action::ExportLog);
+            assert_eq!(app.export.status(), &ExportStatus::Success);
+
+            let content = std::fs::read_to_string(&export_path).unwrap();
+            assert!(content.contains("<eoh>"));
+            assert!(content.contains("KD9XYZ"));
+        }
+
+        #[test]
+        fn export_to_invalid_path_sets_error() {
+            let (_dir, mut app) = make_app_with_log();
+            type_string(&mut app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+
+            app.handle_key(alt_press(KeyCode::Char('x')));
+            // Point to a nonexistent directory to trigger an I/O error
+            app.export.set_path("/nonexistent/dir/test.adif".into());
+
+            app.apply_action(Action::ExportLog);
+            match app.export.status() {
+                ExportStatus::Error(msg) => {
+                    assert!(!msg.is_empty(), "error message should not be empty");
+                }
+                other => panic!("expected Error, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn esc_on_export_returns_to_qso_entry() {
+            let (_dir, mut app) = make_app_with_log();
+            app.handle_key(alt_press(KeyCode::Char('x')));
+            assert_eq!(app.screen(), Screen::Export);
+            app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+        }
+
+        #[test]
+        fn q_on_export_returns_to_qso_entry() {
+            let (_dir, mut app) = make_app_with_log();
+            app.handle_key(alt_press(KeyCode::Char('x')));
+            assert_eq!(app.screen(), Screen::Export);
+            app.handle_key(press(KeyCode::Char('q')));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+        }
+
+        #[test]
+        fn any_key_after_success_returns_to_qso_entry() {
+            let (_dir, mut app) = make_app_with_log();
+            app.handle_key(alt_press(KeyCode::Char('x')));
+            app.export.set_success();
+            app.handle_key(press(KeyCode::Char('a')));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+        }
+
+        #[test]
+        fn export_without_current_log_is_noop() {
+            let (_dir, mut app) = make_app();
+            app.screen = Screen::Export;
+            app.apply_action(Action::ExportLog);
+            // No crash, status stays Ready
+            assert_eq!(app.export.status(), &ExportStatus::Ready);
+        }
+
+        #[test]
+        fn navigate_to_export_prepares_state() {
+            let (_dir, mut app) = make_app_with_log();
+            app.navigate(Screen::Export);
+            assert_eq!(app.screen(), Screen::Export);
+            assert!(!app.export.path().is_empty());
+        }
+
+        #[test]
+        fn question_mark_on_export_navigates_to_help() {
+            let (_dir, mut app) = make_app_with_log();
+            app.handle_key(alt_press(KeyCode::Char('x')));
+            assert_eq!(app.screen(), Screen::Export);
+            app.handle_key(press(KeyCode::Char('?')));
+            assert_eq!(app.screen(), Screen::Help);
         }
     }
 }

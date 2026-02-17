@@ -77,6 +77,9 @@ impl QsoEntryState {
                     self.cycle_mode(true);
                     return Action::None;
                 }
+                KeyCode::Char('x') => {
+                    return Action::Navigate(Screen::Export);
+                }
                 _ => {}
             }
         }
@@ -402,7 +405,7 @@ pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Fram
 
     // Footer
     let footer = Paragraph::new(Line::from(
-        "Tab: next  Alt+b/m: band/mode  Shift+Alt: reverse  Enter: log  Esc: back",
+        "Tab: next  Alt+b/m: band/mode  Shift+Alt: reverse  Alt+x: export  Enter: log  Esc: back",
     ))
     .style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, footer_area);
@@ -626,7 +629,7 @@ mod tests {
         #[test]
         fn unhandled_alt_falls_through() {
             let mut state = QsoEntryState::new();
-            let action = state.handle_key(alt_press(KeyCode::Char('x')));
+            let action = state.handle_key(alt_press(KeyCode::Char('z')));
             assert_eq!(action, Action::None);
         }
     }
@@ -1036,6 +1039,13 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Esc));
             assert_eq!(action, Action::Navigate(Screen::LogSelect));
         }
+
+        #[test]
+        fn alt_x_navigates_to_export() {
+            let mut state = QsoEntryState::new();
+            let action = state.handle_key(alt_press(KeyCode::Char('x')));
+            assert_eq!(action, Action::Navigate(Screen::Export));
+        }
     }
 
     mod error_display {
@@ -1211,10 +1221,14 @@ mod tests {
         #[test]
         fn renders_footer_keybindings() {
             let state = QsoEntryState::new();
-            let output = render_qso_entry(&state, None, 80, 30);
+            let output = render_qso_entry(&state, None, 100, 30);
             assert!(
                 output.contains("Alt+b/m"),
                 "should show band/mode keybindings"
+            );
+            assert!(
+                output.contains("Alt+x: export"),
+                "should show export keybinding"
             );
             assert!(
                 output.contains("Enter: log"),
