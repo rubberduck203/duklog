@@ -20,6 +20,8 @@ pub enum Action {
     CreateLog(Log),
     /// Add a QSO to the active log.
     AddQso(Qso),
+    /// Export the active log to ADIF.
+    ExportLog,
     /// Quit the application.
     Quit,
 }
