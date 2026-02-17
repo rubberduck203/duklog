@@ -12,6 +12,7 @@ use super::action::Action;
 use super::error::AppError;
 use super::screens::log_create::{LogCreateState, draw_log_create};
 use super::screens::log_select::{LogSelectState, draw_log_select};
+use super::screens::qso_entry::{QsoEntryState, draw_qso_entry};
 
 /// All screens the app can navigate between.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -52,6 +53,7 @@ pub struct App {
     should_quit: bool,
     log_select: LogSelectState,
     log_create: LogCreateState,
+    qso_entry: QsoEntryState,
 }
 
 impl App {
@@ -69,6 +71,7 @@ impl App {
             should_quit: false,
             log_select,
             log_create: LogCreateState::new(),
+            qso_entry: QsoEntryState::new(),
         })
     }
 
@@ -97,6 +100,9 @@ impl App {
         match self.screen {
             Screen::LogSelect => draw_log_select(&self.log_select, frame, area),
             Screen::LogCreate => draw_log_create(&self.log_create, frame, area),
+            Screen::QsoEntry => {
+                draw_qso_entry(&self.qso_entry, self.current_log.as_ref(), frame, area);
+            }
             _ => self.draw_placeholder(frame),
         }
     }
@@ -145,6 +151,7 @@ impl App {
         let action = match self.screen {
             Screen::LogSelect => self.log_select.handle_key(key),
             Screen::LogCreate => self.log_create.handle_key(key),
+            Screen::QsoEntry => self.qso_entry.handle_key(key),
             _ => match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => Action::Navigate(Screen::LogSelect),
                 _ => Action::None,
@@ -157,7 +164,7 @@ impl App {
     /// Returns `true` if the current screen uses a text form where keys should
     /// be forwarded rather than intercepted globally.
     fn is_form_screen(&self) -> bool {
-        matches!(self.screen, Screen::LogCreate)
+        matches!(self.screen, Screen::LogCreate | Screen::QsoEntry)
     }
 
     /// Applies an [`Action`] returned by a screen handler.
@@ -167,6 +174,7 @@ impl App {
             Action::Quit => self.should_quit = true,
             Action::Navigate(screen) => self.navigate(screen),
             Action::SelectLog(log) => {
+                self.qso_entry.set_log_context(&log);
                 self.current_log = Some(log);
                 self.screen = Screen::QsoEntry;
             }
@@ -177,8 +185,20 @@ impl App {
                     self.screen = Screen::LogSelect;
                     return;
                 }
+                self.qso_entry.set_log_context(&log);
                 self.current_log = Some(log);
                 self.screen = Screen::QsoEntry;
+            }
+            Action::AddQso(qso) => {
+                if let Some(ref mut log) = self.current_log {
+                    if let Err(e) = self.manager.append_qso(&log.log_id, &qso) {
+                        self.qso_entry.set_error(format!("Failed to save QSO: {e}"));
+                        return;
+                    }
+                    log.add_qso(qso.clone());
+                    self.qso_entry.add_recent_qso(qso);
+                    self.qso_entry.clear_fast_fields();
+                }
             }
         }
     }
@@ -196,6 +216,12 @@ impl App {
             Screen::LogCreate => {
                 self.log_create.reset();
                 self.screen = Screen::LogCreate;
+            }
+            Screen::QsoEntry => {
+                if let Some(ref log) = self.current_log {
+                    self.qso_entry.set_log_context(log);
+                }
+                self.screen = Screen::QsoEntry;
             }
             other => self.screen = other,
         }
@@ -416,9 +442,9 @@ mod tests {
         }
 
         #[test]
-        fn q_on_non_log_select_screens_navigates_back() {
-            let non_log_select = [Screen::QsoEntry, Screen::QsoList, Screen::Export];
-            for screen in non_log_select {
+        fn q_on_placeholder_screens_navigates_back() {
+            let placeholder_screens = [Screen::QsoList, Screen::Export];
+            for screen in placeholder_screens {
                 let (_dir, mut app) = make_app();
                 app.screen = screen;
                 app.handle_key(press(KeyCode::Char('q')));
@@ -432,9 +458,9 @@ mod tests {
         }
 
         #[test]
-        fn esc_on_non_log_select_screens_navigates_back() {
-            let non_log_select = [Screen::QsoEntry, Screen::QsoList, Screen::Export];
-            for screen in non_log_select {
+        fn esc_on_placeholder_screens_navigates_back() {
+            let placeholder_screens = [Screen::QsoList, Screen::Export];
+            for screen in placeholder_screens {
                 let (_dir, mut app) = make_app();
                 app.screen = screen;
                 app.handle_key(press(KeyCode::Esc));
@@ -578,6 +604,183 @@ mod tests {
             app.handle_key(press(KeyCode::Esc));
             assert_eq!(app.screen(), Screen::LogSelect);
             assert_eq!(app.log_select.logs().len(), 1);
+        }
+    }
+
+    mod qso_entry_integration {
+        use super::*;
+
+        fn make_app_with_log() -> (tempfile::TempDir, App) {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            save_test_log(&manager, "test-log");
+            let mut app = App::new(manager).unwrap();
+            // Select the log to navigate to QsoEntry
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            (dir, app)
+        }
+
+        fn submit_qso(app: &mut App) {
+            type_string(app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+        }
+
+        #[test]
+        fn submit_qso_persists_to_storage() {
+            let (_dir, mut app) = make_app_with_log();
+            submit_qso(&mut app);
+
+            // Should still be on QsoEntry
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            // QSO should be in the current log
+            assert_eq!(app.current_log().unwrap().qsos.len(), 1);
+            assert_eq!(app.current_log().unwrap().qsos[0].their_call, "KD9XYZ");
+            // QSO should be persisted
+            let loaded = app.manager().load_log("test-log").unwrap();
+            assert_eq!(loaded.qsos.len(), 1);
+        }
+
+        #[test]
+        fn submit_qso_clears_form() {
+            let (_dir, mut app) = make_app_with_log();
+            submit_qso(&mut app);
+
+            // Callsign should be cleared
+            assert_eq!(app.qso_entry.form().value(0), "");
+            // RST should be repopulated
+            assert_eq!(app.qso_entry.form().value(1), "59");
+        }
+
+        #[test]
+        fn submit_qso_adds_to_recent() {
+            let (_dir, mut app) = make_app_with_log();
+            submit_qso(&mut app);
+
+            assert_eq!(app.qso_entry.recent_qsos().len(), 1);
+            assert_eq!(app.qso_entry.recent_qsos()[0].their_call, "KD9XYZ");
+        }
+
+        #[test]
+        fn esc_from_qso_entry_returns_to_log_select() {
+            let (_dir, mut app) = make_app_with_log();
+            app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.screen(), Screen::LogSelect);
+        }
+
+        #[test]
+        fn question_mark_on_qso_entry_types_char() {
+            let (_dir, mut app) = make_app_with_log();
+            app.handle_key(press(KeyCode::Char('?')));
+            // Should NOT navigate to Help, should stay on QsoEntry
+            assert_eq!(app.screen(), Screen::QsoEntry);
+        }
+
+        #[test]
+        fn create_log_then_submit_qso() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('n')));
+            fill_create_form(&mut app);
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+
+            // Submit a QSO
+            type_string(&mut app, "N0CALL");
+            app.handle_key(press(KeyCode::Enter));
+
+            assert_eq!(app.current_log().unwrap().qsos.len(), 1);
+            let log_id = app.current_log().unwrap().log_id.clone();
+            let loaded = app.manager().load_log(&log_id).unwrap();
+            assert_eq!(loaded.qsos.len(), 1);
+        }
+
+        #[test]
+        fn select_log_populates_recent_qsos() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            let log = save_test_log(&manager, "test-log");
+
+            // Add a QSO to the log file
+            let qso = crate::model::Qso::new(
+                "W3ABC".to_string(),
+                "59".to_string(),
+                "59".to_string(),
+                crate::model::Band::M20,
+                crate::model::Mode::Ssb,
+                chrono::Utc::now(),
+                String::new(),
+                None,
+            )
+            .unwrap();
+            manager.append_qso(&log.log_id, &qso).unwrap();
+
+            // Reload the log so it has the QSO
+            let mut app = App::new(LogManager::with_path(dir.path()).unwrap()).unwrap();
+
+            // Need to load the log with QSOs — the log_select loads them
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert_eq!(app.qso_entry.recent_qsos().len(), 1);
+        }
+
+        #[test]
+        fn multiple_qsos_persist_and_accumulate() {
+            let (_dir, mut app) = make_app_with_log();
+
+            type_string(&mut app, "W1AW");
+            app.handle_key(press(KeyCode::Enter));
+            type_string(&mut app, "N0CALL");
+            app.handle_key(press(KeyCode::Enter));
+
+            assert_eq!(app.current_log().unwrap().qsos.len(), 2);
+            assert_eq!(app.qso_entry.recent_qsos().len(), 2);
+            let loaded = app.manager().load_log("test-log").unwrap();
+            assert_eq!(loaded.qsos.len(), 2);
+        }
+
+        #[test]
+        fn navigate_to_qso_entry_sets_log_context() {
+            let (_dir, mut app) = make_app_with_log();
+            // Submit a QSO
+            submit_qso(&mut app);
+            // Navigate away and back
+            app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.screen(), Screen::LogSelect);
+            // Select the same log again
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            // Recent QSOs should be repopulated from log
+            assert_eq!(app.qso_entry.recent_qsos().len(), 1);
+        }
+
+        #[test]
+        fn navigate_action_to_qso_entry_sets_context() {
+            let (_dir, mut app) = make_app_with_log();
+            // Go back to LogSelect
+            app.handle_key(press(KeyCode::Esc));
+            // Manually trigger Navigate(QsoEntry) through apply_action
+            app.apply_action(Action::Navigate(Screen::QsoEntry));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+        }
+
+        #[test]
+        fn storage_error_on_append_shows_error() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            save_test_log(&manager, "test-log");
+            let mut app = App::new(manager).unwrap();
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+
+            // Delete the log file to cause an append error
+            std::fs::remove_file(dir.path().join("test-log.jsonl")).unwrap();
+
+            type_string(&mut app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+
+            // Should show error, QSO not added
+            assert!(app.qso_entry.error().is_some());
+            assert_eq!(app.current_log().unwrap().qsos.len(), 0);
         }
     }
 }
