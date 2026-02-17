@@ -207,7 +207,7 @@ mod tests {
     fn make_log(id: &str, callsign: &str, park: Option<&str>) -> Log {
         Log {
             station_callsign: callsign.into(),
-            operator: callsign.into(),
+            operator: Some(callsign.into()),
             park_ref: park.map(Into::into),
             grid_square: "FN31".into(),
             qsos: vec![],

@@ -265,7 +265,7 @@ mod tests {
     fn save_test_log(manager: &LogManager, id: &str) -> Log {
         let log = Log {
             station_callsign: "W1AW".into(),
-            operator: "W1AW".into(),
+            operator: Some("W1AW".into()),
             park_ref: Some("K-0001".into()),
             grid_square: "FN31".into(),
             qsos: vec![],
@@ -328,7 +328,7 @@ mod tests {
 
             let log = Log {
                 station_callsign: "W1AW".into(),
-                operator: "W1AW".into(),
+                operator: Some("W1AW".into()),
                 park_ref: None,
                 grid_square: "FN31pr".into(),
                 qsos: vec![],

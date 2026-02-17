@@ -43,7 +43,7 @@ mod tests {
     fn make_log() -> Log {
         let mut log = Log::new(
             "W1AW".to_string(),
-            "W1AW".to_string(),
+            Some("W1AW".to_string()),
             Some("K-0001".to_string()),
             "FN31".to_string(),
         )
@@ -55,7 +55,7 @@ mod tests {
     fn make_log_without_park() -> Log {
         let mut log = Log::new(
             "W1AW".to_string(),
-            "W1AW".to_string(),
+            Some("W1AW".to_string()),
             None,
             "FN31".to_string(),
         )

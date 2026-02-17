@@ -39,7 +39,7 @@ impl LogCreateState {
         Self {
             form: Form::new(vec![
                 FormField::new("Station Callsign", true),
-                FormField::new("Operator", true),
+                FormField::new("Operator", false),
                 FormField::new("Park Ref (e.g. K-0001)", false),
                 FormField::new("Grid Square (e.g. FN31)", true),
             ]),
@@ -86,7 +86,8 @@ impl LogCreateState {
         self.form.clear_errors();
 
         let callsign = self.form.value(CALLSIGN).to_string();
-        let operator = self.form.value(OPERATOR).to_string();
+        let operator_str = self.form.value(OPERATOR).to_string();
+        let operator = (!operator_str.is_empty()).then_some(operator_str);
         let park_ref_str = self.form.value(PARK_REF).to_string();
         let grid_square = self.form.value(GRID_SQUARE).to_string();
 
@@ -94,7 +95,9 @@ impl LogCreateState {
         if let Err(e) = validate_callsign(&callsign) {
             self.form.set_error(CALLSIGN, e.to_string());
         }
-        if let Err(e) = validate_callsign(&operator) {
+        if let Some(ref op) = operator
+            && let Err(e) = validate_callsign(op)
+        {
             self.form.set_error(OPERATOR, e.to_string());
         }
         if !park_ref_str.is_empty()
@@ -288,9 +291,34 @@ mod tests {
             match action {
                 Action::CreateLog(log) => {
                     assert_eq!(log.station_callsign, "W1AW");
-                    assert_eq!(log.operator, "W1AW");
+                    assert_eq!(log.operator, Some("W1AW".to_string()));
                     assert_eq!(log.park_ref, None);
                     assert_eq!(log.grid_square, "FN31");
+                }
+                other => panic!("expected CreateLog, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn empty_operator_creates_log_with_none() {
+            let mut state = LogCreateState::new();
+            // Fill callsign
+            for ch in "W1AW".chars() {
+                state.handle_key(press(KeyCode::Char(ch)));
+            }
+            // Tab to operator, then past it (leave empty)
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            // Tab past park ref
+            state.handle_key(press(KeyCode::Tab));
+            // Fill grid square
+            for ch in "FN31".chars() {
+                state.handle_key(press(KeyCode::Char(ch)));
+            }
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::CreateLog(log) => {
+                    assert_eq!(log.operator, None);
                 }
                 other => panic!("expected CreateLog, got {other:?}"),
             }
@@ -329,7 +357,7 @@ mod tests {
             assert_eq!(action, Action::None);
             assert!(state.form().has_errors());
             assert!(state.form().fields()[CALLSIGN].error.is_some());
-            assert!(state.form().fields()[OPERATOR].error.is_some());
+            assert!(state.form().fields()[OPERATOR].error.is_none()); // optional
             assert!(state.form().fields()[PARK_REF].error.is_none()); // optional
             assert!(state.form().fields()[GRID_SQUARE].error.is_some());
         }

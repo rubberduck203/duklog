@@ -57,9 +57,10 @@ pub fn format_header(log: &Log) -> Result<String, AdifError> {
 
 /// Formats a single QSO record ending with `<eor>`.
 ///
-/// Includes per-log fields (station callsign, operator, park ref) alongside
-/// per-QSO fields. POTA fields are only emitted when the relevant park
-/// references are present.
+/// Includes per-log fields (station callsign, park ref) alongside per-QSO
+/// fields. OPERATOR is emitted only when set and different from the station
+/// callsign. POTA fields are only emitted when the relevant park references
+/// are present.
 pub fn format_qso(log: &Log, qso: &Qso) -> Result<String, AdifError> {
     let mut encoder = TagEncoder::new();
     let mut buf = BytesMut::new();
@@ -69,11 +70,11 @@ pub fn format_qso(log: &Log, qso: &Qso) -> Result<String, AdifError> {
         &mut buf,
         field_tag("STATION_CALLSIGN", log.station_callsign.as_str()),
     )?;
-    encode(
-        &mut encoder,
-        &mut buf,
-        field_tag("OPERATOR", log.operator.as_str()),
-    )?;
+    if let Some(ref op) = log.operator
+        && op != &log.station_callsign
+    {
+        encode(&mut encoder, &mut buf, field_tag("OPERATOR", op.as_str()))?;
+    }
     encode(
         &mut encoder,
         &mut buf,
@@ -167,7 +168,7 @@ mod tests {
     fn make_log() -> Log {
         let mut log = Log::new(
             "W1AW".to_string(),
-            "W1AW".to_string(),
+            Some("W1AW".to_string()),
             Some("K-0001".to_string()),
             "FN31".to_string(),
         )
@@ -179,7 +180,7 @@ mod tests {
     fn make_log_without_park() -> Log {
         let mut log = Log::new(
             "W1AW".to_string(),
-            "W1AW".to_string(),
+            Some("W1AW".to_string()),
             None,
             "FN31".to_string(),
         )
@@ -191,7 +192,19 @@ mod tests {
     fn make_log_distinct_operator() -> Log {
         let mut log = Log::new(
             "W1AW".to_string(),
-            "N0CALL".to_string(),
+            Some("N0CALL".to_string()),
+            Some("K-0001".to_string()),
+            "FN31".to_string(),
+        )
+        .unwrap();
+        log.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        log
+    }
+
+    fn make_log_none_operator() -> Log {
+        let mut log = Log::new(
+            "W1AW".to_string(),
+            None,
             Some("K-0001".to_string()),
             "FN31".to_string(),
         )
@@ -284,7 +297,6 @@ mod tests {
         let record = format_qso(&make_log(), &make_qso()).unwrap();
 
         assert!(record.contains("<STATION_CALLSIGN:4>W1AW"));
-        assert!(record.contains("<OPERATOR:4>W1AW"));
         assert!(record.contains("<CALL:6>KD9XYZ"));
         assert!(record.contains("<QSO_DATE:8>20260216"));
         assert!(record.contains("<TIME_ON:6>143000"));
@@ -293,6 +305,18 @@ mod tests {
         assert!(record.contains("<RST_SENT:2>59"));
         assert!(record.contains("<RST_RCVD:2>59"));
         assert!(record.contains("<MY_GRIDSQUARE:4>FN31"));
+    }
+
+    #[test]
+    fn qso_same_operator_excludes_operator_field() {
+        let record = format_qso(&make_log(), &make_qso()).unwrap();
+        assert!(!record.contains("OPERATOR"));
+    }
+
+    #[test]
+    fn qso_none_operator_excludes_operator_field() {
+        let record = format_qso(&make_log_none_operator(), &make_qso()).unwrap();
+        assert!(!record.contains("OPERATOR"));
     }
 
     #[test]

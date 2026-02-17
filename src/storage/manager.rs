@@ -14,7 +14,7 @@ use crate::model::{Log, Qso};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct LogMetadata {
     station_callsign: String,
-    operator: String,
+    operator: Option<String>,
     park_ref: Option<String>,
     grid_square: String,
     created_at: DateTime<Utc>,
@@ -185,7 +185,7 @@ mod tests {
     fn make_log() -> Log {
         let mut log = Log::new(
             "W1AW".to_string(),
-            "W1AW".to_string(),
+            Some("W1AW".to_string()),
             Some("K-0001".to_string()),
             "FN31".to_string(),
         )
@@ -198,7 +198,7 @@ mod tests {
     fn make_log_with_id(id: &str, year: i32) -> Log {
         let mut log = Log::new(
             "W1AW".to_string(),
-            "W1AW".to_string(),
+            Some("W1AW".to_string()),
             Some("K-0001".to_string()),
             "FN31".to_string(),
         )
@@ -442,6 +442,32 @@ mod tests {
 
         let loaded = manager.load_log("no-park").unwrap();
         assert_eq!(loaded.park_ref, None);
+    }
+
+    #[test]
+    fn old_format_operator_string_deserializes_to_some() {
+        let (dir, manager) = make_manager();
+        let json = r#"{"station_callsign":"W1AW","operator":"W1AW","park_ref":null,"grid_square":"FN31","created_at":"2026-02-16T12:00:00Z","log_id":"compat"}"#;
+        fs::write(dir.path().join("compat.jsonl"), format!("{json}\n")).unwrap();
+        let loaded = manager.load_log("compat").unwrap();
+        assert_eq!(loaded.operator, Some("W1AW".to_string()));
+    }
+
+    #[test]
+    fn metadata_preserves_none_operator() {
+        let (_dir, manager) = make_manager();
+        let mut log = Log::new(
+            "W1AW".to_string(),
+            None,
+            Some("K-0001".to_string()),
+            "FN31".to_string(),
+        )
+        .unwrap();
+        log.log_id = "no-op".to_string();
+        manager.save_log(&log).unwrap();
+
+        let loaded = manager.load_log("no-op").unwrap();
+        assert_eq!(loaded.operator, None);
     }
 
     // --- Path safety ---
