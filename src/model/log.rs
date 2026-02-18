@@ -79,6 +79,15 @@ impl Log {
         10_usize.saturating_sub(self.qso_count_today())
     }
 
+    /// Replaces the QSO at `index` with `qso`, returning the old QSO.
+    ///
+    /// Returns `None` if `index` is out of bounds.
+    pub fn replace_qso(&mut self, index: usize, qso: Qso) -> Option<Qso> {
+        self.qsos
+            .get_mut(index)
+            .map(|slot| std::mem::replace(slot, qso))
+    }
+
     /// Returns `true` if this log has at least 10 QSOs today (valid POTA activation).
     pub fn is_activated(&self) -> bool {
         self.qso_count_today() >= 10
@@ -362,6 +371,27 @@ mod tests {
         let mut log = make_log();
         add_today_qsos(&mut log, n as usize);
         log.is_activated() == (n as usize >= 10)
+    }
+
+    // --- replace_qso ---
+
+    #[test]
+    fn replace_qso_at_valid_index_returns_old() {
+        let mut log = make_log();
+        let qso1 = make_qso_on_date(NaiveDate::from_ymd_opt(2026, 1, 15).unwrap());
+        log.add_qso(qso1.clone());
+
+        let qso2 = make_qso_on_date(NaiveDate::from_ymd_opt(2026, 2, 20).unwrap());
+        let old = log.replace_qso(0, qso2.clone());
+        assert_eq!(old, Some(qso1));
+        assert_eq!(log.qsos[0], qso2);
+    }
+
+    #[test]
+    fn replace_qso_out_of_bounds_returns_none() {
+        let mut log = make_log();
+        let qso = make_qso_on_date(NaiveDate::from_ymd_opt(2026, 1, 15).unwrap());
+        assert_eq!(log.replace_qso(0, qso), None);
     }
 
     // --- Serde ---
