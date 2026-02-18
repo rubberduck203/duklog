@@ -71,6 +71,10 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 - Final `make mutants` pass across entire codebase
 - Complete all `docs/` files
 
+#### Future enhancements (post-3.12)
+
+- **Editable export path**: Allow user to edit the export file path on the export confirmation screen before exporting (use existing `FormState` text input widget)
+
 ---
 
 ## Dependency Graph (remaining)
