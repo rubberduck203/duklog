@@ -1,6 +1,6 @@
 //! QSO entry screen — the core data entry form for logging contacts.
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -32,6 +32,8 @@ pub struct QsoEntryState {
     mode: Mode,
     recent_qsos: Vec<Qso>,
     error: Option<String>,
+    /// When editing an existing QSO: `(index, original_timestamp)`.
+    editing: Option<(usize, DateTime<Utc>)>,
 }
 
 impl Default for QsoEntryState {
@@ -61,6 +63,7 @@ impl QsoEntryState {
             mode,
             recent_qsos: Vec::new(),
             error: None,
+            editing: None,
         }
     }
 
@@ -79,6 +82,9 @@ impl QsoEntryState {
                 }
                 KeyCode::Char('x') => {
                     return Action::Navigate(Screen::Export);
+                }
+                KeyCode::Char('e') => {
+                    return Action::Navigate(Screen::QsoList);
                 }
                 _ => {}
             }
@@ -111,7 +117,14 @@ impl QsoEntryState {
                 self.form.delete_char();
                 Action::None
             }
-            KeyCode::Esc => Action::Navigate(Screen::LogSelect),
+            KeyCode::Esc => {
+                if self.editing.is_some() {
+                    self.editing = None;
+                    Action::Navigate(Screen::QsoList)
+                } else {
+                    Action::Navigate(Screen::LogSelect)
+                }
+            }
             KeyCode::Enter => self.submit(),
             KeyCode::Char(ch) => self.handle_char(ch),
             _ => Action::None,
@@ -159,6 +172,32 @@ impl QsoEntryState {
         self.recent_qsos.truncate(3);
     }
 
+    /// Returns `true` if the form is in edit mode.
+    pub fn is_editing(&self) -> bool {
+        self.editing.is_some()
+    }
+
+    /// Clears edit mode without resetting the rest of the form.
+    pub fn clear_editing(&mut self) {
+        self.editing = None;
+    }
+
+    /// Enters edit mode: populates the form from an existing QSO.
+    pub fn start_editing(&mut self, index: usize, qso: &Qso) {
+        self.form.set_value(THEIR_CALL, &qso.their_call);
+        self.form.set_value(RST_SENT, &qso.rst_sent);
+        self.form.set_value(RST_RCVD, &qso.rst_rcvd);
+        self.form
+            .set_value(THEIR_PARK, qso.their_park.as_deref().unwrap_or(""));
+        self.form.set_value(COMMENTS, &qso.comments);
+        self.band = qso.band;
+        self.mode = qso.mode;
+        self.form.clear_errors();
+        self.error = None;
+        self.form.set_focus(THEIR_CALL);
+        self.editing = Some((index, qso.timestamp));
+    }
+
     /// Clears fast-moving fields and repopulates RST defaults for the current mode.
     pub fn clear_fast_fields(&mut self) {
         self.form.clear_value(THEIR_CALL);
@@ -169,6 +208,7 @@ impl QsoEntryState {
         self.form.clear_value(COMMENTS);
         self.form.clear_errors();
         self.error = None;
+        self.editing = None;
         self.form.set_focus(THEIR_CALL);
     }
 
@@ -246,17 +286,15 @@ impl QsoEntryState {
 
         let their_park = (!their_park_str.is_empty()).then_some(their_park_str);
 
+        let timestamp = self.editing.map(|(_, ts)| ts).unwrap_or_else(Utc::now);
+
         match Qso::new(
-            their_call,
-            rst_sent,
-            rst_rcvd,
-            self.band,
-            self.mode,
-            Utc::now(),
-            comments,
-            their_park,
+            their_call, rst_sent, rst_rcvd, self.band, self.mode, timestamp, comments, their_park,
         ) {
-            Ok(qso) => Action::AddQso(qso),
+            Ok(qso) => match self.editing {
+                Some((idx, _)) => Action::UpdateQso(idx, qso),
+                None => Action::AddQso(qso),
+            },
             Err(e) => {
                 self.form.set_error(THEIR_CALL, e.to_string());
                 Action::None
@@ -286,8 +324,13 @@ fn cycle<T: PartialEq + Copy>(items: &[T], current: T, forward: bool) -> T {
 /// Renders the QSO entry screen.
 #[mutants::skip]
 pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Frame, area: Rect) {
+    let title = if state.is_editing() {
+        " Edit QSO "
+    } else {
+        " QSO Entry "
+    };
     let block = Block::default()
-        .title(" QSO Entry ")
+        .title(title)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
@@ -404,10 +447,13 @@ pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Fram
     }
 
     // Footer
-    let footer = Paragraph::new(Line::from(
-        "Tab: next  Alt+b/m: band/mode  Shift+Alt: reverse  Alt+x: export  Enter: log  Esc: back",
-    ))
-    .style(Style::default().fg(Color::DarkGray));
+    let footer_text = if state.is_editing() {
+        "Tab/Shift+Tab: next/prev  Alt+b/m: band/mode (Shift: reverse)  Enter: save  Esc: cancel"
+    } else {
+        "Tab/Shift+Tab: next/prev  Alt+b/m: band/mode (Shift: reverse)  Alt+e: edit  Alt+x: export  Enter: log  Esc: back"
+    };
+    let footer =
+        Paragraph::new(Line::from(footer_text)).style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, footer_area);
 }
 
@@ -1046,6 +1092,13 @@ mod tests {
             let action = state.handle_key(alt_press(KeyCode::Char('x')));
             assert_eq!(action, Action::Navigate(Screen::Export));
         }
+
+        #[test]
+        fn alt_e_navigates_to_qso_list() {
+            let mut state = QsoEntryState::new();
+            let action = state.handle_key(alt_press(KeyCode::Char('e')));
+            assert_eq!(action, Action::Navigate(Screen::QsoList));
+        }
     }
 
     mod error_display {
@@ -1091,6 +1144,111 @@ mod tests {
             assert_eq!(state.form().value(THEIR_CALL), "");
             assert_eq!(state.form().value(RST_SENT), "59");
             assert!(state.recent_qsos().is_empty());
+            assert_eq!(state.error(), None);
+        }
+    }
+
+    mod editing {
+        use super::*;
+
+        fn make_test_qso() -> Qso {
+            Qso::new(
+                "W3ABC".to_string(),
+                "57".to_string(),
+                "55".to_string(),
+                Band::M40,
+                Mode::Cw,
+                Utc.with_ymd_and_hms(2026, 1, 10, 12, 0, 0).unwrap(),
+                "test comment".to_string(),
+                Some("K-5678".to_string()),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn start_editing_populates_form() {
+            let mut state = QsoEntryState::new();
+            let qso = make_test_qso();
+            state.start_editing(2, &qso);
+
+            assert_eq!(state.form().value(THEIR_CALL), "W3ABC");
+            assert_eq!(state.form().value(RST_SENT), "57");
+            assert_eq!(state.form().value(RST_RCVD), "55");
+            assert_eq!(state.form().value(THEIR_PARK), "K-5678");
+            assert_eq!(state.form().value(COMMENTS), "test comment");
+            assert_eq!(state.band(), Band::M40);
+            assert_eq!(state.mode(), Mode::Cw);
+            assert_eq!(state.form().focus(), THEIR_CALL);
+        }
+
+        #[test]
+        fn start_editing_without_park() {
+            let mut state = QsoEntryState::new();
+            let qso = make_qso("W3ABC", Band::M20, Mode::Ssb);
+            state.start_editing(0, &qso);
+            assert_eq!(state.form().value(THEIR_PARK), "");
+        }
+
+        #[test]
+        fn is_editing_returns_correct_value() {
+            let mut state = QsoEntryState::new();
+            assert!(!state.is_editing());
+            state.start_editing(0, &make_test_qso());
+            assert!(state.is_editing());
+        }
+
+        #[test]
+        fn submit_in_edit_mode_returns_update_qso() {
+            let mut state = QsoEntryState::new();
+            let qso = make_test_qso();
+            let original_ts = qso.timestamp;
+            state.start_editing(2, &qso);
+
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::UpdateQso(idx, updated) => {
+                    assert_eq!(idx, 2);
+                    assert_eq!(updated.their_call, "W3ABC");
+                    assert_eq!(updated.timestamp, original_ts);
+                }
+                other => panic!("expected UpdateQso, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn esc_in_edit_mode_navigates_to_qso_list() {
+            let mut state = QsoEntryState::new();
+            state.start_editing(0, &make_test_qso());
+            let action = state.handle_key(press(KeyCode::Esc));
+            assert_eq!(action, Action::Navigate(Screen::QsoList));
+            assert!(!state.is_editing());
+        }
+
+        #[test]
+        fn reset_clears_editing_state() {
+            let mut state = QsoEntryState::new();
+            state.start_editing(0, &make_test_qso());
+            state.reset();
+            assert!(!state.is_editing());
+        }
+
+        #[test]
+        fn clear_fast_fields_clears_editing_state() {
+            let mut state = QsoEntryState::new();
+            state.start_editing(0, &make_test_qso());
+            state.clear_fast_fields();
+            assert!(!state.is_editing());
+        }
+
+        #[test]
+        fn start_editing_clears_errors() {
+            let mut state = QsoEntryState::new();
+            state.handle_key(press(KeyCode::Enter)); // trigger validation errors
+            assert!(state.form().has_errors());
+            state.set_error("some error".into());
+
+            state.start_editing(0, &make_test_qso());
+            assert!(!state.form().has_errors());
             assert_eq!(state.error(), None);
         }
     }
@@ -1221,14 +1379,14 @@ mod tests {
         #[test]
         fn renders_footer_keybindings() {
             let state = QsoEntryState::new();
-            let output = render_qso_entry(&state, None, 100, 30);
+            let output = render_qso_entry(&state, None, 120, 30);
             assert!(
                 output.contains("Alt+b/m"),
                 "should show band/mode keybindings"
             );
             assert!(
-                output.contains("Alt+x: export"),
-                "should show export keybinding"
+                output.contains("Alt+e: edit"),
+                "should show edit keybinding"
             );
             assert!(
                 output.contains("Enter: log"),

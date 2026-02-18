@@ -16,6 +16,7 @@ use super::screens::export::{ExportState, draw_export};
 use super::screens::log_create::{LogCreateState, draw_log_create};
 use super::screens::log_select::{LogSelectState, draw_log_select};
 use super::screens::qso_entry::{QsoEntryState, draw_qso_entry};
+use super::screens::qso_list::{QsoListState, draw_qso_list};
 
 /// All screens the app can navigate between.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -57,6 +58,7 @@ pub struct App {
     log_select: LogSelectState,
     log_create: LogCreateState,
     qso_entry: QsoEntryState,
+    qso_list: QsoListState,
     export: ExportState,
 }
 
@@ -76,6 +78,7 @@ impl App {
             log_select,
             log_create: LogCreateState::new(),
             qso_entry: QsoEntryState::new(),
+            qso_list: QsoListState::new(),
             export: ExportState::new(),
         })
     }
@@ -107,6 +110,9 @@ impl App {
             Screen::LogCreate => draw_log_create(&self.log_create, frame, area),
             Screen::QsoEntry => {
                 draw_qso_entry(&self.qso_entry, self.current_log.as_ref(), frame, area);
+            }
+            Screen::QsoList => {
+                draw_qso_list(&self.qso_list, self.current_log.as_ref(), frame, area);
             }
             Screen::Export => {
                 draw_export(&self.export, self.current_log.as_ref(), frame, area);
@@ -160,6 +166,10 @@ impl App {
             Screen::LogSelect => self.log_select.handle_key(key),
             Screen::LogCreate => self.log_create.handle_key(key),
             Screen::QsoEntry => self.qso_entry.handle_key(key),
+            Screen::QsoList => {
+                let count = self.current_log.as_ref().map_or(0, |l| l.qsos.len());
+                self.qso_list.handle_key(key, count)
+            }
             Screen::Export => self.export.handle_key(key),
             _ => match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => Action::Navigate(Screen::LogSelect),
@@ -210,6 +220,43 @@ impl App {
                     self.export.set_error("No active log selected".into());
                 }
             },
+            Action::EditQso(index) => match self.current_log {
+                Some(ref log) => match log.qsos.get(index) {
+                    Some(qso) => {
+                        self.qso_entry.start_editing(index, qso);
+                        self.screen = Screen::QsoEntry;
+                    }
+                    None => {
+                        self.qso_entry
+                            .set_error(format!("QSO index {index} out of bounds"));
+                        self.screen = Screen::QsoEntry;
+                    }
+                },
+                None => {
+                    self.qso_entry.set_error("No active log selected".into());
+                    self.screen = Screen::QsoEntry;
+                }
+            },
+            Action::UpdateQso(index, qso) => match self.current_log {
+                Some(ref mut log) => {
+                    if log.replace_qso(index, qso).is_none() {
+                        self.qso_entry
+                            .set_error(format!("QSO index {index} out of bounds"));
+                        self.qso_entry.clear_editing();
+                        return;
+                    }
+                    if let Err(e) = self.manager.save_log(log) {
+                        self.qso_entry.set_error(format!("Failed to save log: {e}"));
+                        self.qso_entry.clear_editing();
+                        return;
+                    }
+                    self.qso_entry.clear_editing();
+                    self.screen = Screen::QsoList;
+                }
+                None => {
+                    self.qso_entry.set_error("No active log selected".into());
+                }
+            },
             Action::AddQso(qso) => match self.current_log {
                 Some(ref mut log) => {
                     if let Err(e) = self.manager.append_qso(&log.log_id, &qso) {
@@ -246,6 +293,10 @@ impl App {
                     self.qso_entry.set_log_context(log);
                 }
                 self.screen = Screen::QsoEntry;
+            }
+            Screen::QsoList => {
+                self.qso_list.reset();
+                self.screen = Screen::QsoList;
             }
             Screen::Export => {
                 self.export.prepare(self.current_log.as_ref());
@@ -470,35 +521,38 @@ mod tests {
         }
 
         #[test]
-        fn q_on_placeholder_screens_navigates_back() {
-            let placeholder_screens = [Screen::QsoList];
-            for screen in placeholder_screens {
-                let (_dir, mut app) = make_app();
-                app.screen = screen;
-                app.handle_key(press(KeyCode::Char('q')));
-                assert_eq!(
-                    app.screen(),
-                    Screen::LogSelect,
-                    "q on {screen:?} should navigate to LogSelect"
-                );
-                assert!(!app.should_quit());
-            }
+        fn q_on_qso_list_navigates_to_qso_entry() {
+            let (_dir, mut app) = make_app();
+            app.screen = Screen::QsoList;
+            app.handle_key(press(KeyCode::Char('q')));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert!(!app.should_quit());
         }
 
         #[test]
-        fn esc_on_placeholder_screens_navigates_back() {
-            let placeholder_screens = [Screen::QsoList];
-            for screen in placeholder_screens {
-                let (_dir, mut app) = make_app();
-                app.screen = screen;
-                app.handle_key(press(KeyCode::Esc));
-                assert_eq!(
-                    app.screen(),
-                    Screen::LogSelect,
-                    "Esc on {screen:?} should navigate to LogSelect"
-                );
-                assert!(!app.should_quit());
-            }
+        fn esc_on_qso_list_navigates_to_qso_entry() {
+            let (_dir, mut app) = make_app();
+            app.screen = Screen::QsoList;
+            app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert!(!app.should_quit());
+        }
+
+        #[test]
+        fn question_mark_on_qso_list_navigates_to_help() {
+            let (_dir, mut app) = make_app();
+            app.screen = Screen::QsoList;
+            app.handle_key(press(KeyCode::Char('?')));
+            assert_eq!(app.screen(), Screen::Help);
+        }
+
+        #[test]
+        fn navigate_to_qso_list_resets_state() {
+            let (_dir, mut app) = make_app();
+            app.qso_list.set_selected(5);
+            app.navigate(Screen::QsoList);
+            assert_eq!(app.screen(), Screen::QsoList);
+            assert_eq!(app.qso_list.selected(), 0);
         }
     }
 
@@ -967,6 +1021,227 @@ mod tests {
             assert_eq!(app.screen(), Screen::Export);
             app.handle_key(press(KeyCode::Char('?')));
             assert_eq!(app.screen(), Screen::Help);
+        }
+    }
+
+    mod qso_list_integration {
+        use super::*;
+
+        fn alt_press(code: KeyCode) -> KeyEvent {
+            KeyEvent {
+                code,
+                modifiers: KeyModifiers::ALT,
+                kind: KeyEventKind::Press,
+                state: KeyEventState::NONE,
+            }
+        }
+
+        fn make_app_with_log() -> (tempfile::TempDir, App) {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            save_test_log(&manager, "test-log");
+            let mut app = App::new(manager).unwrap();
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            (dir, app)
+        }
+
+        #[test]
+        fn alt_e_navigates_to_qso_list() {
+            let (_dir, mut app) = make_app_with_log();
+            app.handle_key(alt_press(KeyCode::Char('e')));
+            assert_eq!(app.screen(), Screen::QsoList);
+        }
+
+        #[test]
+        fn q_on_qso_list_returns_to_qso_entry() {
+            let (_dir, mut app) = make_app_with_log();
+            app.handle_key(alt_press(KeyCode::Char('e')));
+            assert_eq!(app.screen(), Screen::QsoList);
+            app.handle_key(press(KeyCode::Char('q')));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+        }
+
+        #[test]
+        fn esc_on_qso_list_returns_to_qso_entry() {
+            let (_dir, mut app) = make_app_with_log();
+            app.handle_key(alt_press(KeyCode::Char('e')));
+            assert_eq!(app.screen(), Screen::QsoList);
+            app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+        }
+
+        #[test]
+        fn navigate_to_qso_list_resets_selected() {
+            let (_dir, mut app) = make_app_with_log();
+            app.qso_list.set_selected(5);
+            app.handle_key(alt_press(KeyCode::Char('e')));
+            assert_eq!(app.screen(), Screen::QsoList);
+            assert_eq!(app.qso_list.selected(), 0);
+        }
+
+        #[test]
+        fn arrow_keys_navigate_qso_list() {
+            let (_dir, mut app) = make_app_with_log();
+            // Add QSOs
+            type_string(&mut app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+            type_string(&mut app, "W3ABC");
+            app.handle_key(press(KeyCode::Enter));
+
+            app.handle_key(alt_press(KeyCode::Char('e')));
+            assert_eq!(app.screen(), Screen::QsoList);
+            assert_eq!(app.qso_list.selected(), 0);
+
+            app.handle_key(press(KeyCode::Down));
+            assert_eq!(app.qso_list.selected(), 1);
+
+            app.handle_key(press(KeyCode::Up));
+            assert_eq!(app.qso_list.selected(), 0);
+        }
+
+        #[test]
+        fn enter_on_qso_list_opens_edit_mode() {
+            let (_dir, mut app) = make_app_with_log();
+            type_string(&mut app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+
+            app.handle_key(alt_press(KeyCode::Char('e')));
+            assert_eq!(app.screen(), Screen::QsoList);
+
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert!(app.qso_entry.is_editing());
+            assert_eq!(app.qso_entry.form().value(0), "KD9XYZ");
+        }
+
+        #[test]
+        fn edit_save_returns_to_list_with_selection() {
+            let (_dir, mut app) = make_app_with_log();
+            // Add two QSOs
+            type_string(&mut app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+            type_string(&mut app, "W3ABC");
+            app.handle_key(press(KeyCode::Enter));
+
+            // Go to list, select second QSO, edit it
+            app.handle_key(alt_press(KeyCode::Char('e')));
+            app.handle_key(press(KeyCode::Down));
+            assert_eq!(app.qso_list.selected(), 1);
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert!(app.qso_entry.is_editing());
+
+            // Submit the edit (just submit as-is)
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoList);
+            assert!(!app.qso_entry.is_editing());
+            // Selection should be preserved
+            assert_eq!(app.qso_list.selected(), 1);
+        }
+
+        #[test]
+        fn cancel_edit_returns_to_list() {
+            let (_dir, mut app) = make_app_with_log();
+            type_string(&mut app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+
+            app.handle_key(alt_press(KeyCode::Char('e')));
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert!(app.qso_entry.is_editing());
+
+            app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.screen(), Screen::QsoList);
+            assert!(!app.qso_entry.is_editing());
+        }
+
+        #[test]
+        fn edit_persists_to_storage() {
+            let (_dir, mut app) = make_app_with_log();
+            type_string(&mut app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+
+            // Open edit, change callsign
+            app.handle_key(alt_press(KeyCode::Char('e')));
+            app.handle_key(press(KeyCode::Enter));
+
+            // Clear callsign and type a new one
+            for _ in 0..6 {
+                app.handle_key(press(KeyCode::Backspace));
+            }
+            type_string(&mut app, "N0CALL");
+            app.handle_key(press(KeyCode::Enter));
+
+            // Verify in-memory
+            assert_eq!(app.current_log().unwrap().qsos[0].their_call, "N0CALL");
+            // Verify on disk
+            let loaded = app.manager().load_log("test-log").unwrap();
+            assert_eq!(loaded.qsos[0].their_call, "N0CALL");
+        }
+
+        #[test]
+        fn edit_qso_without_active_log_shows_error() {
+            let (_dir, mut app) = make_app();
+            app.screen = Screen::QsoList;
+            app.apply_action(Action::EditQso(0));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert!(app.qso_entry.error().is_some());
+            assert!(app.qso_entry.error().unwrap().contains("No active log"));
+        }
+
+        #[test]
+        fn edit_qso_out_of_bounds_shows_error() {
+            let (_dir, mut app) = make_app_with_log();
+            app.apply_action(Action::EditQso(99));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert!(app.qso_entry.error().is_some());
+            assert!(app.qso_entry.error().unwrap().contains("out of bounds"));
+        }
+
+        #[test]
+        fn update_qso_storage_error_shows_error() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            save_test_log(&manager, "test-log");
+            let mut app = App::new(manager).unwrap();
+            app.handle_key(press(KeyCode::Enter));
+
+            // Add a QSO
+            type_string(&mut app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+
+            // Delete the storage dir to cause save error
+            std::fs::remove_file(dir.path().join("test-log.jsonl")).unwrap();
+            std::fs::remove_dir_all(dir.path()).unwrap();
+
+            let qso = app.current_log().unwrap().qsos[0].clone();
+            app.apply_action(Action::UpdateQso(0, qso));
+            assert!(app.qso_entry.error().is_some());
+            assert!(!app.qso_entry.is_editing());
+        }
+
+        #[test]
+        fn update_qso_out_of_bounds_shows_error() {
+            let (_dir, mut app) = make_app_with_log();
+            type_string(&mut app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+
+            let qso = app.current_log().unwrap().qsos[0].clone();
+            app.apply_action(Action::UpdateQso(99, qso));
+            assert!(app.qso_entry.error().is_some());
+            assert!(app.qso_entry.error().unwrap().contains("out of bounds"));
+            assert!(!app.qso_entry.is_editing());
+        }
+
+        #[test]
+        fn enter_on_empty_qso_list_does_nothing() {
+            let (_dir, mut app) = make_app_with_log();
+            app.handle_key(alt_press(KeyCode::Char('e')));
+            assert_eq!(app.screen(), Screen::QsoList);
+            app.handle_key(press(KeyCode::Enter));
+            // Should stay on QsoList since no QSOs
+            assert_eq!(app.screen(), Screen::QsoList);
         }
     }
 }

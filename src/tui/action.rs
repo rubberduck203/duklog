@@ -20,6 +20,10 @@ pub enum Action {
     CreateLog(Log),
     /// Add a QSO to the active log.
     AddQso(Qso),
+    /// Open the QSO at the given index for editing.
+    EditQso(usize),
+    /// Replace the QSO at the given index with an edited version.
+    UpdateQso(usize, Qso),
     /// Export the active log to ADIF.
     ExportLog,
     /// Quit the application.
