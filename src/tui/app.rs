@@ -239,9 +239,15 @@ impl App {
             },
             Action::UpdateQso(index, qso) => match self.current_log {
                 Some(ref mut log) => {
-                    log.replace_qso(index, qso);
+                    if log.replace_qso(index, qso).is_none() {
+                        self.qso_entry
+                            .set_error(format!("QSO index {index} out of bounds"));
+                        self.qso_entry.clear_editing();
+                        return;
+                    }
                     if let Err(e) = self.manager.save_log(log) {
                         self.qso_entry.set_error(format!("Failed to save log: {e}"));
+                        self.qso_entry.clear_editing();
                         return;
                     }
                     self.qso_entry.clear_editing();
@@ -1212,6 +1218,20 @@ mod tests {
             let qso = app.current_log().unwrap().qsos[0].clone();
             app.apply_action(Action::UpdateQso(0, qso));
             assert!(app.qso_entry.error().is_some());
+            assert!(!app.qso_entry.is_editing());
+        }
+
+        #[test]
+        fn update_qso_out_of_bounds_shows_error() {
+            let (_dir, mut app) = make_app_with_log();
+            type_string(&mut app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+
+            let qso = app.current_log().unwrap().qsos[0].clone();
+            app.apply_action(Action::UpdateQso(99, qso));
+            assert!(app.qso_entry.error().is_some());
+            assert!(app.qso_entry.error().unwrap().contains("out of bounds"));
+            assert!(!app.qso_entry.is_editing());
         }
 
         #[test]
