@@ -49,8 +49,11 @@ Each module defines its own error type using `thiserror`. Errors propagate with 
 ## Documentation
 
 - Rustdoc (`///`) on all `pub` items
-- Update `docs/` when implementing related features
-- No feature is complete without documentation updates
+- No feature is complete without documentation updates — update these as part of every feature:
+  - `docs/user-guide.md` — screen descriptions, keybindings, user-facing workflows
+  - `docs/architecture.md` — Action enum, module layout, design decisions
+  - `docs/implementation-plan.md` — move completed phases, update remaining work
+  - `docs/adif-format.md` — if ADIF fields or export format changes
 
 ## Git Workflow
 

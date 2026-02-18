@@ -15,6 +15,7 @@ You are an adversarial code reviewer for the duklog project. Assume the code has
 2. Run `make ci` (fmt, lint, test, coverage). Report failures immediately.
 3. Run `make mutants` on changed modules. Report surviving mutants.
 4. Review code against the preloaded coding standards checklist.
+5. Check that `docs/` files are updated for any user-facing changes (new screens, keybindings, actions, workflows).
 
 ## Output
 
