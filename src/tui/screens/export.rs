@@ -169,7 +169,7 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
 
     // Footer
     let footer_text = match state.status() {
-        ExportStatus::Ready => "Enter: Export | Esc: Back",
+        ExportStatus::Ready => "Enter: export  Esc: back",
         ExportStatus::Success | ExportStatus::Error(_) => "Press any key to return",
     };
     let footer =
@@ -456,10 +456,10 @@ mod tests {
             let state = ExportState::new();
             let output = render_export(&state, None, 80, 15);
             assert!(
-                output.contains("Enter: Export"),
+                output.contains("Enter: export"),
                 "should show export keybinding"
             );
-            assert!(output.contains("Esc: Back"), "should show back keybinding");
+            assert!(output.contains("Esc: back"), "should show back keybinding");
         }
 
         #[test]

@@ -1041,16 +1041,16 @@ mod tests {
         }
 
         #[test]
-        fn alt_l_navigates_to_qso_list() {
+        fn alt_e_navigates_to_qso_list() {
             let (_dir, mut app) = make_app_with_log();
-            app.handle_key(alt_press(KeyCode::Char('l')));
+            app.handle_key(alt_press(KeyCode::Char('e')));
             assert_eq!(app.screen(), Screen::QsoList);
         }
 
         #[test]
         fn q_on_qso_list_returns_to_qso_entry() {
             let (_dir, mut app) = make_app_with_log();
-            app.handle_key(alt_press(KeyCode::Char('l')));
+            app.handle_key(alt_press(KeyCode::Char('e')));
             assert_eq!(app.screen(), Screen::QsoList);
             app.handle_key(press(KeyCode::Char('q')));
             assert_eq!(app.screen(), Screen::QsoEntry);
@@ -1059,7 +1059,7 @@ mod tests {
         #[test]
         fn esc_on_qso_list_returns_to_qso_entry() {
             let (_dir, mut app) = make_app_with_log();
-            app.handle_key(alt_press(KeyCode::Char('l')));
+            app.handle_key(alt_press(KeyCode::Char('e')));
             assert_eq!(app.screen(), Screen::QsoList);
             app.handle_key(press(KeyCode::Esc));
             assert_eq!(app.screen(), Screen::QsoEntry);
@@ -1069,7 +1069,7 @@ mod tests {
         fn navigate_to_qso_list_resets_selected() {
             let (_dir, mut app) = make_app_with_log();
             app.qso_list.set_selected(5);
-            app.handle_key(alt_press(KeyCode::Char('l')));
+            app.handle_key(alt_press(KeyCode::Char('e')));
             assert_eq!(app.screen(), Screen::QsoList);
             assert_eq!(app.qso_list.selected(), 0);
         }
@@ -1083,7 +1083,7 @@ mod tests {
             type_string(&mut app, "W3ABC");
             app.handle_key(press(KeyCode::Enter));
 
-            app.handle_key(alt_press(KeyCode::Char('l')));
+            app.handle_key(alt_press(KeyCode::Char('e')));
             assert_eq!(app.screen(), Screen::QsoList);
             assert_eq!(app.qso_list.selected(), 0);
 
@@ -1100,7 +1100,7 @@ mod tests {
             type_string(&mut app, "KD9XYZ");
             app.handle_key(press(KeyCode::Enter));
 
-            app.handle_key(alt_press(KeyCode::Char('l')));
+            app.handle_key(alt_press(KeyCode::Char('e')));
             assert_eq!(app.screen(), Screen::QsoList);
 
             app.handle_key(press(KeyCode::Enter));
@@ -1119,7 +1119,7 @@ mod tests {
             app.handle_key(press(KeyCode::Enter));
 
             // Go to list, select second QSO, edit it
-            app.handle_key(alt_press(KeyCode::Char('l')));
+            app.handle_key(alt_press(KeyCode::Char('e')));
             app.handle_key(press(KeyCode::Down));
             assert_eq!(app.qso_list.selected(), 1);
             app.handle_key(press(KeyCode::Enter));
@@ -1140,7 +1140,7 @@ mod tests {
             type_string(&mut app, "KD9XYZ");
             app.handle_key(press(KeyCode::Enter));
 
-            app.handle_key(alt_press(KeyCode::Char('l')));
+            app.handle_key(alt_press(KeyCode::Char('e')));
             app.handle_key(press(KeyCode::Enter));
             assert_eq!(app.screen(), Screen::QsoEntry);
             assert!(app.qso_entry.is_editing());
@@ -1157,7 +1157,7 @@ mod tests {
             app.handle_key(press(KeyCode::Enter));
 
             // Open edit, change callsign
-            app.handle_key(alt_press(KeyCode::Char('l')));
+            app.handle_key(alt_press(KeyCode::Char('e')));
             app.handle_key(press(KeyCode::Enter));
 
             // Clear callsign and type a new one
@@ -1217,7 +1217,7 @@ mod tests {
         #[test]
         fn enter_on_empty_qso_list_does_nothing() {
             let (_dir, mut app) = make_app_with_log();
-            app.handle_key(alt_press(KeyCode::Char('l')));
+            app.handle_key(alt_press(KeyCode::Char('e')));
             assert_eq!(app.screen(), Screen::QsoList);
             app.handle_key(press(KeyCode::Enter));
             // Should stay on QsoList since no QSOs

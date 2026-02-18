@@ -83,7 +83,7 @@ impl QsoEntryState {
                 KeyCode::Char('x') => {
                     return Action::Navigate(Screen::Export);
                 }
-                KeyCode::Char('l') => {
+                KeyCode::Char('e') => {
                     return Action::Navigate(Screen::QsoList);
                 }
                 _ => {}
@@ -448,9 +448,9 @@ pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Fram
 
     // Footer
     let footer_text = if state.is_editing() {
-        "Tab: next  Alt+b/m: band/mode  Shift+Alt: reverse  Enter: save  Esc: cancel"
+        "Tab/Shift+Tab: next/prev  Alt+b/m: band/mode (Shift: reverse)  Enter: save  Esc: cancel"
     } else {
-        "Tab: next  Alt+b/m: band/mode  Shift+Alt: reverse  Alt+l: list  Alt+x: export  Enter: log  Esc: back"
+        "Tab/Shift+Tab: next/prev  Alt+b/m: band/mode (Shift: reverse)  Alt+e: edit  Alt+x: export  Enter: log  Esc: back"
     };
     let footer =
         Paragraph::new(Line::from(footer_text)).style(Style::default().fg(Color::DarkGray));
@@ -1094,9 +1094,9 @@ mod tests {
         }
 
         #[test]
-        fn alt_l_navigates_to_qso_list() {
+        fn alt_e_navigates_to_qso_list() {
             let mut state = QsoEntryState::new();
-            let action = state.handle_key(alt_press(KeyCode::Char('l')));
+            let action = state.handle_key(alt_press(KeyCode::Char('e')));
             assert_eq!(action, Action::Navigate(Screen::QsoList));
         }
     }
@@ -1379,14 +1379,14 @@ mod tests {
         #[test]
         fn renders_footer_keybindings() {
             let state = QsoEntryState::new();
-            let output = render_qso_entry(&state, None, 100, 30);
+            let output = render_qso_entry(&state, None, 120, 30);
             assert!(
                 output.contains("Alt+b/m"),
                 "should show band/mode keybindings"
             );
             assert!(
-                output.contains("Alt+x: export"),
-                "should show export keybinding"
+                output.contains("Alt+e: edit"),
+                "should show edit keybinding"
             );
             assert!(
                 output.contains("Enter: log"),

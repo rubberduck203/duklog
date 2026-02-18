@@ -33,21 +33,21 @@ impl QsoListState {
     /// Handles a key event, returning an [`Action`] for the app to apply.
     pub fn handle_key(&mut self, key: KeyEvent, qso_count: usize) -> Action {
         match key.code {
-            KeyCode::Up | KeyCode::Char('k') => {
+            KeyCode::Up => {
                 self.selected = self.selected.saturating_sub(1);
                 Action::None
             }
-            KeyCode::Down | KeyCode::Char('j') => {
+            KeyCode::Down => {
                 if qso_count > 0 {
                     self.selected = (self.selected + 1).min(qso_count - 1);
                 }
                 Action::None
             }
-            KeyCode::Home | KeyCode::Char('g') => {
+            KeyCode::Home => {
                 self.selected = 0;
                 Action::None
             }
-            KeyCode::End | KeyCode::Char('G') => {
+            KeyCode::End => {
                 self.selected = qso_count.saturating_sub(1);
                 Action::None
             }
@@ -157,7 +157,7 @@ pub fn draw_qso_list(state: &QsoListState, log: Option<&Log>, frame: &mut Frame,
     }
 
     // Footer
-    let footer = Paragraph::new("\u{2191}\u{2193} Navigate  Enter Edit  q Back  ? Help")
+    let footer = Paragraph::new("↑↓: navigate  Home/End: jump  Enter: edit  q: back")
         .style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, footer_area);
 }
@@ -174,15 +174,6 @@ mod tests {
         KeyEvent {
             code,
             modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        }
-    }
-
-    fn shift_press(code: KeyCode) -> KeyEvent {
-        KeyEvent {
-            code,
-            modifiers: KeyModifiers::SHIFT,
             kind: KeyEventKind::Press,
             state: KeyEventState::NONE,
         }
@@ -244,26 +235,11 @@ mod tests {
         }
 
         #[test]
-        fn j_increments_selected() {
-            let mut state = QsoListState::new();
-            state.handle_key(press(KeyCode::Char('j')), 5);
-            assert_eq!(state.selected(), 1);
-        }
-
-        #[test]
         fn up_decrements_selected() {
             let mut state = QsoListState::new();
             state.set_selected(3);
             let action = state.handle_key(press(KeyCode::Up), 5);
             assert_eq!(action, Action::None);
-            assert_eq!(state.selected(), 2);
-        }
-
-        #[test]
-        fn k_decrements_selected() {
-            let mut state = QsoListState::new();
-            state.set_selected(3);
-            state.handle_key(press(KeyCode::Char('k')), 5);
             assert_eq!(state.selected(), 2);
         }
 
@@ -299,25 +275,10 @@ mod tests {
         }
 
         #[test]
-        fn g_jumps_to_first() {
-            let mut state = QsoListState::new();
-            state.set_selected(4);
-            state.handle_key(press(KeyCode::Char('g')), 5);
-            assert_eq!(state.selected(), 0);
-        }
-
-        #[test]
         fn end_jumps_to_last() {
             let mut state = QsoListState::new();
             let action = state.handle_key(press(KeyCode::End), 5);
             assert_eq!(action, Action::None);
-            assert_eq!(state.selected(), 4);
-        }
-
-        #[test]
-        fn shift_g_jumps_to_last() {
-            let mut state = QsoListState::new();
-            state.handle_key(shift_press(KeyCode::Char('G')), 5);
             assert_eq!(state.selected(), 4);
         }
 
@@ -503,10 +464,10 @@ mod tests {
         fn renders_footer() {
             let state = QsoListState::new();
             let output = render_qso_list(&state, None, 80, 20);
-            assert!(output.contains("Navigate"), "should show navigation hint");
-            assert!(output.contains("Enter Edit"), "should show edit hint");
-            assert!(output.contains("q Back"), "should show back hint");
-            assert!(output.contains("? Help"), "should show help hint");
+            assert!(output.contains("navigate"), "should show navigation hint");
+            assert!(output.contains("Enter: edit"), "should show edit hint");
+            assert!(output.contains("q: back"), "should show back hint");
+            assert!(output.contains("Home/End"), "should show jump hint");
         }
 
         #[test]
