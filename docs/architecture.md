@@ -41,18 +41,26 @@ The TUI uses match-based dispatch with an `Action` enum rather than a `Screen` t
 Each screen module exports a state struct whose `handle_key` method returns an `Action`:
 
 ```
-Action::None           — no state change
-Action::Navigate(s)    — switch to screen s
-Action::SelectLog(l)   — open existing log l
-Action::CreateLog(l)   — persist and open new log l
-Action::Quit           — exit the application
+Action::None              — no state change
+Action::Navigate(s)       — switch to screen s
+Action::SelectLog(l)      — open existing log l
+Action::CreateLog(l)      — persist and open new log l
+Action::AddQso(q)         — append QSO to the current log
+Action::EditQso(idx)      — load QSO at index into entry form for editing
+Action::UpdateQso(idx, q) — replace QSO at index with updated version
+Action::ExportLog         — trigger ADIF export of the current log
+Action::Quit              — exit the application
 ```
 
 The `App` calls `apply_action` to interpret these, keeping all global state transitions in one place.
 
 ### Key Handling
 
-Global keys (`?` for help) are intercepted by `App` before delegation, except on form-based screens (LogCreate) where all keys are forwarded to the screen's `handle_key`. Each screen owns its own state and key bindings.
+Global keys (`?` for help) are intercepted by `App` before delegation, except on form-based screens (LogCreate, QsoEntry) where all keys are forwarded to the screen's `handle_key`. Each screen owns its own state and key bindings.
+
+### QSO Editing Flow
+
+The QSO list screen dispatches `EditQso(index)` when the user presses Enter on a row. `App::apply_action` populates the QSO entry form with the selected QSO's data and switches to QsoEntry in edit mode. On submit, the entry screen returns `UpdateQso(index, qso)` instead of `AddQso(qso)`. The app replaces the QSO in-memory, saves the full log, and returns to the QSO list.
 
 ### Form Widget
 
@@ -63,7 +71,7 @@ Global keys (`?` for help) are intercepted by `App` before delegation, except on
 - **No async runtime**: The TUI is synchronous. Crossterm's event polling is sufficient for a keyboard-driven logger. No need for tokio/async-std complexity.
 - **`difa` crate for ADIF**: Uses the `difa` crate with `TagEncoder` and `BytesMut` for spec-compliant ADIF encoding.
 - **Pure ADIF module**: `src/adif/` contains only pure formatting functions with no I/O. The storage module handles file writes. This makes ADIF logic fully unit-testable.
-- **JSONL storage**: Each log is a single `.jsonl` file in `~/.local/share/duklog/logs/` (XDG). Line 1 is log metadata, lines 2+ are QSO records. Appending a QSO is a single-line file append — no read/rewrite needed.
+- **JSONL storage**: Each log is a single `.jsonl` file in `~/.local/share/duklog/logs/` (XDG). Line 1 is log metadata, lines 2+ are QSO records. Appending a new QSO is a single-line file append. Editing a QSO triggers a full file rewrite via `save_log`.
 - **Auto-save**: Every model mutation triggers a save. No explicit "save" action needed — prevents data loss during field operation.
 - **PostToolUse hooks**: `cargo check` and `cargo clippy` run automatically after every `.rs` file edit, providing immediate compilation and lint feedback. Tests and mutation testing are too slow for hooks and run explicitly via `make` targets.
 - **Adversarial code review**: `code-review` subagent (Sonnet) runs before every PR to catch issues the developer is blind to.

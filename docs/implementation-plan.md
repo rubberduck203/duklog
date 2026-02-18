@@ -18,23 +18,14 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 - **3.4 TUI Shell** (`feature/tui-shell`, PR #7) — Done
 - **3.5 Log Management Screens** (`feature/log-management`, PR #7) — Done
 - **3.5.1 Optional Operator** (`feature/optional-operator`, PR #8) — Done
-- **3.6 QSO Entry Screen** (`feature/qso-entry`) — Done
+- **3.6 QSO Entry Screen** (`feature/qso-entry`, PR #9, #10) — Done
+- **3.7 QSO List Screen** (`feature/qso-entry`, PR #10) — Done
+- **3.7b QSO Editing** (`feature/qso-editing`, PR #12) — Done
+- **3.8 Export Screen** (`feature/export-screen`, PR #11) — Done
 
 ---
 
 ## Remaining Work
-
-### 3.7 QSO List Screen (`feature/qso-list`)
-**Files**: `src/tui/screens/qso_list.rs`
-
-- Scrollable ratatui `Table`: Time, Call, Band, Mode, RST S/R, Comments
-- Up/Down scrolling, column headers
-
-### 3.8 Export Screen (`feature/export`)
-**Files**: `src/tui/screens/export.rs`
-
-- Shows default export path, QSO count, confirmation prompt
-- Calls `storage::export_adif()`, shows success/error
 
 ### 3.9 Delete Log (`feature/delete-log`)
 **Files**: `src/tui/screens/log_select.rs`, `src/tui/app.rs`, `src/tui/action.rs`
@@ -74,14 +65,13 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 #### Future enhancements (post-3.12)
 
 - **Editable export path**: Allow user to edit the export file path on the export confirmation screen before exporting (use existing `FormState` text input widget)
+- **Auto-generated screenshots**: Use `TestBackend` to render each screen into a text buffer and output them as documentation assets (e.g. for `docs/user-guide.md`), keeping screenshots in sync with the actual UI automatically
 
 ---
 
 ## Dependency Graph (remaining)
 
 ```
-3.7 QSO List
-3.8 Export
 3.9 Delete Log
 3.10 Duplicate QSO Detection
 3.11 Duplicate Log Prevention
@@ -89,7 +79,7 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 3.12 Polish (after all above)
 ```
 
-Steps 3.7–3.11 are independent of each other and can be developed in any order.
+Steps 3.9–3.11 are independent of each other and can be developed in any order.
 
 ## Reference Documentation
 

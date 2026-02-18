@@ -35,4 +35,9 @@ description: duklog coding standards, testing requirements, and review checklist
 
 ## Documentation
 - Rustdoc (`///`) on all `pub` items
-- Update `docs/` for related features
+- Update `docs/` when implementing or changing features:
+  - `docs/user-guide.md` — screen descriptions, keybindings, workflows
+  - `docs/architecture.md` — module layout, Action enum, design decisions
+  - `docs/implementation-plan.md` — move completed phases, update remaining work
+  - `docs/adif-format.md` — if ADIF fields or format changes
+- No feature is complete without documentation updates
