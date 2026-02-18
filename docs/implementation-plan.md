@@ -65,6 +65,7 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 #### Future enhancements (post-3.12)
 
 - **Editable export path**: Allow user to edit the export file path on the export confirmation screen before exporting (use existing `FormState` text input widget)
+- **Auto-generated screenshots**: Use `TestBackend` to render each screen into a text buffer and output them as documentation assets (e.g. for `docs/user-guide.md`), keeping screenshots in sync with the actual UI automatically
 
 ---
 
