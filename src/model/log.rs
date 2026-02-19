@@ -61,12 +61,18 @@ impl Log {
         self.qsos.push(qso);
     }
 
-    /// Counts QSOs with timestamps on the given date (UTC).
+    /// Counts unique contacts on the given date (UTC).
+    ///
+    /// Uniqueness is determined by (callsign, band, mode) — duplicate contacts
+    /// with the same station on the same band and mode do not count toward the
+    /// activation threshold.
     pub(crate) fn qso_count_on_date(&self, date: NaiveDate) -> usize {
         self.qsos
             .iter()
             .filter(|q| q.timestamp.date_naive() == date)
-            .count()
+            .map(|q| (q.their_call.to_lowercase(), q.band, q.mode))
+            .collect::<std::collections::HashSet<_>>()
+            .len()
     }
 
     /// Counts QSOs logged today (UTC).
@@ -132,12 +138,16 @@ mod tests {
     }
 
     fn make_qso_on_date(date: NaiveDate) -> Qso {
+        make_qso_on_date_with_call("KD9XYZ", date)
+    }
+
+    fn make_qso_on_date_with_call(call: &str, date: NaiveDate) -> Qso {
         let timestamp = date
             .and_hms_opt(12, 0, 0)
             .map(|dt| Utc.from_utc_datetime(&dt))
             .unwrap();
         Qso::new(
-            "KD9XYZ".to_string(),
+            call.to_string(),
             "59".to_string(),
             "59".to_string(),
             Band::M20,
@@ -267,9 +277,10 @@ mod tests {
         let date1 = NaiveDate::from_ymd_opt(2026, 1, 15).unwrap();
         let date2 = NaiveDate::from_ymd_opt(2026, 1, 16).unwrap();
 
-        log.add_qso(make_qso_on_date(date1));
-        log.add_qso(make_qso_on_date(date1));
-        log.add_qso(make_qso_on_date(date2));
+        // Two distinct calls on date1, one on date2
+        log.add_qso(make_qso_on_date_with_call("KD9XYZ", date1));
+        log.add_qso(make_qso_on_date_with_call("W3ABC", date1));
+        log.add_qso(make_qso_on_date_with_call("N0CALL", date2));
 
         assert_eq!(log.qso_count_on_date(date1), 2);
         assert_eq!(log.qso_count_on_date(date2), 1);
@@ -277,8 +288,8 @@ mod tests {
 
     fn make_log_with_n_qsos_on_date(n: usize, date: NaiveDate) -> Log {
         let mut log = make_log();
-        for _ in 0..n {
-            log.add_qso(make_qso_on_date(date));
+        for i in 0..n {
+            log.add_qso(make_qso_on_date_with_call(&format!("W{i}AW"), date));
         }
         log
     }
@@ -348,9 +359,9 @@ mod tests {
     // --- qso_count_today / needs_for_activation / is_activated ---
 
     fn add_today_qsos(log: &mut Log, n: usize) {
-        for _ in 0..n {
+        for i in 0..n {
             let qso = Qso::new(
-                "KD9XYZ".to_string(),
+                format!("W{i}AW"),
                 "59".to_string(),
                 "59".to_string(),
                 Band::M20,
@@ -389,6 +400,48 @@ mod tests {
         let mut log = make_log();
         add_today_qsos(&mut log, n as usize);
         log.is_activated() == (n as usize >= 10)
+    }
+
+    #[test]
+    fn duplicate_qso_not_counted_for_activation() {
+        let mut log = make_log();
+        let date = NaiveDate::from_ymd_opt(2026, 6, 15).unwrap();
+        // Same call+band+mode twice on the same date
+        log.add_qso(make_qso_on_date_with_call("KD9XYZ", date));
+        log.add_qso(make_qso_on_date_with_call("KD9XYZ", date));
+        assert_eq!(log.qso_count_on_date(date), 1);
+    }
+
+    #[test]
+    fn different_band_same_call_counts_separately() {
+        let mut log = make_log();
+        let date = NaiveDate::from_ymd_opt(2026, 6, 15).unwrap();
+        let ts = Utc.from_utc_datetime(&date.and_hms_opt(12, 0, 0).unwrap());
+        let qso1 = Qso::new(
+            "KD9XYZ".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M20,
+            Mode::Ssb,
+            ts,
+            String::new(),
+            None,
+        )
+        .unwrap();
+        let qso2 = Qso::new(
+            "KD9XYZ".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M40,
+            Mode::Ssb,
+            ts,
+            String::new(),
+            None,
+        )
+        .unwrap();
+        log.add_qso(qso1);
+        log.add_qso(qso2);
+        assert_eq!(log.qso_count_on_date(date), 2);
     }
 
     // --- find_duplicates ---
