@@ -261,7 +261,7 @@ impl App {
                 Some(ref mut log) => {
                     let duplicate_warning = (!log.find_duplicates(&qso).is_empty()).then(|| {
                         format!(
-                            "Warning: {} already in log on {} {}",
+                            "Warning: duplicate contact — {} {} {} already logged today",
                             qso.their_call, qso.band, qso.mode
                         )
                     });
@@ -894,11 +894,16 @@ mod tests {
                 .expect("should show duplicate warning");
             assert!(err.contains("Warning"), "should say Warning, got: {err}");
             assert!(
+                err.contains("duplicate"),
+                "should say duplicate, got: {err}"
+            );
+            assert!(
                 err.contains("KD9XYZ"),
                 "should name the callsign, got: {err}"
             );
             assert!(err.contains("20M"), "should name the band, got: {err}");
             assert!(err.contains("SSB"), "should name the mode, got: {err}");
+            assert!(err.contains("today"), "should say today, got: {err}");
         }
 
         #[test]
