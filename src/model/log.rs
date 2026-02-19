@@ -79,6 +79,24 @@ impl Log {
         10_usize.saturating_sub(self.qso_count_today())
     }
 
+    /// Returns QSOs from today (UTC) that match the given callsign, band, and mode.
+    ///
+    /// Callsign comparison is case-insensitive. A non-empty result indicates a
+    /// potential duplicate contact within the current UTC day.
+    pub fn find_duplicates(&self, qso: &Qso) -> Vec<&Qso> {
+        let today = Utc::now().date_naive();
+        let call_lower = qso.their_call.to_lowercase();
+        self.qsos
+            .iter()
+            .filter(|q| {
+                q.timestamp.date_naive() == today
+                    && q.their_call.to_lowercase() == call_lower
+                    && q.band == qso.band
+                    && q.mode == qso.mode
+            })
+            .collect()
+    }
+
     /// Replaces the QSO at `index` with `qso`, returning the old QSO.
     ///
     /// Returns `None` if `index` is out of bounds.
@@ -371,6 +389,106 @@ mod tests {
         let mut log = make_log();
         add_today_qsos(&mut log, n as usize);
         log.is_activated() == (n as usize >= 10)
+    }
+
+    // --- find_duplicates ---
+
+    fn make_candidate(call: &str, band: Band, mode: Mode) -> Qso {
+        Qso::new(
+            call.to_string(),
+            mode.default_rst().to_string(),
+            mode.default_rst().to_string(),
+            band,
+            mode,
+            Utc::now(),
+            String::new(),
+            None,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn find_duplicates_empty_log_returns_empty() {
+        let log = make_log();
+        let qso = make_candidate("KD9XYZ", Band::M20, Mode::Ssb);
+        assert_eq!(log.find_duplicates(&qso).len(), 0);
+    }
+
+    #[test]
+    fn find_duplicates_exact_match_detected() {
+        let mut log = make_log();
+        let existing = make_candidate("KD9XYZ", Band::M20, Mode::Ssb);
+        log.add_qso(existing.clone());
+        let candidate = make_candidate("KD9XYZ", Band::M20, Mode::Ssb);
+        let dups = log.find_duplicates(&candidate);
+        assert_eq!(dups.len(), 1);
+        assert_eq!(dups[0].their_call, "KD9XYZ");
+        assert_eq!(dups[0].band, Band::M20);
+        assert_eq!(dups[0].mode, Mode::Ssb);
+    }
+
+    #[test]
+    fn find_duplicates_different_band_not_flagged() {
+        let mut log = make_log();
+        log.add_qso(make_candidate("KD9XYZ", Band::M20, Mode::Ssb));
+        let candidate = make_candidate("KD9XYZ", Band::M40, Mode::Ssb);
+        assert_eq!(log.find_duplicates(&candidate).len(), 0);
+    }
+
+    #[test]
+    fn find_duplicates_different_mode_not_flagged() {
+        let mut log = make_log();
+        log.add_qso(make_candidate("KD9XYZ", Band::M20, Mode::Ssb));
+        let candidate = make_candidate("KD9XYZ", Band::M20, Mode::Cw);
+        assert_eq!(log.find_duplicates(&candidate).len(), 0);
+    }
+
+    #[test]
+    fn find_duplicates_case_insensitive_callsign() {
+        let mut log = make_log();
+        log.add_qso(make_candidate("KD9XYZ", Band::M20, Mode::Ssb));
+        // Lowercase callsign passes validation (alphanumeric chars allowed)
+        let candidate = make_candidate("kd9xyz", Band::M20, Mode::Ssb);
+        let dups = log.find_duplicates(&candidate);
+        assert_eq!(dups.len(), 1);
+        assert_eq!(dups[0].their_call, "KD9XYZ");
+    }
+
+    #[test]
+    fn find_duplicates_returns_all_matching_qsos() {
+        let mut log = make_log();
+        log.add_qso(make_candidate("KD9XYZ", Band::M20, Mode::Ssb));
+        log.add_qso(make_candidate("KD9XYZ", Band::M40, Mode::Ssb)); // different band
+        log.add_qso(make_candidate("KD9XYZ", Band::M20, Mode::Ssb)); // second match
+        let candidate = make_candidate("KD9XYZ", Band::M20, Mode::Ssb);
+        let dups = log.find_duplicates(&candidate);
+        assert_eq!(dups.len(), 2);
+        assert!(
+            dups.iter()
+                .all(|q| q.band == Band::M20 && q.mode == Mode::Ssb)
+        );
+    }
+
+    #[test]
+    fn find_duplicates_ignores_previous_day_qsos() {
+        let mut log = make_log();
+        // Add a QSO with yesterday's timestamp
+        let yesterday = Utc::now().date_naive().pred_opt().unwrap();
+        let old_ts = Utc.from_utc_datetime(&yesterday.and_hms_opt(12, 0, 0).unwrap());
+        let old_qso = Qso::new(
+            "KD9XYZ".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M20,
+            Mode::Ssb,
+            old_ts,
+            String::new(),
+            None,
+        )
+        .unwrap();
+        log.add_qso(old_qso);
+        let candidate = make_candidate("KD9XYZ", Band::M20, Mode::Ssb);
+        assert_eq!(log.find_duplicates(&candidate).len(), 0);
     }
 
     // --- replace_qso ---

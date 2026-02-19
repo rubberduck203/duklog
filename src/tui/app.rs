@@ -259,6 +259,12 @@ impl App {
             },
             Action::AddQso(qso) => match self.current_log {
                 Some(ref mut log) => {
+                    let duplicate_warning = (!log.find_duplicates(&qso).is_empty()).then(|| {
+                        format!(
+                            "Warning: {} already in log on {} {}",
+                            qso.their_call, qso.band, qso.mode
+                        )
+                    });
                     if let Err(e) = self.manager.append_qso(&log.log_id, &qso) {
                         self.qso_entry.set_error(format!("Failed to save QSO: {e}"));
                         return;
@@ -266,6 +272,9 @@ impl App {
                     log.add_qso(qso.clone());
                     self.qso_entry.add_recent_qso(qso);
                     self.qso_entry.clear_fast_fields();
+                    if let Some(msg) = duplicate_warning {
+                        self.qso_entry.set_error(msg);
+                    }
                 }
                 None => {
                     self.qso_entry.set_error("No active log selected".into());
@@ -857,6 +866,77 @@ mod tests {
 
             assert!(app.qso_entry.error().is_some());
             assert!(app.qso_entry.error().unwrap().contains("No active log"),);
+        }
+
+        fn alt_press(code: KeyCode) -> KeyEvent {
+            KeyEvent {
+                code,
+                modifiers: KeyModifiers::ALT,
+                kind: KeyEventKind::Press,
+                state: KeyEventState::NONE,
+            }
+        }
+
+        #[test]
+        fn duplicate_qso_shows_warning_but_still_logged() {
+            let (_dir, mut app) = make_app_with_log();
+            // First QSO — no duplicate
+            submit_qso(&mut app);
+            assert_eq!(app.current_log().unwrap().qsos.len(), 1);
+            assert_eq!(app.qso_entry.error(), None);
+
+            // Second QSO with same call+band+mode — duplicate warning shown
+            submit_qso(&mut app);
+            assert_eq!(app.current_log().unwrap().qsos.len(), 2);
+            let err = app
+                .qso_entry
+                .error()
+                .expect("should show duplicate warning");
+            assert!(err.contains("Warning"), "should say Warning, got: {err}");
+            assert!(
+                err.contains("KD9XYZ"),
+                "should name the callsign, got: {err}"
+            );
+            assert!(err.contains("20M"), "should name the band, got: {err}");
+            assert!(err.contains("SSB"), "should name the mode, got: {err}");
+        }
+
+        #[test]
+        fn no_warning_for_different_band() {
+            let (_dir, mut app) = make_app_with_log();
+            submit_qso(&mut app);
+
+            // Same call, different band — not a duplicate
+            app.handle_key(alt_press(KeyCode::Char('b'))); // cycle band
+            submit_qso(&mut app);
+            assert_eq!(app.qso_entry.error(), None);
+        }
+
+        #[test]
+        fn no_warning_for_different_mode() {
+            let (_dir, mut app) = make_app_with_log();
+            submit_qso(&mut app);
+
+            // Same call, different mode — not a duplicate
+            app.handle_key(alt_press(KeyCode::Char('m'))); // cycle mode
+            submit_qso(&mut app);
+            assert_eq!(app.qso_entry.error(), None);
+        }
+
+        #[test]
+        fn warning_cleared_when_next_qso_is_not_duplicate() {
+            let (_dir, mut app) = make_app_with_log();
+            // Log duplicate to get warning
+            submit_qso(&mut app);
+            submit_qso(&mut app);
+            assert!(app.qso_entry.error().is_some());
+
+            // Submit non-duplicate (different callsign via a fresh submit_qso would
+            // still be KD9XYZ — type a different call manually)
+            type_string(&mut app, "W3ABC");
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.current_log().unwrap().qsos.len(), 3);
+            assert_eq!(app.qso_entry.error(), None);
         }
 
         #[test]

@@ -36,14 +36,11 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 - Handle edge cases: empty list (no-op), deleting the only log (selection becomes `None`)
 - Tests: delete updates list, cancel preserves list, empty list no-op
 
-### 3.10 Duplicate QSO Detection (`feature/duplicate-qso-detection`)
-**Files**: `src/model/qso.rs`, `src/tui/screens/qso_entry.rs`
+### ~~3.10 Duplicate QSO Detection~~ — Done (`feature/duplicate-qso-detection`)
 
-- Detect duplicate QSOs: same `their_call` + `band` + `mode` within the current log session
-- On duplicate detection, show a warning in the status area but still allow the QSO to be logged (operator may intentionally work the same station on the same band/mode)
-- `Log::find_duplicates(&self, qso: &Qso) -> Vec<&Qso>` — returns matching QSOs for display
-- Case-insensitive callsign comparison for duplicate matching
-- Tests: exact match detected, different band/mode not flagged, case-insensitive matching, empty log returns no duplicates
+- `Log::find_duplicates(&self, qso: &Qso) -> Vec<&Qso>` — case-insensitive match on callsign + band + mode
+- `App::apply_action` checks for duplicates before saving; sets warning message after `clear_fast_fields()`
+- QSO is still logged — operator may intentionally work the same station on the same band/mode
 
 ### 3.11 Duplicate Log Prevention (`feature/duplicate-log-prevention`)
 **Files**: `src/model/log.rs`, `src/storage/manager.rs`, `src/tui/screens/log_create.rs`

@@ -45,7 +45,7 @@ Action::None              — no state change
 Action::Navigate(s)       — switch to screen s
 Action::SelectLog(l)      — open existing log l
 Action::CreateLog(l)      — persist and open new log l
-Action::AddQso(q)         — append QSO to the current log
+Action::AddQso(q)         — append QSO to the current log; checks for same-day duplicates (call+band+mode) and shows a warning if found (QSO is still saved)
 Action::EditQso(idx)      — load QSO at index into entry form for editing
 Action::UpdateQso(idx, q) — replace QSO at index with updated version
 Action::ExportLog         — trigger ADIF export of the current log
