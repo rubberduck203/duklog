@@ -362,6 +362,13 @@ mod tests {
         assert!(matches!(result, Err(StorageError::Io(_))));
     }
 
+    #[test]
+    fn delete_nonexistent_log_returns_error() {
+        let (_dir, manager) = make_manager();
+        let result = manager.delete_log("nonexistent");
+        assert!(matches!(result, Err(StorageError::Io(_))));
+    }
+
     // --- Error cases ---
 
     #[test]

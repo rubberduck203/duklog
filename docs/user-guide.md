@@ -36,6 +36,7 @@ The home screen. Shows all saved logs in a table with columns for Park, Callsign
 | `Up` / `Down` | Navigate the log list |
 | `Enter` | Open the selected log |
 | `n` | Create a new log |
+| `d` | Delete the selected log (asks for confirmation; `y` to confirm, `n`/`Esc` to cancel) |
 | `q` / `Esc` | Quit duklog |
 | `?` | Show help |
 

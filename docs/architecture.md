@@ -49,6 +49,7 @@ Action::AddQso(q)         — append QSO to the current log; checks for same-day
 Action::EditQso(idx)      — load QSO at index into entry form for editing
 Action::UpdateQso(idx, q) — replace QSO at index with updated version
 Action::ExportLog         — trigger ADIF export of the current log
+Action::DeleteLog(log_id) — delete the log with the given ID from storage; clears current_log if it matches
 Action::Quit              — exit the application
 ```
 
