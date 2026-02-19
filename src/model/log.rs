@@ -1,10 +1,18 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 
+use super::band::Band;
+use super::mode::Mode;
 use super::qso::Qso;
 use super::validation::{
     ValidationError, validate_callsign, validate_grid_square, validate_park_ref,
 };
+
+/// The key that determines whether two QSOs are considered duplicates:
+/// same callsign (case-insensitive), band, and mode.
+fn duplicate_key(qso: &Qso) -> (String, Band, Mode) {
+    (qso.their_call.to_lowercase(), qso.band, qso.mode)
+}
 
 /// An activation session containing station info and a collection of QSOs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -70,7 +78,7 @@ impl Log {
         self.qsos
             .iter()
             .filter(|q| q.timestamp.date_naive() == date)
-            .map(|q| (q.their_call.to_lowercase(), q.band, q.mode))
+            .map(duplicate_key)
             .collect::<std::collections::HashSet<_>>()
             .len()
     }
@@ -91,15 +99,10 @@ impl Log {
     /// potential duplicate contact within the current UTC day.
     pub fn find_duplicates(&self, qso: &Qso) -> Vec<&Qso> {
         let today = Utc::now().date_naive();
-        let call_lower = qso.their_call.to_lowercase();
+        let key = duplicate_key(qso);
         self.qsos
             .iter()
-            .filter(|q| {
-                q.timestamp.date_naive() == today
-                    && q.their_call.to_lowercase() == call_lower
-                    && q.band == qso.band
-                    && q.mode == qso.mode
-            })
+            .filter(|q| q.timestamp.date_naive() == today && duplicate_key(q) == key)
             .collect()
     }
 
