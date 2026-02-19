@@ -6,13 +6,9 @@ duklog is an offline logging tool for ham radio activations. It runs entirely in
 
 ## Installation
 
-With Rust installed:
+Download the latest release binary from the [releases page](https://github.com/rubberduck203/duklog/releases/latest) and place it somewhere on your `PATH`.
 
-```bash
-cargo install --path .
-```
-
-Or build from source:
+Alternatively, if you have Rust installed, you can build from source:
 
 ```bash
 cargo build --release

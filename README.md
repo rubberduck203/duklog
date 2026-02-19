@@ -18,6 +18,10 @@ duklog provides this via a lightweight TUI that runs in the terminal and allows 
 - Auto-save after every change — no data loss
 - Fully offline — no network access, ever
 
+## Usage
+
+See the [user guide](docs/user-guide.md) for installation instructions, keybindings, and screen-by-screen documentation.
+
 ## Contributing
 
 duklog is written in Rust. Use `make` targets for development:
