@@ -26,6 +26,8 @@ pub enum Action {
     UpdateQso(usize, Qso),
     /// Export the active log to ADIF.
     ExportLog,
+    /// Delete the log with the given ID from storage.
+    DeleteLog(String),
     /// Quit the application.
     Quit,
 }

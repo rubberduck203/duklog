@@ -27,14 +27,7 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 
 ## Remaining Work
 
-### 3.9 Delete Log (`feature/delete-log`)
-**Files**: `src/tui/screens/log_select.rs`, `src/tui/app.rs`, `src/tui/action.rs`
-
-- Add `d` keybinding on Log Select screen to delete the highlighted log
-- Show confirmation prompt before deleting (e.g. "Delete K-0001 2026-02-16? y/n")
-- Call `LogManager::delete_log()` on confirmation, reload the log list
-- Handle edge cases: empty list (no-op), deleting the only log (selection becomes `None`)
-- Tests: delete updates list, cancel preserves list, empty list no-op
+### ~~3.9 Delete Log~~ — Done (`feature/delete-log`)
 
 ### ~~3.10 Duplicate QSO Detection~~ — Done (`feature/duplicate-qso-detection`)
 
@@ -45,10 +38,10 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 ### 3.11 Duplicate Log Prevention (`feature/duplicate-log-prevention`)
 **Files**: `src/model/log.rs`, `src/storage/manager.rs`, `src/tui/screens/log_create.rs`
 
-- Prevent creating a second log with the same station callsign, operator, and park ref on the same UTC day
+- Prevent creating a second log with the same station callsign, operator, and location on the same UTC day
 - `LogManager` checks existing logs at creation time and returns an error if a match exists
 - TUI LogCreate screen displays the error inline (same as other validation errors)
-- Tests: duplicate blocked, different day allowed, different station/operator/park allowed
+- Tests: duplicate blocked, different day allowed, different station/operator/location allowed
 
 ### 3.12 Polish (`feature/polish`)
 **Files**: `src/tui/widgets/status_bar.rs`, `src/tui/screens/help.rs`, various

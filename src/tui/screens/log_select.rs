@@ -21,6 +21,8 @@ pub struct LogSelectState {
     selected: Option<usize>,
     /// Error message from the last failed operation.
     error: Option<String>,
+    /// When `Some`, a delete confirmation is pending for `(log_id, display_label)`.
+    pending_delete: Option<(String, String)>,
 }
 
 impl Default for LogSelectState {
@@ -36,6 +38,7 @@ impl LogSelectState {
             logs: Vec::new(),
             selected: None,
             error: None,
+            pending_delete: None,
         }
     }
 
@@ -49,6 +52,20 @@ impl LogSelectState {
 
     /// Handles a key event, returning an [`Action`] for the app to apply.
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
+        if self.pending_delete.is_some() {
+            return match key.code {
+                KeyCode::Char('y') => {
+                    let (log_id, _) = self.pending_delete.take().unwrap();
+                    Action::DeleteLog(log_id)
+                }
+                KeyCode::Char('n') | KeyCode::Esc => {
+                    self.pending_delete = None;
+                    Action::None
+                }
+                _ => Action::None,
+            };
+        }
+
         match key.code {
             KeyCode::Up => {
                 self.select_prev();
@@ -60,6 +77,7 @@ impl LogSelectState {
             }
             KeyCode::Enter => self.select_current(),
             KeyCode::Char('n') => Action::Navigate(Screen::LogCreate),
+            KeyCode::Char('d') => self.start_delete(),
             KeyCode::Char('q') | KeyCode::Esc => Action::Quit,
             _ => Action::None,
         }
@@ -83,6 +101,13 @@ impl LogSelectState {
     /// Sets an error message to display on this screen.
     pub fn set_error(&mut self, msg: String) {
         self.error = Some(msg);
+    }
+
+    /// Returns the display label for the pending delete confirmation, if any.
+    pub fn pending_delete_label(&self) -> Option<&str> {
+        self.pending_delete
+            .as_ref()
+            .map(|(_, label)| label.as_str())
     }
 
     /// Returns an action to open the currently selected log.
@@ -110,6 +135,25 @@ impl LogSelectState {
             Some(i) if i + 1 < self.logs.len() => Some(i + 1),
             other => other,
         };
+    }
+
+    /// Starts a delete confirmation for the currently selected log.
+    ///
+    /// Returns `Action::None` always — the confirmation is tracked in state.
+    fn start_delete(&mut self) -> Action {
+        let Some(i) = self.selected else {
+            return Action::None;
+        };
+        let Some(log) = self.logs.get(i) else {
+            return Action::None;
+        };
+        let label = format!(
+            "{} {}",
+            log.park_ref.as_deref().unwrap_or(&log.station_callsign),
+            log.created_at.format("%Y-%m-%d")
+        );
+        self.pending_delete = Some((log.log_id.clone(), label));
+        Action::None
     }
 }
 
@@ -175,11 +219,16 @@ pub fn draw_log_select(state: &LogSelectState, frame: &mut Frame, area: Rect) {
 
     frame.render_widget(table, table_area);
 
-    let footer =
-        Paragraph::new("n: new  Enter: open  q: quit").style(Style::default().fg(Color::DarkGray));
+    let footer = Paragraph::new("n: new  Enter: open  d: delete  q: quit")
+        .style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, footer_area);
 
-    if let Some(err) = state.error() {
+    if let Some(label) = state.pending_delete_label() {
+        let prompt = Paragraph::new(format!("Delete {label}? y/n"))
+            .style(Style::default().fg(Color::Yellow))
+            .alignment(Alignment::Center);
+        frame.render_widget(prompt, footer_area);
+    } else if let Some(err) = state.error() {
         let err_line = Paragraph::new(err)
             .style(Style::default().fg(Color::Red))
             .alignment(Alignment::Center);
@@ -224,6 +273,7 @@ mod tests {
             ],
             selected: Some(0),
             error: None,
+            pending_delete: None,
         }
     }
 
@@ -363,6 +413,85 @@ mod tests {
         fn unhandled_key_returns_none() {
             let mut state = make_populated_state();
             assert_eq!(state.handle_key(press(KeyCode::Char('x'))), Action::None);
+        }
+    }
+
+    mod delete {
+        use super::*;
+
+        #[test]
+        fn d_on_empty_list_is_noop() {
+            let mut state = LogSelectState::new();
+            let action = state.handle_key(press(KeyCode::Char('d')));
+            assert_eq!(action, Action::None);
+            assert!(state.pending_delete_label().is_none());
+        }
+
+        #[test]
+        fn d_with_selected_log_sets_pending_delete() {
+            let mut state = make_populated_state();
+            let action = state.handle_key(press(KeyCode::Char('d')));
+            assert_eq!(action, Action::None);
+            assert!(state.pending_delete_label().is_some());
+        }
+
+        #[test]
+        fn pending_delete_label_includes_park_ref_and_date() {
+            let mut state = make_populated_state();
+            state.handle_key(press(KeyCode::Char('d')));
+            let label = state.pending_delete_label().unwrap();
+            assert!(label.contains("K-0001"), "should include park ref: {label}");
+            assert!(label.contains("2026-02-16"), "should include date: {label}");
+        }
+
+        #[test]
+        fn pending_delete_label_falls_back_to_callsign_when_no_park_ref() {
+            let mut state = make_populated_state();
+            state.selected = Some(1); // log2 has no park_ref
+            state.handle_key(press(KeyCode::Char('d')));
+            let label = state.pending_delete_label().unwrap();
+            assert!(label.contains("N0CALL"), "should use callsign: {label}");
+        }
+
+        #[test]
+        fn y_while_pending_returns_delete_action() {
+            let mut state = make_populated_state();
+            state.handle_key(press(KeyCode::Char('d')));
+            let action = state.handle_key(press(KeyCode::Char('y')));
+            match action {
+                Action::DeleteLog(log_id) => assert_eq!(log_id, "log1"),
+                other => panic!("expected DeleteLog, got {other:?}"),
+            }
+            assert!(state.pending_delete_label().is_none());
+        }
+
+        #[test]
+        fn n_while_pending_cancels() {
+            let mut state = make_populated_state();
+            state.handle_key(press(KeyCode::Char('d')));
+            let action = state.handle_key(press(KeyCode::Char('n')));
+            assert_eq!(action, Action::None);
+            assert!(state.pending_delete_label().is_none());
+        }
+
+        #[test]
+        fn esc_while_pending_cancels_not_quits() {
+            let mut state = make_populated_state();
+            state.handle_key(press(KeyCode::Char('d')));
+            let action = state.handle_key(press(KeyCode::Esc));
+            assert_eq!(action, Action::None);
+            assert!(state.pending_delete_label().is_none());
+        }
+
+        #[test]
+        fn other_keys_while_pending_are_noop() {
+            let mut state = make_populated_state();
+            state.handle_key(press(KeyCode::Char('d')));
+            assert!(state.pending_delete_label().is_some());
+            // Enter should not select the log
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert_eq!(action, Action::None);
+            assert!(state.pending_delete_label().is_some());
         }
     }
 

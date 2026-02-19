@@ -257,6 +257,16 @@ impl App {
                     self.qso_entry.set_error("No active log selected".into());
                 }
             },
+            Action::DeleteLog(log_id) => {
+                if let Err(e) = self.manager.delete_log(&log_id) {
+                    self.log_select
+                        .set_error(format!("Failed to delete log: {e}"));
+                }
+                if let Err(e) = self.log_select.load(&self.manager) {
+                    self.log_select
+                        .set_error(format!("Failed to load logs: {e}"));
+                }
+            }
             Action::AddQso(qso) => match self.current_log {
                 Some(ref mut log) => {
                     let duplicate_warning = (!log.find_duplicates(&qso).is_empty()).then(|| {
@@ -695,6 +705,87 @@ mod tests {
             app.handle_key(press(KeyCode::Esc));
             assert_eq!(app.screen(), Screen::LogSelect);
             assert_eq!(app.log_select.logs().len(), 1);
+        }
+    }
+
+    mod delete_log_integration {
+        use super::*;
+
+        fn make_app_with_logs(ids: &[&str]) -> (tempfile::TempDir, App) {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            for id in ids {
+                save_test_log(&manager, id);
+            }
+            let app = App::new(manager).unwrap();
+            (dir, app)
+        }
+
+        #[test]
+        fn d_on_empty_list_is_noop() {
+            let (_dir, mut app) = make_app();
+            app.handle_key(press(KeyCode::Char('d')));
+            assert!(app.log_select.logs().is_empty());
+            assert!(!app.should_quit());
+        }
+
+        #[test]
+        fn d_sets_pending_confirmation() {
+            let (_dir, mut app) = make_app_with_logs(&["log1"]);
+            app.handle_key(press(KeyCode::Char('d')));
+            assert!(app.log_select.pending_delete_label().is_some());
+            assert_eq!(app.screen(), Screen::LogSelect);
+        }
+
+        #[test]
+        fn d_then_y_deletes_log_and_reloads_list() {
+            let (dir, mut app) = make_app_with_logs(&["log1"]);
+            assert_eq!(app.log_select.logs().len(), 1);
+
+            app.handle_key(press(KeyCode::Char('d')));
+            app.handle_key(press(KeyCode::Char('y')));
+
+            assert!(app.log_select.logs().is_empty());
+            assert!(!dir.path().join("log1.jsonl").exists());
+        }
+
+        #[test]
+        fn d_then_n_preserves_list() {
+            let (_dir, mut app) = make_app_with_logs(&["log1"]);
+            app.handle_key(press(KeyCode::Char('d')));
+            app.handle_key(press(KeyCode::Char('n')));
+            assert_eq!(app.log_select.logs().len(), 1);
+            assert!(app.log_select.pending_delete_label().is_none());
+        }
+
+        #[test]
+        fn d_then_esc_preserves_list() {
+            let (_dir, mut app) = make_app_with_logs(&["log1"]);
+            app.handle_key(press(KeyCode::Char('d')));
+            app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.log_select.logs().len(), 1);
+            assert!(app.log_select.pending_delete_label().is_none());
+        }
+
+        #[test]
+        fn deleting_one_of_two_logs_leaves_one() {
+            let (_dir, mut app) = make_app_with_logs(&["log1", "log2"]);
+            assert_eq!(app.log_select.logs().len(), 2);
+
+            app.handle_key(press(KeyCode::Char('d')));
+            app.handle_key(press(KeyCode::Char('y')));
+
+            assert_eq!(app.log_select.logs().len(), 1);
+        }
+
+        #[test]
+        fn deleting_only_log_leaves_empty_list_with_no_selection() {
+            let (_dir, mut app) = make_app_with_logs(&["log1"]);
+            app.handle_key(press(KeyCode::Char('d')));
+            app.handle_key(press(KeyCode::Char('y')));
+
+            assert!(app.log_select.logs().is_empty());
+            assert_eq!(app.log_select.selected(), None);
         }
     }
 
