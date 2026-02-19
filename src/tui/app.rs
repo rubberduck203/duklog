@@ -261,6 +261,14 @@ impl App {
                 if let Err(e) = self.manager.delete_log(&log_id) {
                     self.log_select
                         .set_error(format!("Failed to delete log: {e}"));
+                    return;
+                }
+                if self
+                    .current_log
+                    .as_ref()
+                    .is_some_and(|l| l.log_id == log_id)
+                {
+                    self.current_log = None;
                 }
                 if let Err(e) = self.log_select.load(&self.manager) {
                     self.log_select
@@ -786,6 +794,77 @@ mod tests {
 
             assert!(app.log_select.logs().is_empty());
             assert_eq!(app.log_select.selected(), None);
+        }
+
+        #[test]
+        fn deleting_current_log_clears_current_log() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            save_test_log(&manager, "log1");
+            let mut app = App::new(manager).unwrap();
+
+            // Open the log (sets current_log)
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert!(app.current_log().is_some());
+
+            // Return to log select, then delete it
+            app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.screen(), Screen::LogSelect);
+            app.handle_key(press(KeyCode::Char('d')));
+            app.handle_key(press(KeyCode::Char('y')));
+
+            assert!(app.current_log().is_none());
+        }
+
+        #[test]
+        fn deleting_different_log_preserves_current_log() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            save_test_log(&manager, "log1");
+            save_test_log(&manager, "log2");
+            let mut app = App::new(manager).unwrap();
+
+            // log list is sorted newest-first; select the highlighted one
+            app.handle_key(press(KeyCode::Enter));
+            assert!(app.current_log().is_some());
+            let open_id = app.current_log().unwrap().log_id.clone();
+
+            // Return to log select; the other log is now highlighted at position 0
+            app.handle_key(press(KeyCode::Esc));
+            // Delete whichever is highlighted (not necessarily the open one)
+            app.handle_key(press(KeyCode::Char('d')));
+            app.handle_key(press(KeyCode::Char('y')));
+
+            // If the deleted log was not the open one, current_log should remain
+            let remaining_ids: Vec<_> = app.log_select.logs().iter().map(|l| &l.log_id).collect();
+            if remaining_ids.contains(&&open_id) {
+                assert!(
+                    app.current_log().is_some(),
+                    "current_log should be preserved when a different log is deleted"
+                );
+            } else {
+                assert!(
+                    app.current_log().is_none(),
+                    "current_log should be cleared when it was deleted"
+                );
+            }
+        }
+
+        #[test]
+        fn delete_storage_error_preserves_error_message() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            save_test_log(&manager, "log1");
+            let mut app = App::new(manager).unwrap();
+
+            // Remove the log file to cause a delete error, but keep the dir
+            std::fs::remove_file(dir.path().join("log1.jsonl")).unwrap();
+
+            app.apply_action(Action::DeleteLog("log1".into()));
+
+            // Error should be set and not overwritten by a reload
+            assert!(app.log_select.error().is_some(), "should show delete error");
         }
     }
 

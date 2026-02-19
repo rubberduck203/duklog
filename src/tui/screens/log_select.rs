@@ -47,39 +47,36 @@ impl LogSelectState {
         self.logs = manager.list_logs()?;
         self.selected = if self.logs.is_empty() { None } else { Some(0) };
         self.error = None;
+        self.pending_delete = None;
         Ok(())
     }
 
     /// Handles a key event, returning an [`Action`] for the app to apply.
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
-        if self.pending_delete.is_some() {
-            return match key.code {
-                KeyCode::Char('y') => {
-                    let (log_id, _) = self.pending_delete.take().unwrap();
-                    Action::DeleteLog(log_id)
-                }
-                KeyCode::Char('n') | KeyCode::Esc => {
-                    self.pending_delete = None;
+        match self.pending_delete.take() {
+            Some((log_id, label)) => match key.code {
+                KeyCode::Char('y') => Action::DeleteLog(log_id),
+                KeyCode::Char('n') | KeyCode::Esc => Action::None,
+                _ => {
+                    self.pending_delete = Some((log_id, label));
                     Action::None
                 }
+            },
+            None => match key.code {
+                KeyCode::Up => {
+                    self.select_prev();
+                    Action::None
+                }
+                KeyCode::Down => {
+                    self.select_next();
+                    Action::None
+                }
+                KeyCode::Enter => self.select_current(),
+                KeyCode::Char('n') => Action::Navigate(Screen::LogCreate),
+                KeyCode::Char('d') => self.start_delete(),
+                KeyCode::Char('q') | KeyCode::Esc => Action::Quit,
                 _ => Action::None,
-            };
-        }
-
-        match key.code {
-            KeyCode::Up => {
-                self.select_prev();
-                Action::None
-            }
-            KeyCode::Down => {
-                self.select_next();
-                Action::None
-            }
-            KeyCode::Enter => self.select_current(),
-            KeyCode::Char('n') => Action::Navigate(Screen::LogCreate),
-            KeyCode::Char('d') => self.start_delete(),
-            KeyCode::Char('q') | KeyCode::Esc => Action::Quit,
-            _ => Action::None,
+            },
         }
     }
 
@@ -549,7 +546,8 @@ mod tests {
         fn renders_footer() {
             let state = make_populated_state();
             let output = render_log_select(&state, 60, 12);
-            assert!(output.contains("n: new"), "should show footer keybindings");
+            assert!(output.contains("n: new"), "should show n: new hint");
+            assert!(output.contains("d: delete"), "should show d: delete hint");
         }
 
         #[test]
@@ -558,6 +556,28 @@ mod tests {
             state.set_error("disk full".into());
             let output = render_log_select(&state, 60, 12);
             assert!(output.contains("disk full"), "should show error message");
+        }
+
+        #[test]
+        fn renders_confirmation_prompt_when_pending_delete() {
+            let mut state = make_populated_state();
+            state.handle_key(press(KeyCode::Char('d')));
+            let output = render_log_select(&state, 60, 12);
+            assert!(
+                output.contains("Delete"),
+                "should show Delete prompt: {output}"
+            );
+            assert!(output.contains("y/n"), "should show y/n: {output}");
+        }
+
+        #[test]
+        fn confirmation_prompt_replaces_error_when_both_set() {
+            let mut state = make_populated_state();
+            state.set_error("old error".into());
+            state.handle_key(press(KeyCode::Char('d')));
+            let output = render_log_select(&state, 60, 12);
+            assert!(output.contains("Delete"), "should show confirmation");
+            assert!(!output.contains("old error"), "should not show stale error");
         }
     }
 
