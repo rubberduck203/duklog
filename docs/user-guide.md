@@ -92,6 +92,8 @@ The main logging screen. The header shows your station info, current band/mode, 
 
 When you change modes, the RST fields auto-update to the new mode's default — unless you've manually edited them.
 
+If you log a contact with the same callsign, band, and mode as an existing QSO in the current log, a duplicate warning is displayed. The QSO is still saved — the operator may intentionally work the same station on the same band/mode.
+
 ### QSO List
 
 A scrollable table of all QSOs in the current log. Columns: Time, Date, Call, Band, Mode, RST S/R, Park, Comments.
