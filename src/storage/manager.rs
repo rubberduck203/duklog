@@ -145,6 +145,9 @@ impl LogManager {
     /// Returns [`StorageError::DuplicateLog`] if an existing log already has the
     /// same station callsign, operator, and grid square on the same UTC day.
     /// All comparisons are case-insensitive.
+    ///
+    /// The caller must ensure `log` has a unique `log_id`; this method compares
+    /// on fields (callsign, operator, grid square, date) rather than identity.
     pub fn create_log(&self, log: &Log) -> Result<(), StorageError> {
         let new_date = log.created_at.date_naive();
         for existing in self.list_logs()? {
@@ -153,10 +156,10 @@ impl LogManager {
                 && operator_eq(&existing.operator, &log.operator)
                 && existing.grid_square.to_lowercase() == log.grid_square.to_lowercase()
             {
-                return Err(StorageError::DuplicateLog(format!(
-                    "A log already exists for {} on {} UTC",
-                    log.station_callsign, new_date
-                )));
+                return Err(StorageError::DuplicateLog {
+                    callsign: log.station_callsign.clone(),
+                    date: new_date,
+                });
             }
         }
         self.save_log(log)
@@ -548,7 +551,7 @@ mod tests {
 
         let new_log = make_log_for_today("new");
         let result = manager.create_log(&new_log);
-        assert!(matches!(result, Err(StorageError::DuplicateLog(_))));
+        assert!(matches!(result, Err(StorageError::DuplicateLog { .. })));
         // Existing log must not be overwritten
         assert_eq!(manager.list_logs().unwrap().len(), 1);
     }
@@ -610,7 +613,7 @@ mod tests {
         let new_log = make_log_for_today("new");
         // new_log has "W1AW" — differs only in case from "w1aw"
         let result = manager.create_log(&new_log);
-        assert!(matches!(result, Err(StorageError::DuplicateLog(_))));
+        assert!(matches!(result, Err(StorageError::DuplicateLog { .. })));
     }
 
     #[test]
@@ -650,25 +653,49 @@ mod tests {
         let mut new_log = make_log_for_today("new");
         new_log.operator = None;
         let result = manager.create_log(&new_log);
-        assert!(matches!(result, Err(StorageError::DuplicateLog(_))));
+        assert!(matches!(result, Err(StorageError::DuplicateLog { .. })));
     }
 
     #[test]
-    fn create_log_error_message_contains_callsign_and_date() {
+    fn create_log_rejects_duplicate_case_insensitive_grid() {
+        let (_dir, manager) = make_manager();
+        let mut existing = make_log_for_today("existing");
+        existing.grid_square = "fn31".to_string();
+        manager.save_log(&existing).unwrap();
+
+        let new_log = make_log_for_today("new");
+        // new_log has "FN31" — differs only in case from "fn31"
+        let result = manager.create_log(&new_log);
+        assert!(matches!(result, Err(StorageError::DuplicateLog { .. })));
+    }
+
+    #[test]
+    fn create_log_error_contains_callsign_and_date() {
         let (_dir, manager) = make_manager();
         let existing = make_log_for_today("existing");
         manager.save_log(&existing).unwrap();
 
         let new_log = make_log_for_today("new");
         let err = manager.create_log(&new_log).unwrap_err();
+        // Verify the structured error fields are formatted into the message
         let msg = err.to_string();
         assert!(msg.contains("W1AW"), "error should contain callsign");
         assert!(msg.contains("UTC"), "error should reference UTC");
     }
 
+    #[test]
+    fn create_log_propagates_list_logs_error() {
+        let (dir, manager) = make_manager();
+        let log = make_log_for_today("new");
+        // Write a corrupt JSONL file to make list_logs fail
+        fs::write(dir.path().join("corrupt.jsonl"), "{bad json}\n").unwrap();
+        let result = manager.create_log(&log);
+        assert!(matches!(result, Err(StorageError::Json(_))));
+    }
+
     // --- operator_eq unit tests ---
 
-    mod operator_eq_tests {
+    mod operator_eq {
         use super::*;
 
         #[test]

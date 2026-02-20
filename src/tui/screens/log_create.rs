@@ -524,7 +524,8 @@ mod tests {
             let mut state = LogCreateState::new();
             state.set_error("old error".into());
             fill_valid_form(&mut state);
-            state.handle_key(press(KeyCode::Enter));
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert!(matches!(action, Action::CreateLog(_)));
             assert_eq!(state.general_error(), None);
         }
     }

@@ -198,7 +198,7 @@ impl App {
                 self.screen = Screen::QsoEntry;
             }
             Action::CreateLog(log) => match self.manager.create_log(&log) {
-                Err(e @ StorageError::DuplicateLog(_)) => {
+                Err(e @ StorageError::DuplicateLog { .. }) => {
                     self.log_create.set_error(e.to_string());
                 }
                 Err(e) => {

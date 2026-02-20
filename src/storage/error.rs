@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use chrono::NaiveDate;
+
 /// Errors that can occur during storage operations.
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
@@ -28,6 +30,13 @@ pub enum StorageError {
     EmptyLogFile(PathBuf),
 
     /// A log already exists for the same station, operator, and location on the same UTC day.
-    #[error("{0}")]
-    DuplicateLog(String),
+    ///
+    /// Produced by [`crate::storage::LogManager::create_log`] when a duplicate is detected.
+    #[error("a log already exists for {callsign} on {date} UTC")]
+    DuplicateLog {
+        /// The station callsign of the conflicting log.
+        callsign: String,
+        /// The UTC date of the conflict.
+        date: NaiveDate,
+    },
 }
