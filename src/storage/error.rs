@@ -26,4 +26,8 @@ pub enum StorageError {
     /// A JSONL log file exists but contains no metadata line.
     #[error("log file is empty: {0}")]
     EmptyLogFile(PathBuf),
+
+    /// A log already exists for the same station, operator, and location on the same UTC day.
+    #[error("{0}")]
+    DuplicateLog(String),
 }

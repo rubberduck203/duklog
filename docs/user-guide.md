@@ -57,7 +57,7 @@ A form for creating a new log.
 | `Enter` | Validate and create the log |
 | `Esc` | Cancel and return to Log Select |
 
-Validation errors are shown inline when you submit.
+Validation errors are shown inline when you submit. If a log already exists with the same station callsign, operator, and grid square on the same UTC day, creation is blocked with an inline error — use a different callsign, operator, or grid, or wait until the next UTC day.
 
 ### QSO Entry
 
