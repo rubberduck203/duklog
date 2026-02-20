@@ -29,7 +29,7 @@ cargo build --release
 
 ### Log Select
 
-The home screen. Shows all saved logs in a table with columns for Park, Callsign, Date, and QSO count.
+The home screen. Shows all saved logs in a table with columns for Callsign, Date, Park, Grid, and QSO count.
 
 | Key | Action |
 |---|---|
