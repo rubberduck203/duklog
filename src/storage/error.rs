@@ -29,7 +29,7 @@ pub enum StorageError {
     #[error("log file is empty: {0}")]
     EmptyLogFile(PathBuf),
 
-    /// A log already exists for the same station, operator, and location on the same UTC day.
+    /// A log already exists for the same station, operator, park reference, and grid square on the same UTC day.
     ///
     /// Produced by [`crate::storage::LogManager::create_log`] when a duplicate is detected.
     #[error("a log already exists for {callsign} on {date} UTC")]
