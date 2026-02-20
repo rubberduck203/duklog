@@ -60,6 +60,13 @@ impl LogCreateState {
                 Action::None
             }
             KeyCode::Char(ch) => {
+                let should_uppercase =
+                    self.form.focus() == CALLSIGN || self.form.focus() == OPERATOR;
+                let ch = if should_uppercase {
+                    ch.to_ascii_uppercase()
+                } else {
+                    ch
+                };
                 self.form.insert_char(ch);
                 Action::None
             }
@@ -258,6 +265,37 @@ mod tests {
             state.handle_key(press(KeyCode::Char('B')));
             state.handle_key(press(KeyCode::Backspace));
             assert_eq!(state.form().value(CALLSIGN), "A");
+        }
+
+        #[test]
+        fn callsign_auto_uppercased() {
+            let mut state = LogCreateState::new();
+            for ch in "w3duk".chars() {
+                state.handle_key(press(KeyCode::Char(ch)));
+            }
+            assert_eq!(state.form().value(CALLSIGN), "W3DUK");
+        }
+
+        #[test]
+        fn operator_auto_uppercased() {
+            let mut state = LogCreateState::new();
+            state.handle_key(press(KeyCode::Tab)); // move to operator
+            for ch in "w3duk".chars() {
+                state.handle_key(press(KeyCode::Char(ch)));
+            }
+            assert_eq!(state.form().value(OPERATOR), "W3DUK");
+        }
+
+        #[test]
+        fn park_ref_not_uppercased() {
+            let mut state = LogCreateState::new();
+            state.handle_key(press(KeyCode::Tab)); // operator
+            state.handle_key(press(KeyCode::Tab)); // park ref
+            for ch in "k-0001".chars() {
+                state.handle_key(press(KeyCode::Char(ch)));
+            }
+            // park ref is not auto-uppercased (validation will catch bad case)
+            assert_eq!(state.form().value(PARK_REF), "k-0001");
         }
     }
 
