@@ -751,6 +751,26 @@ mod tests {
     }
 
     #[test]
+    fn create_log_rejects_duplicate_case_insensitive_operator() {
+        let (_dir, manager) = make_manager();
+        let mut existing = make_log_for_today("existing");
+        existing.station_callsign = "W3DUK".to_string();
+        existing.operator = Some("w3duk".to_string());
+        existing.park_ref = None;
+        manager.save_log(&existing).unwrap();
+
+        let mut new_log = make_log_for_today("new");
+        new_log.station_callsign = "W3DUK".to_string();
+        new_log.operator = Some("W3DUK".to_string());
+        new_log.park_ref = None;
+        let result = manager.create_log(&new_log);
+        assert!(
+            matches!(result, Err(StorageError::DuplicateLog { .. })),
+            "duplicate with different-case operator should be blocked"
+        );
+    }
+
+    #[test]
     fn create_log_rejects_duplicate_none_park_refs() {
         let (_dir, manager) = make_manager();
         let mut existing = make_log_for_today("existing");
