@@ -4,7 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::model::{Log, validate_callsign, validate_grid_square, validate_park_ref};
@@ -25,6 +25,7 @@ const GRID_SQUARE: usize = 3;
 #[derive(Debug, Clone)]
 pub struct LogCreateState {
     form: Form,
+    general_error: Option<String>,
 }
 
 impl Default for LogCreateState {
@@ -43,6 +44,7 @@ impl LogCreateState {
                 FormField::new("Park Ref (e.g. K-0001)", false),
                 FormField::new("Grid Square (e.g. FN31)", true),
             ]),
+            general_error: None,
         }
     }
 
@@ -58,6 +60,13 @@ impl LogCreateState {
                 Action::None
             }
             KeyCode::Char(ch) => {
+                let should_uppercase =
+                    self.form.focus() == CALLSIGN || self.form.focus() == OPERATOR;
+                let ch = if should_uppercase {
+                    ch.to_ascii_uppercase()
+                } else {
+                    ch
+                };
                 self.form.insert_char(ch);
                 Action::None
             }
@@ -76,14 +85,28 @@ impl LogCreateState {
         &self.form
     }
 
+    /// Sets a general error message not tied to any specific field.
+    ///
+    /// Used to display storage-level errors (e.g. duplicate log) inline.
+    pub fn set_error(&mut self, msg: String) {
+        self.general_error = Some(msg);
+    }
+
+    /// Returns the general error message, if any.
+    pub fn general_error(&self) -> Option<&str> {
+        self.general_error.as_deref()
+    }
+
     /// Resets the form to its initial empty state.
     pub fn reset(&mut self) {
         self.form.reset();
+        self.general_error = None;
     }
 
     /// Validates all fields and attempts to create a [`Log`].
     fn submit(&mut self) -> Action {
         self.form.clear_errors();
+        self.general_error = None;
 
         let callsign = self.form.value(CALLSIGN).to_string();
         let operator_str = self.form.value(OPERATOR).to_string();
@@ -138,14 +161,23 @@ pub fn draw_log_create(state: &LogCreateState, frame: &mut Frame, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let [form_area, _spacer, footer_area] = Layout::vertical([
+    let [form_area, error_area, _spacer, footer_area] = Layout::vertical([
         Constraint::Length(12),
+        Constraint::Length(1),
         Constraint::Min(0),
         Constraint::Length(1),
     ])
     .areas(inner);
 
     draw_form(state.form(), frame, form_area);
+
+    if let Some(err) = state.general_error() {
+        let error = Paragraph::new(Line::from(Span::styled(
+            err,
+            Style::default().fg(Color::Red),
+        )));
+        frame.render_widget(error, error_area);
+    }
 
     let footer = Paragraph::new(Line::from(
         "Tab/Shift+Tab: next/prev  Enter: create  Esc: cancel",
@@ -233,6 +265,37 @@ mod tests {
             state.handle_key(press(KeyCode::Char('B')));
             state.handle_key(press(KeyCode::Backspace));
             assert_eq!(state.form().value(CALLSIGN), "A");
+        }
+
+        #[test]
+        fn callsign_auto_uppercased() {
+            let mut state = LogCreateState::new();
+            for ch in "w3duk".chars() {
+                state.handle_key(press(KeyCode::Char(ch)));
+            }
+            assert_eq!(state.form().value(CALLSIGN), "W3DUK");
+        }
+
+        #[test]
+        fn operator_auto_uppercased() {
+            let mut state = LogCreateState::new();
+            state.handle_key(press(KeyCode::Tab)); // move to operator
+            for ch in "w3duk".chars() {
+                state.handle_key(press(KeyCode::Char(ch)));
+            }
+            assert_eq!(state.form().value(OPERATOR), "W3DUK");
+        }
+
+        #[test]
+        fn park_ref_not_uppercased() {
+            let mut state = LogCreateState::new();
+            state.handle_key(press(KeyCode::Tab)); // operator
+            state.handle_key(press(KeyCode::Tab)); // park ref
+            for ch in "k-0001".chars() {
+                state.handle_key(press(KeyCode::Char(ch)));
+            }
+            // park ref is not auto-uppercased (validation will catch bad case)
+            assert_eq!(state.form().value(PARK_REF), "k-0001");
         }
     }
 
@@ -450,6 +513,17 @@ mod tests {
             assert!(output.contains("W1AW"), "should show typed callsign");
             assert!(output.contains("FN31"), "should show typed grid square");
         }
+
+        #[test]
+        fn renders_general_error() {
+            let mut state = LogCreateState::new();
+            state.set_error("A log already exists for W1AW on 2026-02-19 UTC".into());
+            let output = render_log_create(&state, 70, 25);
+            assert!(
+                output.contains("A log already exists"),
+                "should render general error"
+            );
+        }
     }
 
     mod reset {
@@ -462,6 +536,35 @@ mod tests {
             state.reset();
             assert_eq!(state.form().value(CALLSIGN), "");
             assert_eq!(state.form().focus(), 0);
+        }
+
+        #[test]
+        fn clears_general_error() {
+            let mut state = LogCreateState::new();
+            state.set_error("some error".into());
+            state.reset();
+            assert_eq!(state.general_error(), None);
+        }
+    }
+
+    mod general_error {
+        use super::*;
+
+        #[test]
+        fn set_error_stores_message() {
+            let mut state = LogCreateState::new();
+            state.set_error("duplicate log".into());
+            assert_eq!(state.general_error(), Some("duplicate log"));
+        }
+
+        #[test]
+        fn submit_clears_general_error() {
+            let mut state = LogCreateState::new();
+            state.set_error("old error".into());
+            fill_valid_form(&mut state);
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert!(matches!(action, Action::CreateLog(_)));
+            assert_eq!(state.general_error(), None);
         }
     }
 }

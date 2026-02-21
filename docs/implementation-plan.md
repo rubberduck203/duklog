@@ -35,13 +35,12 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 - `App::apply_action` checks for duplicates before saving; sets warning message after `clear_fast_fields()`
 - QSO is still logged — operator may intentionally work the same station on the same band/mode
 
-### 3.11 Duplicate Log Prevention (`feature/duplicate-log-prevention`)
-**Files**: `src/model/log.rs`, `src/storage/manager.rs`, `src/tui/screens/log_create.rs`
+### ~~3.11 Duplicate Log Prevention~~ — Done (`feature/duplicate-log-prevention`)
 
-- Prevent creating a second log with the same station callsign, operator, and location on the same UTC day
-- `LogManager` checks existing logs at creation time and returns an error if a match exists
-- TUI LogCreate screen displays the error inline (same as other validation errors)
-- Tests: duplicate blocked, different day allowed, different station/operator/location allowed
+- `LogManager::create_log` checks existing logs before saving; returns `StorageError::DuplicateLog` on same callsign + operator + grid square on the same UTC day (case-insensitive)
+- `LogCreateState::set_error` / `general_error` added for non-field errors; cleared on submit and reset
+- `draw_log_create` renders general error in red below the form
+- `apply_action(CreateLog)` routes `DuplicateLog` errors to the log create screen; other errors to log select
 
 ### 3.12 Polish (`feature/polish`)
 **Files**: `src/tui/widgets/status_bar.rs`, `src/tui/screens/help.rs`, various

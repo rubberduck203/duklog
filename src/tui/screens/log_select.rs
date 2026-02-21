@@ -178,7 +178,7 @@ pub fn draw_log_select(state: &LogSelectState, frame: &mut Frame, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let header = Row::new(vec!["Park", "Callsign", "Date", "QSOs"])
+    let header = Row::new(vec!["Callsign", "Date", "Park", "Grid", "QSOs"])
         .style(Style::default().add_modifier(Modifier::BOLD))
         .bottom_margin(1);
 
@@ -193,9 +193,10 @@ pub fn draw_log_select(state: &LogSelectState, frame: &mut Frame, area: Rect) {
                 Style::default()
             };
             Row::new(vec![
-                log.park_ref.as_deref().unwrap_or("-").to_string(),
                 log.station_callsign.clone(),
                 log.created_at.format("%Y-%m-%d").to_string(),
+                log.park_ref.as_deref().unwrap_or("-").to_string(),
+                log.grid_square.clone(),
                 log.qsos.len().to_string(),
             ])
             .style(style)
@@ -206,7 +207,8 @@ pub fn draw_log_select(state: &LogSelectState, frame: &mut Frame, area: Rect) {
         Constraint::Length(12),
         Constraint::Length(12),
         Constraint::Length(12),
-        Constraint::Length(6),
+        Constraint::Length(8),
+        Constraint::Length(5),
     ];
 
     let table = Table::new(rows, widths).header(header);
@@ -534,12 +536,14 @@ mod tests {
         #[test]
         fn renders_log_table() {
             let state = make_populated_state();
-            let output = render_log_select(&state, 60, 12);
+            let output = render_log_select(&state, 70, 12);
             assert!(output.contains("K-0001"), "should show park ref");
             assert!(output.contains("W1AW"), "should show callsign");
             assert!(output.contains("N0CALL"), "should show second callsign");
-            assert!(output.contains("Park"), "should show table header");
-            assert!(output.contains("Callsign"), "should show table header");
+            assert!(output.contains("FN31"), "should show grid square");
+            assert!(output.contains("Callsign"), "should show Callsign header");
+            assert!(output.contains("Park"), "should show Park header");
+            assert!(output.contains("Grid"), "should show Grid header");
         }
 
         #[test]

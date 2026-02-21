@@ -44,7 +44,7 @@ Each screen module exports a state struct whose `handle_key` method returns an `
 Action::None              — no state change
 Action::Navigate(s)       — switch to screen s
 Action::SelectLog(l)      — open existing log l
-Action::CreateLog(l)      — persist and open new log l
+Action::CreateLog(l)      — persist and open new log l; `LogManager::create_log` checks for duplicates (same callsign + operator + park_ref + grid square on the same UTC day) before saving and returns `StorageError::DuplicateLog` if found; different park refs are never duplicates; the error is displayed inline on the LogCreate screen
 Action::AddQso(q)         — append QSO to the current log; checks for same-day duplicates (call+band+mode) and shows a warning if found (QSO is still saved)
 Action::EditQso(idx)      — load QSO at index into entry form for editing
 Action::UpdateQso(idx, q) — replace QSO at index with updated version

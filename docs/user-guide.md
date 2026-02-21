@@ -29,7 +29,7 @@ cargo build --release
 
 ### Log Select
 
-The home screen. Shows all saved logs in a table with columns for Park, Callsign, Date, and QSO count.
+The home screen. Shows all saved logs in a table with columns for Callsign, Date, Park, Grid, and QSO count.
 
 | Key | Action |
 |---|---|
@@ -57,7 +57,7 @@ A form for creating a new log.
 | `Enter` | Validate and create the log |
 | `Esc` | Cancel and return to Log Select |
 
-Validation errors are shown inline when you submit.
+Validation errors are shown inline when you submit. If a log already exists with the same station callsign, operator, park reference, and grid square on the same UTC day, creation is blocked with an inline error. Logs for different parks on the same day are always allowed.
 
 ### QSO Entry
 

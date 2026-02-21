@@ -8,7 +8,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::{Frame, Terminal};
 
 use crate::model::Log;
-use crate::storage::{self, LogManager};
+use crate::storage::{self, LogManager, StorageError};
 
 use super::action::Action;
 use super::error::AppError;
@@ -197,17 +197,21 @@ impl App {
                 self.current_log = Some(log);
                 self.screen = Screen::QsoEntry;
             }
-            Action::CreateLog(log) => {
-                if let Err(e) = self.manager.save_log(&log) {
+            Action::CreateLog(log) => match self.manager.create_log(&log) {
+                Err(e @ StorageError::DuplicateLog { .. }) => {
+                    self.log_create.set_error(e.to_string());
+                }
+                Err(e) => {
                     self.log_select
                         .set_error(format!("Failed to save log: {e}"));
                     self.screen = Screen::LogSelect;
-                    return;
                 }
-                self.qso_entry.set_log_context(&log);
-                self.current_log = Some(log);
-                self.screen = Screen::QsoEntry;
-            }
+                Ok(()) => {
+                    self.qso_entry.set_log_context(&log);
+                    self.current_log = Some(log);
+                    self.screen = Screen::QsoEntry;
+                }
+            },
             Action::ExportLog => match self.current_log {
                 Some(ref log) => {
                     let path = Path::new(self.export.path());
@@ -675,6 +679,60 @@ mod tests {
             let logs = app.manager().list_logs().unwrap();
             assert_eq!(logs.len(), 1);
             assert_eq!(logs[0].station_callsign, "W1AW");
+        }
+
+        #[test]
+        fn duplicate_log_shows_error_on_log_create_screen() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            let mut app = App::new(manager).unwrap();
+
+            // Create the first log
+            app.handle_key(press(KeyCode::Char('n')));
+            fill_create_form(&mut app);
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+
+            // Return to log select, then try to create an identical log
+            app.handle_key(press(KeyCode::Esc));
+            app.handle_key(press(KeyCode::Char('n')));
+            fill_create_form(&mut app);
+            app.handle_key(press(KeyCode::Enter));
+
+            // Should remain on LogCreate with an error set
+            assert_eq!(app.screen(), Screen::LogCreate);
+            assert!(
+                app.log_create
+                    .general_error()
+                    .is_some_and(|e| e.contains("already exists")),
+                "should show duplicate error on log create screen"
+            );
+            assert!(
+                app.current_log().is_some(),
+                "original log should be unchanged"
+            );
+        }
+
+        #[test]
+        fn duplicate_error_cleared_on_navigate_away_and_back() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            let mut app = App::new(manager).unwrap();
+
+            // Create duplicate scenario
+            app.handle_key(press(KeyCode::Char('n')));
+            fill_create_form(&mut app);
+            app.handle_key(press(KeyCode::Enter));
+            app.handle_key(press(KeyCode::Esc));
+            app.handle_key(press(KeyCode::Char('n')));
+            fill_create_form(&mut app);
+            app.handle_key(press(KeyCode::Enter));
+            assert!(app.log_create.general_error().is_some());
+
+            // Navigating away and back resets the form, including the error
+            app.handle_key(press(KeyCode::Esc));
+            app.handle_key(press(KeyCode::Char('n')));
+            assert_eq!(app.log_create.general_error(), None);
         }
     }
 

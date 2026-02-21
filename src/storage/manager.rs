@@ -140,11 +140,64 @@ impl LogManager {
         Ok(logs)
     }
 
+    /// Creates a new log, checking for duplicates before saving.
+    ///
+    /// Returns [`StorageError::DuplicateLog`] if an existing log already has the
+    /// same station callsign, operator, park reference, and grid square on the
+    /// same UTC day. All comparisons are case-insensitive. Logs with different
+    /// park references are never considered duplicates, allowing multiple park
+    /// activations from the same location on the same day.
+    ///
+    /// The caller must ensure `log` has a unique `log_id`; this method compares
+    /// on fields rather than identity.
+    pub fn create_log(&self, log: &Log) -> Result<(), StorageError> {
+        let new_date = log.created_at.date_naive();
+        for existing in self.list_logs()? {
+            if existing.created_at.date_naive() == new_date
+                && existing.station_callsign.to_lowercase() == log.station_callsign.to_lowercase()
+                && operator_eq(&existing.operator, &log.operator)
+                && park_ref_eq(&existing.park_ref, &log.park_ref)
+                && existing.grid_square.to_lowercase() == log.grid_square.to_lowercase()
+            {
+                return Err(StorageError::DuplicateLog {
+                    callsign: log.station_callsign.clone(),
+                    date: new_date,
+                });
+            }
+        }
+        self.save_log(log)
+    }
+
     /// Deletes a log file.
     pub fn delete_log(&self, log_id: &str) -> Result<(), StorageError> {
         let path = self.log_path(log_id);
         fs::remove_file(&path)?;
         Ok(())
+    }
+}
+
+/// Returns `true` if two operator fields represent the same operator.
+///
+/// `None` matches `None`; two `Some` values are compared case-insensitively.
+fn operator_eq(a: &Option<String>, b: &Option<String>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(x), Some(y)) => x.to_lowercase() == y.to_lowercase(),
+        _ => false,
+    }
+}
+
+/// Returns `true` if two park reference fields represent the same park.
+///
+/// `None` matches `None`; two `Some` values are compared case-insensitively.
+/// Logs with different park references are always considered distinct, even
+/// if every other field matches — operators may activate multiple parks from
+/// the same location on the same day.
+fn park_ref_eq(a: &Option<String>, b: &Option<String>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(x), Some(y)) => x.to_lowercase() == y.to_lowercase(),
+        _ => false,
     }
 }
 
@@ -475,6 +528,330 @@ mod tests {
 
         let loaded = manager.load_log("no-op").unwrap();
         assert_eq!(loaded.operator, None);
+    }
+
+    // --- create_log duplicate prevention ---
+
+    fn make_log_for_today(id: &str) -> Log {
+        let mut log = Log::new(
+            "W1AW".to_string(),
+            Some("W1AW".to_string()),
+            Some("K-0001".to_string()),
+            "FN31".to_string(),
+        )
+        .unwrap();
+        log.log_id = id.to_string();
+        // created_at defaults to Utc::now() — same day as the new log in create_log
+        log
+    }
+
+    fn make_log_for_yesterday(id: &str) -> Log {
+        let mut log = make_log_for_today(id);
+        let yesterday = Utc::now().date_naive().pred_opt().unwrap();
+        log.created_at = Utc.from_utc_datetime(&yesterday.and_hms_opt(12, 0, 0).unwrap());
+        log
+    }
+
+    #[test]
+    fn create_log_succeeds_when_no_existing_logs() {
+        let (_dir, manager) = make_manager();
+        let log = make_log_for_today("new");
+        manager.create_log(&log).unwrap();
+        assert_eq!(manager.list_logs().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn create_log_rejects_exact_duplicate_same_day() {
+        let (_dir, manager) = make_manager();
+        let existing = make_log_for_today("existing");
+        manager.save_log(&existing).unwrap();
+
+        let new_log = make_log_for_today("new");
+        let result = manager.create_log(&new_log);
+        assert!(matches!(result, Err(StorageError::DuplicateLog { .. })));
+        // Existing log must not be overwritten
+        assert_eq!(manager.list_logs().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn create_log_allows_different_utc_day() {
+        let (_dir, manager) = make_manager();
+        let existing = make_log_for_yesterday("old");
+        manager.save_log(&existing).unwrap();
+
+        let new_log = make_log_for_today("new");
+        manager.create_log(&new_log).unwrap();
+        assert_eq!(manager.list_logs().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn create_log_allows_different_callsign() {
+        let (_dir, manager) = make_manager();
+        let existing = make_log_for_today("existing");
+        manager.save_log(&existing).unwrap();
+
+        let mut new_log = make_log_for_today("new");
+        new_log.station_callsign = "KD9XYZ".to_string();
+        manager.create_log(&new_log).unwrap();
+        assert_eq!(manager.list_logs().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn create_log_allows_different_operator() {
+        let (_dir, manager) = make_manager();
+        let existing = make_log_for_today("existing");
+        manager.save_log(&existing).unwrap();
+
+        let mut new_log = make_log_for_today("new");
+        new_log.operator = Some("KD9XYZ".to_string());
+        manager.create_log(&new_log).unwrap();
+        assert_eq!(manager.list_logs().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn create_log_allows_different_grid() {
+        let (_dir, manager) = make_manager();
+        let existing = make_log_for_today("existing");
+        manager.save_log(&existing).unwrap();
+
+        let mut new_log = make_log_for_today("new");
+        new_log.grid_square = "EM10".to_string();
+        manager.create_log(&new_log).unwrap();
+        assert_eq!(manager.list_logs().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn create_log_rejects_duplicate_case_insensitive_callsign() {
+        let (_dir, manager) = make_manager();
+        let mut existing = make_log_for_today("existing");
+        existing.station_callsign = "w1aw".to_string();
+        manager.save_log(&existing).unwrap();
+
+        let new_log = make_log_for_today("new");
+        // new_log has "W1AW" — differs only in case from "w1aw"
+        let result = manager.create_log(&new_log);
+        assert!(matches!(result, Err(StorageError::DuplicateLog { .. })));
+    }
+
+    #[test]
+    fn create_log_allows_none_vs_some_operator() {
+        let (_dir, manager) = make_manager();
+        let mut existing = make_log_for_today("existing");
+        existing.operator = None;
+        manager.save_log(&existing).unwrap();
+
+        let new_log = make_log_for_today("new");
+        // new_log has operator = Some("W1AW"), existing has None → not a duplicate
+        manager.create_log(&new_log).unwrap();
+        assert_eq!(manager.list_logs().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn create_log_allows_some_vs_none_operator() {
+        let (_dir, manager) = make_manager();
+        let existing = make_log_for_today("existing");
+        // existing has operator = Some("W1AW")
+        manager.save_log(&existing).unwrap();
+
+        let mut new_log = make_log_for_today("new");
+        new_log.operator = None;
+        // new_log has operator = None → not a duplicate
+        manager.create_log(&new_log).unwrap();
+        assert_eq!(manager.list_logs().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn create_log_rejects_duplicate_none_operators() {
+        let (_dir, manager) = make_manager();
+        let mut existing = make_log_for_today("existing");
+        existing.operator = None;
+        manager.save_log(&existing).unwrap();
+
+        let mut new_log = make_log_for_today("new");
+        new_log.operator = None;
+        let result = manager.create_log(&new_log);
+        assert!(matches!(result, Err(StorageError::DuplicateLog { .. })));
+    }
+
+    #[test]
+    fn create_log_rejects_duplicate_case_insensitive_grid() {
+        let (_dir, manager) = make_manager();
+        let mut existing = make_log_for_today("existing");
+        existing.grid_square = "fn31".to_string();
+        manager.save_log(&existing).unwrap();
+
+        let new_log = make_log_for_today("new");
+        // new_log has "FN31" — differs only in case from "fn31"
+        let result = manager.create_log(&new_log);
+        assert!(matches!(result, Err(StorageError::DuplicateLog { .. })));
+    }
+
+    #[test]
+    fn create_log_error_contains_callsign_and_date() {
+        let (_dir, manager) = make_manager();
+        let existing = make_log_for_today("existing");
+        manager.save_log(&existing).unwrap();
+
+        let new_log = make_log_for_today("new");
+        let err = manager.create_log(&new_log).unwrap_err();
+        // Verify the structured error fields are formatted into the message
+        let msg = err.to_string();
+        assert!(msg.contains("W1AW"), "error should contain callsign");
+        assert!(msg.contains("UTC"), "error should reference UTC");
+    }
+
+    #[test]
+    fn create_log_propagates_list_logs_error() {
+        let (dir, manager) = make_manager();
+        let log = make_log_for_today("new");
+        // Write a corrupt JSONL file to make list_logs fail
+        fs::write(dir.path().join("corrupt.jsonl"), "{bad json}\n").unwrap();
+        let result = manager.create_log(&log);
+        assert!(matches!(result, Err(StorageError::Json(_))));
+    }
+
+    #[test]
+    fn create_log_allows_different_park_ref() {
+        let (_dir, manager) = make_manager();
+        let existing = make_log_for_today("existing");
+        // existing has park_ref = Some("K-0001")
+        manager.save_log(&existing).unwrap();
+
+        let mut new_log = make_log_for_today("new");
+        new_log.park_ref = Some("K-0002".to_string());
+        // Different park on same day — not a duplicate
+        manager.create_log(&new_log).unwrap();
+        assert_eq!(manager.list_logs().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn create_log_allows_park_ref_vs_no_park_ref() {
+        let (_dir, manager) = make_manager();
+        let existing = make_log_for_today("existing");
+        // existing has park_ref = Some("K-0001")
+        manager.save_log(&existing).unwrap();
+
+        let mut new_log = make_log_for_today("new");
+        new_log.park_ref = None;
+        // One is a POTA log, one is a generic log — not a duplicate
+        manager.create_log(&new_log).unwrap();
+        assert_eq!(manager.list_logs().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn create_log_rejects_duplicate_same_park_ref() {
+        let (_dir, manager) = make_manager();
+        let existing = make_log_for_today("existing");
+        manager.save_log(&existing).unwrap();
+
+        let new_log = make_log_for_today("new");
+        // Same park_ref = Some("K-0001") — is a duplicate
+        let result = manager.create_log(&new_log);
+        assert!(matches!(result, Err(StorageError::DuplicateLog { .. })));
+    }
+
+    #[test]
+    fn create_log_rejects_duplicate_case_insensitive_operator() {
+        let (_dir, manager) = make_manager();
+        let mut existing = make_log_for_today("existing");
+        existing.station_callsign = "W3DUK".to_string();
+        existing.operator = Some("w3duk".to_string());
+        existing.park_ref = None;
+        manager.save_log(&existing).unwrap();
+
+        let mut new_log = make_log_for_today("new");
+        new_log.station_callsign = "W3DUK".to_string();
+        new_log.operator = Some("W3DUK".to_string());
+        new_log.park_ref = None;
+        let result = manager.create_log(&new_log);
+        assert!(
+            matches!(result, Err(StorageError::DuplicateLog { .. })),
+            "duplicate with different-case operator should be blocked"
+        );
+    }
+
+    #[test]
+    fn create_log_rejects_duplicate_none_park_refs() {
+        let (_dir, manager) = make_manager();
+        let mut existing = make_log_for_today("existing");
+        existing.park_ref = None;
+        manager.save_log(&existing).unwrap();
+
+        let mut new_log = make_log_for_today("new");
+        new_log.park_ref = None;
+        // Both have no park ref — is a duplicate
+        let result = manager.create_log(&new_log);
+        assert!(matches!(result, Err(StorageError::DuplicateLog { .. })));
+    }
+
+    // --- operator_eq unit tests ---
+
+    mod operator_eq {
+        use super::*;
+
+        #[test]
+        fn none_and_none_are_equal() {
+            assert!(operator_eq(&None, &None));
+        }
+
+        #[test]
+        fn some_and_none_differ() {
+            assert!(!operator_eq(&Some("W1AW".into()), &None));
+        }
+
+        #[test]
+        fn none_and_some_differ() {
+            assert!(!operator_eq(&None, &Some("W1AW".into())));
+        }
+
+        #[test]
+        fn same_case_some_are_equal() {
+            assert!(operator_eq(&Some("W1AW".into()), &Some("W1AW".into())));
+        }
+
+        #[test]
+        fn different_case_some_are_equal() {
+            assert!(operator_eq(&Some("W1AW".into()), &Some("w1aw".into())));
+        }
+
+        #[test]
+        fn different_callsign_some_differ() {
+            assert!(!operator_eq(&Some("W1AW".into()), &Some("KD9XYZ".into())));
+        }
+    }
+
+    mod park_ref_eq {
+        use super::*;
+
+        #[test]
+        fn none_and_none_are_equal() {
+            assert!(park_ref_eq(&None, &None));
+        }
+
+        #[test]
+        fn some_and_none_differ() {
+            assert!(!park_ref_eq(&Some("K-0001".into()), &None));
+        }
+
+        #[test]
+        fn none_and_some_differ() {
+            assert!(!park_ref_eq(&None, &Some("K-0001".into())));
+        }
+
+        #[test]
+        fn same_park_ref_equal() {
+            assert!(park_ref_eq(&Some("K-0001".into()), &Some("K-0001".into())));
+        }
+
+        #[test]
+        fn different_case_park_ref_equal() {
+            assert!(park_ref_eq(&Some("k-0001".into()), &Some("K-0001".into())));
+        }
+
+        #[test]
+        fn different_park_ref_differ() {
+            assert!(!park_ref_eq(&Some("K-0001".into()), &Some("K-0002".into())));
+        }
     }
 
     // --- Path safety ---
