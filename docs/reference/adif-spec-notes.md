@@ -42,7 +42,7 @@ which outputs lowercase markers (`<eoh>`, `<eor>`) per the case-insensitive spec
 
 ## QSO Fields Used by duklog
 
-### Required (POTA submission)
+### Core QSO fields (all log types)
 
 | Field | Format | Example | Notes |
 |---|---|---|---|
@@ -51,19 +51,39 @@ which outputs lowercase markers (`<eoh>`, `<eor>`) per the case-insensitive spec
 | `QSO_DATE` | YYYYMMDD | `20260216` | UTC date |
 | `TIME_ON` | HHMMSS | `143000` | UTC start time |
 | `BAND` | string | `20M` | See band values below |
+| `FREQ` | number (kHz) | `14225` | Frequency in kHz; emitted when captured; complements `BAND` |
 | `MODE` | string | `SSB` | See mode values below |
+| `RST_SENT` | string | `59` | Signal report sent |
+| `RST_RCVD` | string | `59` | Signal report received |
+| `OPERATOR` | string | `W1AW` | Individual operator callsign (if different from station) |
+| `MY_GRIDSQUARE` | string | `FN31` | Maidenhead grid square |
+| `COMMENT` | string | `nice op` | Free-text comment; emitted only if non-empty |
 
-### Recommended (POTA)
+### POTA fields
 
 | Field | Format | Example | Notes |
 |---|---|---|---|
-| `OPERATOR` | string | `W1AW` | Individual operator callsign (if different from station) |
-| `MY_SIG` | string | `POTA` | Always "POTA" for our use |
+| `MY_SIG` | string | `POTA` | Always `POTA`; emitted only for POTA logs with a park ref |
 | `MY_SIG_INFO` | string | `K-0001` | POTA park reference |
-| `SIG` | string | `POTA` | Set when other station is also in a park (P2P) |
+| `SIG` | string | `POTA` | Set when other station is also at a park (P2P) |
 | `SIG_INFO` | string | `K-1234` | Other station's park reference (P2P) |
-| `RST_SENT` | string | `59` | Signal report sent |
-| `RST_RCVD` | string | `59` | Signal report received |
+
+### Contest fields (Field Day and WFD)
+
+| Field | Format | Example | Notes |
+|---|---|---|---|
+| `CONTEST_ID` | string | `ARRL-FIELD-DAY` | Contest identifier; see values below |
+| `STX_STRING` | string | `1B EPA` | Sent exchange (your class + section); constant per log |
+| `SRX_STRING` | string | `3A CT` | Received exchange (their class + section); per QSO |
+
+**`CONTEST_ID` values used by duklog**:
+
+| Log Type | `CONTEST_ID` |
+|---|---|
+| ARRL Field Day | `ARRL-FIELD-DAY` |
+| Winter Field Day | `WFD` |
+
+Note: `SPAR-WINTER-FD` is the deprecated identifier for WFD 2016 and earlier; duklog uses `WFD` for all WFD logs (2017+).
 
 ## ADIF Band Values
 
@@ -87,7 +107,7 @@ These are the string values used in the `BAND` field:
 
 ## ADIF Mode Values
 
-Common modes for POTA:
+Common modes:
 
 | Mode | ADIF Value | RST Format |
 |---|---|---|
