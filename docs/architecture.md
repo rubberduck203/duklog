@@ -67,6 +67,10 @@ The QSO list screen dispatches `EditQso(index)` when the user presses Enter on a
 
 `widgets/form.rs` provides a reusable `Form` with `FormField` entries. It handles focus cycling, character insert/delete, per-field errors, and rendering. Screens like LogCreate wrap a `Form` and add validation logic on submit.
 
+### Status Bar Widget
+
+`widgets/status_bar.rs` provides `StatusBarContext` (a plain data struct) and `draw_status_bar`. It renders a one-line context bar at the top of the QSO Entry, QSO List, and Export screens showing the active log's callsign, park reference, today's QSO count, and activation status. The widget is decoupled from `Log` — callers construct a `StatusBarContext` from whatever log type is active. This keeps Phase 4 multi-logbook changes confined to context construction rather than the widget itself.
+
 ## Design Decisions
 
 - **No async runtime**: The TUI is synchronous. Crossterm's event polling is sufficient for a keyboard-driven logger. No need for tokio/async-std complexity.

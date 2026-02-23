@@ -11,6 +11,7 @@ use crate::model::Log;
 use crate::storage::default_export_path;
 use crate::tui::action::Action;
 use crate::tui::app::Screen;
+use crate::tui::widgets::{StatusBarContext, draw_status_bar};
 
 /// Current status of the export operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,15 +112,28 @@ impl ExportState {
 /// Renders the export confirmation screen.
 #[mutants::skip]
 pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, area: Rect) {
+    let [status_area, content_area] =
+        Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
+
+    let ctx = log
+        .map(|l| StatusBarContext {
+            callsign: l.station_callsign.clone(),
+            park_ref: l.park_ref.clone(),
+            qso_count: l.qso_count_today(),
+            is_activated: l.is_activated(),
+        })
+        .unwrap_or_default();
+    draw_status_bar(&ctx, frame, status_area);
+
     let block = Block::default()
         .title(" Export ADIF ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+    let inner = block.inner(content_area);
+    frame.render_widget(block, content_area);
 
-    let [info_area, status_area, footer_area] = Layout::vertical([
+    let [info_area, export_status_area, footer_area] = Layout::vertical([
         Constraint::Min(5),
         Constraint::Length(2),
         Constraint::Length(1),
@@ -164,7 +178,7 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
     let status_line = Line::from(Span::styled(status_text, Style::default().fg(status_color)));
     frame.render_widget(
         Paragraph::new(vec![Line::from(""), status_line]),
-        status_area,
+        export_status_area,
     );
 
     // Footer
