@@ -6,7 +6,7 @@ References:
 
 ## What is Field Day?
 
-ARRL Field Day is an annual operating event held the last full weekend of June (18:00 UTC Saturday through 20:59 UTC Sunday — 27 hours). It emphasizes emergency preparedness: stations set up portable, temporary operations, ideally on emergency power.
+ARRL Field Day is an annual operating event held the last full weekend of June (18:00 UTC Saturday through 20:59 UTC Sunday — approximately 27 hours). It emphasizes emergency preparedness: stations set up portable, temporary operations, ideally on emergency power.
 
 It is **not a traditional contest** — there is no trophy for high score, and logs are not required for submission. However, it uses contest-style logging (exchange per QSO) and produces a summary score.
 
@@ -25,7 +25,7 @@ Classes A and F may also operate a GOTA (Get-On-The-Air) station with a separate
 
 The class letter is preceded by the number of simultaneously transmitting stations (transmitter count), e.g., `3A` = three-transmitter Class A group.
 
-Battery (QRP) variants: `A-Battery` and `B-Battery` use ≤5W non-commercial power.
+Battery (QRP) variants: `A-Battery` and `B-Battery` use ≤5W non-commercial power. These are sub-categories that affect the power multiplier — the exchange class letter is still `A` or `B`, not `A-Battery`. They are **not** separate `FdClass` enum variants.
 
 ## Exchange Format
 
@@ -118,5 +118,5 @@ Full list: approximately 71 ARRL + 17 RAC sections. DX stations substitute `DX` 
 | Exchange per QSO | None | Class + section |
 | ADIF SIG fields | `MY_SIG=POTA` | N/A |
 | ADIF CONTEST_ID | N/A | `ARRL-FIELD-DAY` |
-| Duration | Open (UTC day) | 27 hours (June) |
+| Duration | Open (UTC day) | ~27 hours (June) |
 | Submission | pota.app | ARRL website |

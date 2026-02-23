@@ -50,7 +50,7 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 **Files**: `src/tui/widgets/status_bar.rs`, `src/tui/screens/*.rs`
 
 - Status bar widget on all screens: park, callsign, QSO count, activation status (green "ACTIVATED" when QSO count >= 10)
-- **Note**: Design this to be logbook-type-aware; POTA shows activation progress, contest logs will show score/exchange summary (Phase 4 will extend this)
+- **Design constraint**: The widget must accept a `StatusBarContext` data struct rather than taking a `&Log` directly. This keeps 4.4's changes to context *construction* only — the widget itself won't need to change when logbook types are added. For now, `StatusBarContext` carries POTA-appropriate fields; Phase 4.4 extends construction to cover all types.
 
 #### 3.12.2 Help screen
 **Files**: `src/tui/screens/help.rs`
@@ -99,20 +99,24 @@ Reference docs: `docs/reference/arrl-field-day-notes.md`, `docs/reference/winter
 **Files**: `src/model/log_type.rs`, `src/model/log.rs`, `src/model/qso.rs`
 
 - Add `LogType` enum: `GeneralPurpose`, `Pota`, `FieldDay`, `WinterFieldDay`
-- Add `LogConfig` enum (or per-type structs) carrying log-level setup fields:
-  - `Pota { park_ref: Option<String> }` (existing park_ref moves here)
-  - `FieldDay { tx_count: u8, class: FdClass, section: String }`
+- Add `LogConfig` enum carrying log-level setup fields:
+  - `Pota { park_ref: Option<String> }` (existing `park_ref` on `Log` moves here)
+  - `FieldDay { tx_count: u8, class: FdClass, section: String, power: FdPowerCategory }`
   - `WinterFieldDay { tx_count: u8, class: WfdClass, section: String }`
   - `GeneralPurpose` (no extra fields)
 - Add `FdClass` enum: `A`, `B`, `C`, `D`, `E`, `F`
 - Add `WfdClass` enum: `H`, `I`, `O`, `M`
-- Add `QsoExchange` to `Qso` for contest logs: `their_exchange: Option<String>` (stores received exchange verbatim, e.g., `3A CT`)
-- Migrate storage: add `log_type`/`log_config` to serialized `Log`; default to `Pota` for existing logs to preserve behaviour
-- Update `is_activated()` / activation logic to be type-aware:
+- Add `FdPowerCategory` enum: `Qrp` (≤5W non-commercial), `Low` (≤100W), `High` (>100W) — drives the ×5/×2/×1 multiplier
+- Add `exchange_rcvd: Option<String>` to `Qso` — stores received contest exchange verbatim (e.g., `3A CT`); `None` for POTA and General logs
+- Add `frequency: Option<u32>` to `Qso` — frequency in kHz; required for WFD ADIF (`FREQ` field); optional otherwise
+- `their_park: Option<String>` stays on `Qso`; the ADIF writer gates `SIG`/`SIG_INFO` emission on log type being `Pota`, so non-POTA logs never accidentally emit POTA fields even if `their_park` is somehow set
+- **Storage migration**: add `log_config` to serialized `Log` with `#[serde(default)]` so existing JSON files without the field deserialize to `LogConfig::Pota { park_ref: None }`. Add a round-trip deserialization test (deserializing a raw JSON log string without `log_config`) modelled on the existing `old_format_operator_string_deserializes_to_some` test.
+- **`log_id` generation**: prefix contest log IDs for readability — `FD-{callsign}-{YYYYMMDD-HHMMSS}` for Field Day, `WFD-{callsign}-{YYYYMMDD-HHMMSS}` for WFD, `{park_ref_or_callsign}-{timestamp}` unchanged for POTA/General
+- **Duplicate log check**: `LogManager::create_log` currently compares `park_ref` for uniqueness. Update to be type-aware: two logs of *different* types for the same callsign on the same day are not duplicates; within a type, apply the existing field comparison
+- **`find_duplicates` scope**: POTA logs use today-only scoping (existing). Field Day and WFD logs must scope across the entire log (events span two UTC calendar days; WFD also enforces a 3-contact-per-band limit across the whole event)
+- Update `is_activated()` to be type-aware:
   - POTA: ≥10 QSOs today (existing logic)
-  - Field Day / WFD: always false (score-based, no activation threshold)
-  - General: always false
-- Update `find_duplicates()` to be type-aware if needed
+  - Field Day / WFD / General: always `false` (score-based, no activation threshold)
 
 #### 4.2 Log type selection in log create flow (`feature/log-type-selection`)
 **Files**: `src/tui/screens/log_create.rs`, `src/tui/app.rs`
@@ -123,7 +127,7 @@ Reference docs: `docs/reference/arrl-field-day-notes.md`, `docs/reference/winter
   - POTA: callsign, operator, grid, park ref
   - Field Day: callsign, operator, tx count, FD class (A–F), ARRL/RAC section
   - WFD: callsign, operator, tx count, WFD class (H/I/O/M), ARRL/RAC section
-- Validate section codes (FD/WFD): must be a known ARRL/RAC section abbreviation
+- Section field (FD/WFD): permissive free-text, auto-uppercase; accepts any non-empty string (handles `DX`, unusual sections, and future additions without a hardcoded list)
 - Update `CreateLog` action to carry `LogConfig`
 
 #### 4.3 Field Day QSO entry (`feature/field-day-qso`)
@@ -174,7 +178,7 @@ The original design treated duklog as a POTA-first logger with general logging a
 - **General purpose is the default** — no activation threshold, no park reference required
 - **POTA is one logbook type** among several, not the primary identity
 - **Contest logs** (FD, WFD) are first-class: they have their own creation fields, exchange capture, and ADIF output
-- The context string "duklog is an offline ham radio logging TUI for POTA activations" in the original plan is now out of date — duklog is a **general offline ham radio logging TUI** with POTA and field day support
+- duklog is a **general offline ham radio logging TUI** with POTA and field day support
 
 Existing data: logs without a `log_type` field should default to `Pota` during deserialization to preserve behaviour for current users.
 
@@ -217,3 +221,4 @@ These are distilled from the official docs and should be consulted during implem
 - **Auto-generated screenshots**: Use `TestBackend` to render each screen into a text buffer and output them as documentation assets (e.g. for `docs/user-guide.md`), keeping screenshots in sync with the actual UI automatically
 - **Field Day bonus points tracker**: Screen or sidebar to track claimed bonus points toward the FD summary sheet
 - **WFD objectives tracker**: Track completed WFD objectives for the multiplier
+- **Auto-determine band from frequency**: When a frequency is entered in the QSO form, automatically select the matching `Band` value (e.g., 14.225 MHz → 20M) so the operator doesn't have to set both
