@@ -10,6 +10,7 @@ use ratatui::widgets::{Paragraph, Row, Table};
 use crate::model::Log;
 use crate::tui::action::Action;
 use crate::tui::app::Screen;
+use crate::tui::widgets::{StatusBarContext, draw_status_bar};
 
 /// State for the QSO list screen.
 #[derive(Debug, Clone)]
@@ -82,12 +83,23 @@ impl QsoListState {
 /// Renders the QSO list screen.
 #[mutants::skip]
 pub fn draw_qso_list(state: &QsoListState, log: Option<&Log>, frame: &mut Frame, area: Rect) {
-    let [title_area, table_area, footer_area] = Layout::vertical([
+    let [status_area, title_area, table_area, footer_area] = Layout::vertical([
+        Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Min(0),
         Constraint::Length(1),
     ])
     .areas(area);
+
+    let ctx = log
+        .map(|l| StatusBarContext {
+            callsign: l.station_callsign.clone(),
+            park_ref: l.park_ref.clone(),
+            qso_count: l.qso_count_today(),
+            is_activated: l.is_activated(),
+        })
+        .unwrap_or_default();
+    draw_status_bar(&ctx, frame, status_area);
 
     // Title
     let qso_count = log.map_or(0, |l| l.qsos.len());
@@ -484,8 +496,9 @@ mod tests {
 
             let buf = terminal.backend().buffer();
             // The first data row (row index 0) should be selected (yellow bg).
-            // Header is at y=1, separator margin at y=2, first data row at y=3.
-            let first_data_y = 3;
+            // Status bar at y=0, title at y=1, header at y=2, separator margin at y=3,
+            // first data row at y=4.
+            let first_data_y = 4;
             let cell = &buf[(0, first_data_y)];
             assert_eq!(
                 cell.bg,

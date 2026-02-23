@@ -12,6 +12,7 @@ use crate::model::{Band, Log, Mode, Qso, validate_callsign, validate_park_ref};
 use crate::tui::action::Action;
 use crate::tui::app::Screen;
 use crate::tui::widgets::form::{Form, FormField, draw_form};
+use crate::tui::widgets::{StatusBarContext, draw_status_bar};
 
 /// Field index for the other station's callsign.
 const THEIR_CALL: usize = 0;
@@ -337,13 +338,30 @@ pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Fram
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let [header_area, form_area, recent_area, footer_area] = Layout::vertical([
+    let [
+        status_area,
+        header_area,
+        form_area,
+        recent_area,
+        footer_area,
+    ] = Layout::vertical([
+        Constraint::Length(1),
         Constraint::Length(2),
         Constraint::Length(15),
         Constraint::Min(3),
         Constraint::Length(1),
     ])
     .areas(inner);
+
+    let ctx = log
+        .map(|l| StatusBarContext {
+            callsign: l.station_callsign.clone(),
+            park_ref: l.park_ref.clone(),
+            qso_count: l.qso_count_today(),
+            is_activated: l.is_activated(),
+        })
+        .unwrap_or_default();
+    draw_status_bar(&ctx, frame, status_area);
 
     // Header: station info + band/mode
     if let Some(log) = log {
