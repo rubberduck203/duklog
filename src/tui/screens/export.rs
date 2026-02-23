@@ -133,7 +133,7 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
     let inner = block.inner(content_area);
     frame.render_widget(block, content_area);
 
-    let [info_area, status_area, footer_area] = Layout::vertical([
+    let [info_area, export_status_area, footer_area] = Layout::vertical([
         Constraint::Min(5),
         Constraint::Length(2),
         Constraint::Length(1),
@@ -178,7 +178,7 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
     let status_line = Line::from(Span::styled(status_text, Style::default().fg(status_color)));
     frame.render_widget(
         Paragraph::new(vec![Line::from(""), status_line]),
-        status_area,
+        export_status_area,
     );
 
     // Footer

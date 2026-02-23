@@ -61,7 +61,7 @@ Validation errors are shown inline when you submit. If a log already exists with
 
 ### QSO Entry
 
-The main logging screen. The header shows your station info, current band/mode, and POTA activation progress. The most recent QSOs are displayed below the form.
+The main logging screen. A status bar at the top shows the active log context: park reference (if set), callsign, today's QSO count, and — once you reach 10 QSOs — `ACTIVATED` in green. The header below shows your station info, current band/mode, and detailed activation progress. The most recent QSOs are displayed below the form.
 
 **Fields:**
 
@@ -93,7 +93,7 @@ If you log a contact with the same callsign, band, and mode as an existing QSO i
 
 ### QSO List
 
-A scrollable table of all QSOs in the current log. Columns: Time, Date, Call, Band, Mode, RST S/R, Park, Comments.
+A scrollable table of all QSOs in the current log. Columns: Time, Date, Call, Band, Mode, RST S/R, Park, Comments. The status bar at the top shows the active log context (same format as QSO Entry).
 
 | Key | Action |
 |---|---|
@@ -107,7 +107,7 @@ Pressing `Enter` opens the selected QSO in the entry form for editing. Save with
 
 ### Export
 
-Shows the export destination, QSO count, and station info. Press `Enter` to write the ADIF file.
+Shows the export destination, QSO count, and station info. The status bar at the top shows the active log context. Press `Enter` to write the ADIF file.
 
 | Key | Action |
 |---|---|

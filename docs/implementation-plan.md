@@ -46,11 +46,11 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 
 ### 3.12 Polish (`feature/polish`)
 
-#### 3.12.1 Status bar widget
+#### ~~3.12.1 Status bar widget~~ — Done (`feature/status-bar`)
 **Files**: `src/tui/widgets/status_bar.rs`, `src/tui/screens/*.rs`
 
-- Status bar widget on all screens: park, callsign, QSO count, activation status (green "ACTIVATED" when QSO count >= 10)
-- **Design constraint**: The widget must accept a `StatusBarContext` data struct rather than taking a `&Log` directly. This keeps 4.4's changes to context *construction* only — the widget itself won't need to change when logbook types are added. For now, `StatusBarContext` carries POTA-appropriate fields; Phase 4.4 extends construction to cover all types.
+- Status bar widget on QSO Entry, QSO List, and Export screens: park, callsign, QSO count, activation status (green "ACTIVATED" when QSO count >= 10)
+- `StatusBarContext` (decoupled from `Log`) keeps Phase 4.4 changes confined to context construction only
 
 #### 3.12.2 Help screen
 **Files**: `src/tui/screens/help.rs`

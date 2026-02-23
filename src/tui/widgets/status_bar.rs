@@ -7,7 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 /// Data passed to the status bar widget; decoupled from `Log` for Phase 4 extensibility.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StatusBarContext {
     /// The active station callsign.
     pub callsign: String,
