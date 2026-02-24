@@ -23,6 +23,7 @@ static LOG_CREATE_KEYS: &[(&str, &str)] = &[
     ("Tab / Shift-Tab", "next / prev field"),
     ("Enter", "create log"),
     ("Esc", "cancel"),
+    ("F1", "help"),
 ];
 
 static QSO_ENTRY_KEYS: &[(&str, &str)] = &[
@@ -33,6 +34,7 @@ static QSO_ENTRY_KEYS: &[(&str, &str)] = &[
     ("Alt+m / Alt+M", "mode cycle ±1"),
     ("Alt+e", "open QSO list"),
     ("Alt+x", "export log"),
+    ("F1", "help"),
 ];
 
 static QSO_LIST_KEYS: &[(&str, &str)] = &[
@@ -134,7 +136,7 @@ fn build_section(title: &'static str, keys: &[(&'static str, &'static str)]) -> 
     ];
     for (key, desc) in keys {
         lines.push(Line::from(vec![
-            Span::styled(format!("  {key:<20}", key = key), key_style),
+            Span::styled(format!("  {key:<20}"), key_style),
             Span::styled(*desc, dim_style),
         ]));
     }
@@ -214,6 +216,7 @@ mod tests {
         fn default_works() {
             let state = HelpState::default();
             assert_eq!(state.scroll(), 0);
+            assert_eq!(state.origin(), Screen::LogSelect);
         }
     }
 
@@ -286,6 +289,14 @@ mod tests {
         }
 
         #[test]
+        fn esc_navigates_to_origin() {
+            let mut state = HelpState::new();
+            state.set_origin(Screen::QsoList);
+            let action = state.handle_key(press(KeyCode::Esc));
+            assert_eq!(action, Action::Navigate(Screen::QsoList));
+        }
+
+        #[test]
         fn unknown_key_returns_none() {
             let mut state = HelpState::new();
             let action = state.handle_key(press(KeyCode::Char('x')));
@@ -305,6 +316,65 @@ mod tests {
             assert_eq!(state.scroll(), 2);
             state.reset();
             assert_eq!(state.scroll(), 0);
+        }
+    }
+
+    mod screen_name_fn {
+        use super::*;
+
+        #[test]
+        fn all_variants_have_expected_names() {
+            assert_eq!(screen_name(Screen::LogSelect), "Log Select");
+            assert_eq!(screen_name(Screen::LogCreate), "Log Create");
+            assert_eq!(screen_name(Screen::QsoEntry), "QSO Entry");
+            assert_eq!(screen_name(Screen::QsoList), "QSO List");
+            assert_eq!(screen_name(Screen::Export), "Export");
+            assert_eq!(screen_name(Screen::Help), "Help");
+        }
+    }
+
+    mod help_content_fn {
+        use super::*;
+
+        fn content_text(screen: Screen) -> String {
+            help_content(screen)
+                .into_iter()
+                .flat_map(|l| l.spans.into_iter())
+                .map(|s| s.content.into_owned())
+                .collect()
+        }
+
+        #[test]
+        fn each_screen_returns_nonempty_content() {
+            let screens = [
+                Screen::LogSelect,
+                Screen::LogCreate,
+                Screen::QsoEntry,
+                Screen::QsoList,
+                Screen::Export,
+                Screen::Help,
+            ];
+            for screen in screens {
+                assert!(
+                    !help_content(screen).is_empty(),
+                    "{screen:?} should have content"
+                );
+            }
+        }
+
+        #[test]
+        fn content_includes_section_title() {
+            assert!(content_text(Screen::LogSelect).contains("Log Select"));
+            assert!(content_text(Screen::QsoEntry).contains("QSO Entry"));
+        }
+
+        #[test]
+        fn qso_entry_content_excludes_other_sections() {
+            let text = content_text(Screen::QsoEntry);
+            assert!(
+                !text.contains("Log Create"),
+                "should not include Log Create"
+            );
         }
     }
 

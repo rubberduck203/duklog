@@ -484,6 +484,16 @@ mod tests {
         }
 
         #[test]
+        fn esc_on_help_returns_to_origin_screen() {
+            let (_dir, mut app) = make_app();
+            app.screen = Screen::QsoEntry;
+            app.handle_key(press(KeyCode::F(1)));
+            assert_eq!(app.screen(), Screen::Help);
+            app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+        }
+
+        #[test]
         fn release_events_are_ignored() {
             let (_dir, mut app) = make_app();
             app.handle_key(release(KeyCode::Char('q')));

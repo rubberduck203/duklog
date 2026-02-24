@@ -57,7 +57,7 @@ The `App` calls `apply_action` to interpret these, keeping all global state tran
 
 ### Key Handling
 
-Global keys (`?` for help) are intercepted by `App` before delegation, except on form-based screens (LogCreate, QsoEntry) where all keys are forwarded to the screen's `handle_key`. Each screen owns its own state and key bindings.
+`F1` (help) is a global key intercepted by `App` before delegation on every screen. It captures the current screen as the origin, resets the help state, and switches to the Help screen. Pressing `q` or `Esc` on the Help screen returns to that origin screen. Each screen owns its own state and key bindings.
 
 ### QSO Editing Flow
 
