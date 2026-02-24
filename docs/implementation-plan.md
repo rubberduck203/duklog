@@ -22,63 +22,14 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 - **3.7 QSO List Screen** (`feature/qso-entry`, PR #10) — Done
 - **3.7b QSO Editing** (`feature/qso-editing`, PR #12) — Done
 - **3.8 Export Screen** (`feature/export-screen`, PR #11) — Done
+- **3.9 Delete Log** (`feature/delete-log`) — Done
+- **3.10 Duplicate QSO Detection** (`feature/duplicate-qso-detection`) — Done
+- **3.11 Duplicate Log Prevention** (`feature/duplicate-log-prevention`) — Done
+- **3.12 Polish** (`feature/polish`) — Done
 
 ---
 
 ## Remaining Work
-
-### ~~3.9 Delete Log~~ — Done (`feature/delete-log`)
-
-### ~~3.10 Duplicate QSO Detection~~ — Done (`feature/duplicate-qso-detection`)
-
-- `Log::find_duplicates(&self, qso: &Qso) -> Vec<&Qso>` — case-insensitive match on callsign + band + mode
-- `App::apply_action` checks for duplicates before saving; sets warning message after `clear_fast_fields()`
-- QSO is still logged — operator may intentionally work the same station on the same band/mode
-
-### ~~3.11 Duplicate Log Prevention~~ — Done (`feature/duplicate-log-prevention`)
-
-- `LogManager::create_log` checks existing logs before saving; returns `StorageError::DuplicateLog` on same callsign + operator + grid square on the same UTC day (case-insensitive)
-- `LogCreateState::set_error` / `general_error` added for non-field errors; cleared on submit and reset
-- `draw_log_create` renders general error in red below the form
-- `apply_action(CreateLog)` routes `DuplicateLog` errors to the log create screen; other errors to log select
-
----
-
-### 3.12 Polish (`feature/polish`)
-
-#### ~~3.12.1 Status bar widget~~ — Done (`feature/status-bar`)
-**Files**: `src/tui/widgets/status_bar.rs`, `src/tui/screens/*.rs`
-
-- Status bar widget on QSO Entry, QSO List, and Export screens: park, callsign, QSO count, activation status (green "ACTIVATED" when QSO count >= 10)
-- `StatusBarContext` (decoupled from `Log`) keeps Phase 4.4 changes confined to context construction only
-
-#### 3.12.2 Help screen
-**Files**: `src/tui/screens/help.rs`
-
-- Full keybinding reference for all screens, including `d` for delete on log select
-- Covers all bindings added in 3.9–3.11
-
-#### 3.12.3 Error handling polish
-**Files**: `src/tui/app.rs`, various
-
-- Audit all `apply_action` match arms for unhandled error variants
-- All errors display gracefully — no panics in normal operation
-- No `.unwrap()`/`.expect()` in reachable library code paths
-
-#### 3.12.4 Final mutants pass
-- Run `make mutants` across entire codebase after 3.12.1–3.12.3
-- Fix any surviving mutants with targeted tests
-
-#### 3.12.5 Complete docs/
-**Files**: `docs/user-guide.md`, `docs/architecture.md`, `docs/implementation-plan.md`, `docs/adif-format.md`
-
-- `user-guide.md`: all screens documented, keybindings current, workflows described
-- `architecture.md`: Action enum up to date, module layout accurate
-- `implementation-plan.md`: move 3.12 to Completed, update remaining/future sections
-
-> **Dependencies**: 3.12.1, 3.12.2, 3.12.3 are independent; 3.12.4 and 3.12.5 are blocked until all three complete.
-
----
 
 ### Phase 4: Multiple Logbook Types
 
@@ -157,16 +108,12 @@ Reference docs: `docs/reference/arrl-field-day-notes.md`, `docs/reference/winter
 ## Dependency Graph (remaining)
 
 ```
-3.12.1  3.12.2  3.12.3
-   \       |       /
-    3.12.4 + 3.12.5
-          ↓
-         4.1
-          ↓
-         4.2
-          ↓
-         4.3
-         4.4 (parallel with 4.2–4.3, depends on 4.1)
+4.1
+ ↓
+4.2
+ ↓
+4.3
+4.4 (parallel with 4.2–4.3, depends on 4.1)
 ```
 
 ---
