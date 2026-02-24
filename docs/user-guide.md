@@ -38,7 +38,7 @@ The home screen. Shows all saved logs in a table with columns for Callsign, Date
 | `n` | Create a new log |
 | `d` | Delete the selected log (asks for confirmation; `y` to confirm, `n`/`Esc` to cancel) |
 | `q` / `Esc` | Quit duklog |
-| `?` | Show help |
+| `F1` | Show help |
 
 ### Log Create
 
@@ -56,6 +56,7 @@ A form for creating a new log.
 | `Tab` / `Shift+Tab` | Move between fields |
 | `Enter` | Validate and create the log |
 | `Esc` | Cancel and return to Log Select |
+| `F1` | Show help |
 
 Validation errors are shown inline when you submit. If a log already exists with the same station callsign, operator, park reference, and grid square on the same UTC day, creation is blocked with an inline error. Logs for different parks on the same day are always allowed.
 
@@ -82,6 +83,7 @@ The main logging screen. A status bar at the top shows the active log context: p
 | `Shift+Alt+M` | Previous mode |
 | `Alt+e` | View QSO list |
 | `Alt+x` | Export log |
+| `F1` | Show help |
 
 **Bands** (default 20M): 160M, 80M, 60M, 40M, 30M, 20M, 17M, 15M, 12M, 10M, 6M, 2M, 70CM
 
@@ -101,7 +103,7 @@ A scrollable table of all QSOs in the current log. Columns: Time, Date, Call, Ba
 | `Home` / `End` | Jump to first / last row |
 | `Enter` | Edit the selected QSO |
 | `q` / `Esc` | Back to QSO Entry |
-| `?` | Show help |
+| `F1` | Show help |
 
 Pressing `Enter` opens the selected QSO in the entry form for editing. Save with `Enter` or cancel with `Esc`.
 
@@ -113,11 +115,20 @@ Shows the export destination, QSO count, and station info. The status bar at the
 |---|---|
 | `Enter` | Export the ADIF file |
 | `Esc` / `q` | Back to QSO Entry |
-| `?` | Show help |
+| `F1` | Show help |
 
 After export (success or error), press any key to return.
 
 The default export path is `~/duklog-{PARK}-{YYYYMMDD}.adif` (or `~/duklog-{CALLSIGN}-{YYYYMMDD}.adif` if no park reference is set).
+
+### Help
+
+Press `F1` from any screen to open context-sensitive help. The title shows which screen you are on, and only that screen's keybindings are shown. Pressing `q` or `Esc` returns you to the screen you came from.
+
+| Key | Action |
+|---|---|
+| `Up` / `Down` | Scroll |
+| `q` / `Esc` | Return to previous screen |
 
 ## Data Storage
 
