@@ -1,10 +1,6 @@
 use std::path::Path;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
-use ratatui::layout::{Alignment, Constraint, Flex, Layout};
-use ratatui::style::{Color, Style};
-use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::{Frame, Terminal};
 
 use crate::model::Log;
@@ -13,6 +9,7 @@ use crate::storage::{self, LogManager, StorageError};
 use super::action::Action;
 use super::error::AppError;
 use super::screens::export::{ExportState, draw_export};
+use super::screens::help::{HelpState, draw_help};
 use super::screens::log_create::{LogCreateState, draw_log_create};
 use super::screens::log_select::{LogSelectState, draw_log_select};
 use super::screens::qso_entry::{QsoEntryState, draw_qso_entry};
@@ -35,20 +32,6 @@ pub enum Screen {
     Help,
 }
 
-impl Screen {
-    /// Human-readable label for placeholder rendering.
-    fn label(self) -> &'static str {
-        match self {
-            Self::LogSelect => "Log Select",
-            Self::LogCreate => "Log Create",
-            Self::QsoEntry => "QSO Entry",
-            Self::QsoList => "QSO List",
-            Self::Export => "Export",
-            Self::Help => "Help",
-        }
-    }
-}
-
 /// Top-level application state.
 pub struct App {
     screen: Screen,
@@ -60,6 +43,7 @@ pub struct App {
     qso_entry: QsoEntryState,
     qso_list: QsoListState,
     export: ExportState,
+    help: HelpState,
 }
 
 impl App {
@@ -80,6 +64,7 @@ impl App {
             qso_entry: QsoEntryState::new(),
             qso_list: QsoListState::new(),
             export: ExportState::new(),
+            help: HelpState::new(),
         })
     }
 
@@ -117,35 +102,8 @@ impl App {
             Screen::Export => {
                 draw_export(&self.export, self.current_log.as_ref(), frame, area);
             }
-            _ => self.draw_placeholder(frame),
+            Screen::Help => draw_help(&self.help, frame, area),
         }
-    }
-
-    /// Renders a placeholder for screens not yet implemented.
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    #[mutants::skip]
-    fn draw_placeholder(&self, frame: &mut Frame) {
-        let area = frame.area();
-
-        let block = Block::default()
-            .title(" duklog ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan));
-
-        let label = self.screen.label();
-        let lines = vec![
-            Line::from(""),
-            Line::from(format!("[ {label} ]")),
-            Line::from("Press ? for help, q to quit"),
-        ];
-        let paragraph = Paragraph::new(lines)
-            .alignment(Alignment::Center)
-            .block(block);
-
-        let [centered] = Layout::vertical([Constraint::Min(0)])
-            .flex(Flex::Center)
-            .areas(area);
-        frame.render_widget(paragraph, centered);
     }
 
     /// Handles a key event: global keys first, then screen-specific delegation.
@@ -154,10 +112,10 @@ impl App {
             return;
         }
 
-        // Global `?` for help — except on form-based screens where it's a valid char.
-        if key.code == KeyCode::Char('?') && !self.is_form_screen() {
+        // Global F1 for help — works on every screen.
+        if key.code == KeyCode::F(1) {
             if self.screen != Screen::Help {
-                self.screen = Screen::Help;
+                self.navigate(Screen::Help);
             }
             return;
         }
@@ -171,19 +129,10 @@ impl App {
                 self.qso_list.handle_key(key, count)
             }
             Screen::Export => self.export.handle_key(key),
-            _ => match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => Action::Navigate(Screen::LogSelect),
-                _ => Action::None,
-            },
+            Screen::Help => self.help.handle_key(key),
         };
 
         self.apply_action(action);
-    }
-
-    /// Returns `true` if the current screen uses a text form where keys should
-    /// be forwarded rather than intercepted globally.
-    fn is_form_screen(&self) -> bool {
-        matches!(self.screen, Screen::LogCreate | Screen::QsoEntry)
     }
 
     /// Applies an [`Action`] returned by a screen handler.
@@ -333,7 +282,11 @@ impl App {
                 self.export.prepare(self.current_log.as_ref());
                 self.screen = Screen::Export;
             }
-            other => self.screen = other,
+            Screen::Help => {
+                self.help.set_origin(self.screen);
+                self.help.reset();
+                self.screen = Screen::Help;
+            }
         }
     }
 
@@ -437,21 +390,6 @@ mod tests {
             assert!(!app.should_quit());
             assert!(app.current_log().is_none());
         }
-
-        #[test]
-        fn screen_labels_match_expected() {
-            let expected = [
-                (Screen::LogSelect, "Log Select"),
-                (Screen::LogCreate, "Log Create"),
-                (Screen::QsoEntry, "QSO Entry"),
-                (Screen::QsoList, "QSO List"),
-                (Screen::Export, "Export"),
-                (Screen::Help, "Help"),
-            ];
-            for (screen, label) in expected {
-                assert_eq!(screen.label(), label, "{screen:?} label mismatch");
-            }
-        }
     }
 
     mod accessors {
@@ -500,9 +438,9 @@ mod tests {
         }
 
         #[test]
-        fn question_mark_navigates_to_help() {
+        fn f1_navigates_to_help() {
             let (_dir, mut app) = make_app();
-            app.handle_key(press(KeyCode::Char('?')));
+            app.handle_key(press(KeyCode::F(1)));
             assert_eq!(app.screen(), Screen::Help);
             assert!(!app.should_quit());
         }
@@ -510,7 +448,7 @@ mod tests {
         #[test]
         fn q_on_help_navigates_to_log_select() {
             let (_dir, mut app) = make_app();
-            app.handle_key(press(KeyCode::Char('?')));
+            app.handle_key(press(KeyCode::F(1)));
             assert_eq!(app.screen(), Screen::Help);
 
             app.handle_key(press(KeyCode::Char('q')));
@@ -521,18 +459,28 @@ mod tests {
         #[test]
         fn esc_on_help_navigates_to_log_select() {
             let (_dir, mut app) = make_app();
-            app.handle_key(press(KeyCode::Char('?')));
+            app.handle_key(press(KeyCode::F(1)));
             app.handle_key(press(KeyCode::Esc));
             assert_eq!(app.screen(), Screen::LogSelect);
             assert!(!app.should_quit());
         }
 
         #[test]
-        fn question_mark_on_help_stays_on_help() {
+        fn f1_on_help_stays_on_help() {
             let (_dir, mut app) = make_app();
-            app.handle_key(press(KeyCode::Char('?')));
-            app.handle_key(press(KeyCode::Char('?')));
+            app.handle_key(press(KeyCode::F(1)));
+            app.handle_key(press(KeyCode::F(1)));
             assert_eq!(app.screen(), Screen::Help);
+        }
+
+        #[test]
+        fn q_on_help_returns_to_origin_screen() {
+            let (_dir, mut app) = make_app();
+            app.screen = Screen::QsoEntry;
+            app.handle_key(press(KeyCode::F(1)));
+            assert_eq!(app.screen(), Screen::Help);
+            app.handle_key(press(KeyCode::Char('q')));
+            assert_eq!(app.screen(), Screen::QsoEntry);
         }
 
         #[test]
@@ -570,10 +518,10 @@ mod tests {
         }
 
         #[test]
-        fn question_mark_on_qso_list_navigates_to_help() {
+        fn f1_on_qso_list_navigates_to_help() {
             let (_dir, mut app) = make_app();
             app.screen = Screen::QsoList;
-            app.handle_key(press(KeyCode::Char('?')));
+            app.handle_key(press(KeyCode::F(1)));
             assert_eq!(app.screen(), Screen::Help);
         }
 
@@ -617,11 +565,11 @@ mod tests {
         }
 
         #[test]
-        fn question_mark_on_log_create_types_not_help() {
+        fn f1_on_log_create_navigates_to_help() {
             let (_dir, mut app) = make_app();
             app.handle_key(press(KeyCode::Char('n')));
-            app.handle_key(press(KeyCode::Char('?')));
-            assert_eq!(app.screen(), Screen::LogCreate);
+            app.handle_key(press(KeyCode::F(1)));
+            assert_eq!(app.screen(), Screen::Help);
         }
 
         #[test]
@@ -988,11 +936,10 @@ mod tests {
         }
 
         #[test]
-        fn question_mark_on_qso_entry_types_char() {
+        fn f1_on_qso_entry_navigates_to_help() {
             let (_dir, mut app) = make_app_with_log();
-            app.handle_key(press(KeyCode::Char('?')));
-            // Should NOT navigate to Help, should stay on QsoEntry
-            assert_eq!(app.screen(), Screen::QsoEntry);
+            app.handle_key(press(KeyCode::F(1)));
+            assert_eq!(app.screen(), Screen::Help);
         }
 
         #[test]
@@ -1328,11 +1275,11 @@ mod tests {
         }
 
         #[test]
-        fn question_mark_on_export_navigates_to_help() {
+        fn f1_on_export_navigates_to_help() {
             let (_dir, mut app) = make_app_with_log();
             app.handle_key(alt_press(KeyCode::Char('x')));
             assert_eq!(app.screen(), Screen::Export);
-            app.handle_key(press(KeyCode::Char('?')));
+            app.handle_key(press(KeyCode::F(1)));
             assert_eq!(app.screen(), Screen::Help);
         }
     }
