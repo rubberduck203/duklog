@@ -8,6 +8,9 @@ use super::validation::{
     ValidationError, validate_callsign, validate_grid_square, validate_park_ref,
 };
 
+/// Minimum unique QSOs required for a valid POTA activation (per UTC day).
+const POTA_ACTIVATION_THRESHOLD: usize = 10;
+
 /// The key that determines whether two QSOs are considered duplicates:
 /// same callsign (case-insensitive), band, and mode.
 fn duplicate_key(qso: &Qso) -> (String, Band, Mode) {
@@ -90,7 +93,7 @@ impl Log {
 
     /// Returns the number of additional QSOs needed for a valid POTA activation today.
     pub fn needs_for_activation(&self) -> usize {
-        10_usize.saturating_sub(self.qso_count_today())
+        POTA_ACTIVATION_THRESHOLD.saturating_sub(self.qso_count_today())
     }
 
     /// Returns QSOs from today (UTC) that match the given callsign, band, and mode.
@@ -98,11 +101,21 @@ impl Log {
     /// Callsign comparison is case-insensitive. A non-empty result indicates a
     /// potential duplicate contact within the current UTC day.
     pub fn find_duplicates(&self, qso: &Qso) -> Vec<&Qso> {
-        let today = Utc::now().date_naive();
+        self.find_duplicates_on(qso, Some(Utc::now().date_naive()))
+    }
+
+    /// Returns QSOs matching the given callsign, band, and mode, optionally
+    /// scoped to a specific date.
+    ///
+    /// When `on` is `Some(date)`, only QSOs logged on that exact date are
+    /// considered. When `on` is `None`, all QSOs in the log are searched.
+    pub(crate) fn find_duplicates_on(&self, qso: &Qso, on: Option<NaiveDate>) -> Vec<&Qso> {
         let key = duplicate_key(qso);
         self.qsos
             .iter()
-            .filter(|q| q.timestamp.date_naive() == today && duplicate_key(q) == key)
+            .filter(|q| {
+                on.is_none_or(|date| q.timestamp.date_naive() == date) && duplicate_key(q) == key
+            })
             .collect()
     }
 
@@ -115,9 +128,15 @@ impl Log {
             .map(|slot| std::mem::replace(slot, qso))
     }
 
-    /// Returns `true` if this log has at least 10 QSOs today (valid POTA activation).
+    /// Returns `true` if this log has met the POTA activation threshold today.
     pub fn is_activated(&self) -> bool {
-        self.qso_count_today() >= 10
+        self.qso_count_today() >= POTA_ACTIVATION_THRESHOLD
+    }
+
+    /// Returns a short label for this log: park reference if present, otherwise
+    /// station callsign.
+    pub fn display_label(&self) -> &str {
+        self.park_ref.as_deref().unwrap_or(&self.station_callsign)
     }
 }
 
@@ -187,6 +206,20 @@ mod tests {
         assert_eq!(log.operator, Some("W1AW".to_string()));
         assert_eq!(log.park_ref, None);
         assert!(log.log_id.starts_with("W1AW-"));
+    }
+
+    // --- display_label ---
+
+    #[test]
+    fn display_label_with_park_returns_park_ref() {
+        let log = make_log();
+        assert_eq!(log.display_label(), "K-0001");
+    }
+
+    #[test]
+    fn display_label_without_park_returns_callsign() {
+        let log = Log::new("W1AW".to_string(), None, None, "FN31".to_string()).unwrap();
+        assert_eq!(log.display_label(), "W1AW");
     }
 
     #[test]
@@ -311,11 +344,13 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2026, 6, 15).unwrap();
         let log = make_log_with_n_qsos_on_date(n, date);
         let count = log.qso_count_on_date(date);
-        let needs = 10_usize.saturating_sub(count);
-        let activated = count >= 10;
+        let needs = POTA_ACTIVATION_THRESHOLD.saturating_sub(count);
+        let activated = count >= POTA_ACTIVATION_THRESHOLD;
 
         // Verify all three are consistent
-        count == n && needs == 10_usize.saturating_sub(n) && activated == (n >= 10)
+        count == n
+            && needs == POTA_ACTIVATION_THRESHOLD.saturating_sub(n)
+            && activated == (n >= POTA_ACTIVATION_THRESHOLD)
     }
 
     #[test]
@@ -395,14 +430,14 @@ mod tests {
     fn needs_for_activation_property(n: u8) -> bool {
         let mut log = make_log();
         add_today_qsos(&mut log, n as usize);
-        log.needs_for_activation() == 10_usize.saturating_sub(n as usize)
+        log.needs_for_activation() == POTA_ACTIVATION_THRESHOLD.saturating_sub(n as usize)
     }
 
     #[quickcheck]
     fn is_activated_property(n: u8) -> bool {
         let mut log = make_log();
         add_today_qsos(&mut log, n as usize);
-        log.is_activated() == (n as usize >= 10)
+        log.is_activated() == (n as usize >= POTA_ACTIVATION_THRESHOLD)
     }
 
     #[test]
@@ -545,6 +580,59 @@ mod tests {
         log.add_qso(old_qso);
         let candidate = make_candidate("KD9XYZ", Band::M20, Mode::Ssb);
         assert_eq!(log.find_duplicates(&candidate).len(), 0);
+    }
+
+    // --- find_duplicates_on ---
+
+    #[test]
+    fn find_duplicates_on_none_searches_all_dates() {
+        let mut log = make_log();
+        let yesterday = Utc::now().date_naive().pred_opt().unwrap();
+        let old_ts = Utc.from_utc_datetime(&yesterday.and_hms_opt(12, 0, 0).unwrap());
+        let old_qso = Qso::new(
+            "KD9XYZ".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M20,
+            Mode::Ssb,
+            old_ts,
+            String::new(),
+            None,
+        )
+        .unwrap();
+        log.add_qso(old_qso);
+        log.add_qso(make_candidate("KD9XYZ", Band::M20, Mode::Ssb));
+
+        let candidate = make_candidate("KD9XYZ", Band::M20, Mode::Ssb);
+        // None means search all — should find both
+        assert_eq!(log.find_duplicates_on(&candidate, None).len(), 2);
+    }
+
+    #[test]
+    fn find_duplicates_on_some_filters_to_date() {
+        let mut log = make_log();
+        let yesterday = Utc::now().date_naive().pred_opt().unwrap();
+        let old_ts = Utc.from_utc_datetime(&yesterday.and_hms_opt(12, 0, 0).unwrap());
+        let old_qso = Qso::new(
+            "KD9XYZ".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M20,
+            Mode::Ssb,
+            old_ts,
+            String::new(),
+            None,
+        )
+        .unwrap();
+        log.add_qso(old_qso);
+        log.add_qso(make_candidate("KD9XYZ", Band::M20, Mode::Ssb));
+
+        let candidate = make_candidate("KD9XYZ", Band::M20, Mode::Ssb);
+        let today = Utc::now().date_naive();
+        // Some(today) — should find only today's QSO
+        assert_eq!(log.find_duplicates_on(&candidate, Some(today)).len(), 1);
+        // Some(yesterday) — should find only yesterday's QSO
+        assert_eq!(log.find_duplicates_on(&candidate, Some(yesterday)).len(), 1);
     }
 
     // --- replace_qso ---

@@ -118,7 +118,6 @@ pub fn draw_qso_list(state: &QsoListState, log: Option<&Log>, frame: &mut Frame,
     frame.render_widget(title, title_area);
 
     // Table or empty state
-    // qso_count > 0 guarantees log is Some, but we use if-let to avoid .unwrap()
     if qso_count == 0 {
         let empty = Paragraph::new("No QSOs logged yet").alignment(Alignment::Center);
         frame.render_widget(empty, table_area);

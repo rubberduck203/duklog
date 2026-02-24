@@ -22,6 +22,32 @@ fn buf_to_string(buf: BytesMut) -> Result<String, AdifError> {
     Ok(String::from_utf8(buf.into())?)
 }
 
+// The SIG/MY_SIG value for POTA contacts.
+const POTA_SIG: &str = "POTA";
+
+/// Encodes log-type-specific ADIF fields (currently POTA).
+///
+/// Emits `MY_SIG`/`MY_SIG_INFO` when the log has a park reference, and
+/// `SIG`/`SIG_INFO` when the QSO has their park set.
+fn encode_type_specific_fields(
+    encoder: &mut TagEncoder,
+    buf: &mut BytesMut,
+    log: &Log,
+    qso: &Qso,
+) -> Result<(), AdifError> {
+    if let Some(ref park) = log.park_ref {
+        encode(encoder, buf, field_tag("MY_SIG", POTA_SIG))?;
+        encode(encoder, buf, field_tag("MY_SIG_INFO", park.as_str()))?;
+    }
+
+    if let Some(ref their_park) = qso.their_park {
+        encode(encoder, buf, field_tag("SIG", POTA_SIG))?;
+        encode(encoder, buf, field_tag("SIG_INFO", their_park.as_str()))?;
+    }
+
+    Ok(())
+}
+
 /// Formats the ADIF file header for a log.
 ///
 /// Includes `ADIF_VER`, `PROGRAMID`, `PROGRAMVERSION`, and `CREATED_TIMESTAMP`,
@@ -116,23 +142,7 @@ pub fn format_qso(log: &Log, qso: &Qso) -> Result<String, AdifError> {
         field_tag("MY_GRIDSQUARE", log.grid_square.as_str()),
     )?;
 
-    if let Some(ref park) = log.park_ref {
-        encode(&mut encoder, &mut buf, field_tag("MY_SIG", "POTA"))?;
-        encode(
-            &mut encoder,
-            &mut buf,
-            field_tag("MY_SIG_INFO", park.as_str()),
-        )?;
-    }
-
-    if let Some(ref their_park) = qso.their_park {
-        encode(&mut encoder, &mut buf, field_tag("SIG", "POTA"))?;
-        encode(
-            &mut encoder,
-            &mut buf,
-            field_tag("SIG_INFO", their_park.as_str()),
-        )?;
-    }
+    encode_type_specific_fields(&mut encoder, &mut buf, log, qso)?;
 
     if !qso.comments.is_empty() {
         encode(

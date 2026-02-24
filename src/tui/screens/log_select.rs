@@ -146,7 +146,7 @@ impl LogSelectState {
         };
         let label = format!(
             "{} {}",
-            log.park_ref.as_deref().unwrap_or(&log.station_callsign),
+            log.display_label(),
             log.created_at.format("%Y-%m-%d")
         );
         self.pending_delete = Some((log.log_id.clone(), label));
