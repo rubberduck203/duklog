@@ -36,6 +36,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[mutants::skip]
 fn restore_terminal() -> Result<(), io::Error> {
     let raw_result = disable_raw_mode();
     let screen_result = execute!(stdout(), LeaveAlternateScreen);
