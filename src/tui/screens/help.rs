@@ -29,9 +29,11 @@ static LOG_CREATE_KEYS: &[(&str, &str)] = &[
 static QSO_ENTRY_KEYS: &[(&str, &str)] = &[
     ("Tab / Shift-Tab", "next / prev field"),
     ("Enter", "log QSO"),
-    ("Esc", "back to Log Select"),
-    ("Alt+b / Alt+B", "band cycle ±1"),
-    ("Alt+m / Alt+M", "mode cycle ±1"),
+    ("Esc", "back to Log Select; in edit mode: cancel"),
+    ("Alt+b", "next band"),
+    ("Shift+Alt+B", "prev band"),
+    ("Alt+m", "next mode"),
+    ("Shift+Alt+M", "prev mode"),
     ("Alt+e", "open QSO list"),
     ("Alt+x", "export log"),
     ("F1", "help"),
@@ -458,7 +460,10 @@ mod tests {
             let mut state = HelpState::new();
             state.set_origin(Screen::Export);
             let output = render_help(&state, 80, 30);
-            assert!(output.contains("Export"), "should show Export section");
+            assert!(
+                output.contains("export to ADIF"),
+                "should show Export section content"
+            );
         }
 
         #[test]

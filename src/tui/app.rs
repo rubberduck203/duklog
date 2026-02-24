@@ -283,7 +283,9 @@ impl App {
                 self.screen = Screen::Export;
             }
             Screen::Help => {
-                self.help.set_origin(self.screen);
+                if self.screen != Screen::Help {
+                    self.help.set_origin(self.screen);
+                }
                 self.help.reset();
                 self.screen = Screen::Help;
             }
@@ -490,6 +492,22 @@ mod tests {
             app.handle_key(press(KeyCode::F(1)));
             assert_eq!(app.screen(), Screen::Help);
             app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+        }
+
+        #[test]
+        fn navigate_to_help_while_on_help_preserves_origin() {
+            let (_dir, mut app) = make_app();
+            app.screen = Screen::QsoEntry;
+            app.handle_key(press(KeyCode::F(1)));
+            assert_eq!(app.screen(), Screen::Help);
+
+            // Calling navigate(Help) directly while already on Help must not
+            // clobber the origin (which would trap the user on the Help screen).
+            app.apply_action(Action::Navigate(Screen::Help));
+            assert_eq!(app.screen(), Screen::Help);
+
+            app.handle_key(press(KeyCode::Char('q')));
             assert_eq!(app.screen(), Screen::QsoEntry);
         }
 
