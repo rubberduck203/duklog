@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Row, Table};
 
 use crate::model::Log;
 use crate::storage::{LogManager, StorageError};
-use crate::tui::action::{Action, ScreenState};
+use crate::tui::action::Action;
 use crate::tui::app::Screen;
 
 /// State for the log selection screen.
@@ -151,12 +151,6 @@ impl LogSelectState {
         );
         self.pending_delete = Some((log.header().log_id.clone(), label));
         Action::None
-    }
-}
-
-impl ScreenState for LogSelectState {
-    fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Action {
-        LogSelectState::handle_key(self, key)
     }
 }
 

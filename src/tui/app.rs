@@ -6,7 +6,7 @@ use ratatui::{Frame, Terminal};
 use crate::model::Log;
 use crate::storage::{self, LogManager, StorageError};
 
-use super::action::{Action, ScreenState};
+use super::action::Action;
 use super::error::AppError;
 use super::screens::export::{ExportState, draw_export};
 use super::screens::help::{HelpState, draw_help};
@@ -106,18 +106,6 @@ impl App {
         }
     }
 
-    /// Returns a mutable reference to the current screen's state as `dyn ScreenState`.
-    fn current_screen_mut(&mut self) -> &mut dyn ScreenState {
-        match self.screen {
-            Screen::LogSelect => &mut self.log_select,
-            Screen::LogCreate => &mut self.log_create,
-            Screen::QsoEntry => &mut self.qso_entry,
-            Screen::QsoList => &mut self.qso_list,
-            Screen::Export => &mut self.export,
-            Screen::Help => &mut self.help,
-        }
-    }
-
     /// Handles a key event: global keys first, then screen-specific delegation.
     pub fn handle_key(&mut self, key: KeyEvent) {
         if key.kind != KeyEventKind::Press {
@@ -132,7 +120,20 @@ impl App {
             return;
         }
 
-        let action = self.current_screen_mut().handle_key(key);
+        let action = match self.screen {
+            Screen::LogSelect => self.log_select.handle_key(key),
+            Screen::LogCreate => self.log_create.handle_key(key),
+            Screen::QsoEntry => self.qso_entry.handle_key(key),
+            Screen::QsoList => {
+                let count = self
+                    .current_log
+                    .as_ref()
+                    .map_or(0, |l| l.header().qsos.len());
+                self.qso_list.handle_key(key, count)
+            }
+            Screen::Export => self.export.handle_key(key),
+            Screen::Help => self.help.handle_key(key),
+        };
         self.apply_action(action);
     }
 
@@ -277,11 +278,6 @@ impl App {
             }
             Screen::QsoList => {
                 self.qso_list.reset();
-                let count = self
-                    .current_log
-                    .as_ref()
-                    .map_or(0, |l| l.header().qsos.len());
-                self.qso_list.set_qso_count(count);
                 self.screen = Screen::QsoList;
             }
             Screen::Export => {

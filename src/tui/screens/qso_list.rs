@@ -8,7 +8,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Paragraph, Row, Table};
 
 use crate::model::Log;
-use crate::tui::action::{Action, ScreenState};
+use crate::tui::action::Action;
 use crate::tui::app::Screen;
 use crate::tui::widgets::{StatusBarContext, draw_status_bar};
 
@@ -17,8 +17,6 @@ use crate::tui::widgets::{StatusBarContext, draw_status_bar};
 pub struct QsoListState {
     /// Index of the currently highlighted row (0-based).
     selected: usize,
-    /// Cached QSO count used by key handling (set by the App on navigation).
-    qso_count: usize,
 }
 
 impl Default for QsoListState {
@@ -30,22 +28,11 @@ impl Default for QsoListState {
 impl QsoListState {
     /// Creates a new state with the cursor at the first row.
     pub fn new() -> Self {
-        Self {
-            selected: 0,
-            qso_count: 0,
-        }
-    }
-
-    /// Updates the cached QSO count used by key handling.
-    ///
-    /// The App calls this when navigating to this screen.
-    pub fn set_qso_count(&mut self, count: usize) {
-        self.qso_count = count;
+        Self { selected: 0 }
     }
 
     /// Handles a key event, returning an [`Action`] for the app to apply.
-    pub fn handle_key(&mut self, key: KeyEvent) -> Action {
-        let qso_count = self.qso_count;
+    pub fn handle_key(&mut self, key: KeyEvent, qso_count: usize) -> Action {
         match key.code {
             KeyCode::Up => {
                 self.selected = self.selected.saturating_sub(1);
@@ -90,12 +77,6 @@ impl QsoListState {
     /// Resets the cursor to the first row.
     pub fn reset(&mut self) {
         self.selected = 0;
-    }
-}
-
-impl ScreenState for QsoListState {
-    fn handle_key(&mut self, key: KeyEvent) -> Action {
-        QsoListState::handle_key(self, key)
     }
 }
 
@@ -240,10 +221,8 @@ mod tests {
         log
     }
 
-    /// Helper to set qso_count then dispatch a key event.
     fn handle_with_count(state: &mut QsoListState, key: KeyEvent, count: usize) -> Action {
-        state.set_qso_count(count);
-        state.handle_key(key)
+        state.handle_key(key, count)
     }
 
     mod construction {

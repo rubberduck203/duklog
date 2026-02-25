@@ -1,7 +1,5 @@
 //! Actions returned by screen event handlers.
 
-use crossterm::event::KeyEvent;
-
 use crate::model::{Log, Qso};
 
 use super::app::Screen;
@@ -32,10 +30,4 @@ pub enum Action {
     DeleteLog(String),
     /// Quit the application.
     Quit,
-}
-
-/// Common behavior for all screen state types.
-pub trait ScreenState {
-    /// Process a key event and return an [`Action`] for the `App` to apply.
-    fn handle_key(&mut self, key: KeyEvent) -> Action;
 }

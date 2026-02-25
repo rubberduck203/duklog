@@ -8,7 +8,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::model::{Log, PotaLog, validate_callsign, validate_grid_square, validate_park_ref};
-use crate::tui::action::{Action, ScreenState};
+use crate::tui::action::Action;
 use crate::tui::app::Screen;
 use crate::tui::widgets::form::{Form, FormField, draw_form};
 
@@ -147,12 +147,6 @@ impl LogCreateState {
                 Action::None
             }
         }
-    }
-}
-
-impl ScreenState for LogCreateState {
-    fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Action {
-        LogCreateState::handle_key(self, key)
     }
 }
 

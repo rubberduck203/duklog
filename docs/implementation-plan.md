@@ -26,7 +26,7 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 - **3.10 Duplicate QSO Detection** (`feature/duplicate-qso-detection`) — Done
 - **3.11 Duplicate Log Prevention** (`feature/duplicate-log-prevention`) — Done
 - **3.12 Polish** (`feature/polish`) — Done
-- **4.0 Log enum refactor + ScreenState trait** (`feature/polish`) — Done
+- **4.0 Log enum refactor** (`feature/polish`) — Done
 
 ---
 

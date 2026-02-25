@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::model::Log;
 use crate::storage::default_export_path;
-use crate::tui::action::{Action, ScreenState};
+use crate::tui::action::Action;
 use crate::tui::app::Screen;
 use crate::tui::widgets::{StatusBarContext, draw_status_bar};
 
@@ -106,12 +106,6 @@ impl ExportState {
     /// Returns the number of QSOs that will be exported.
     pub fn qso_count(&self) -> usize {
         self.qso_count
-    }
-}
-
-impl ScreenState for ExportState {
-    fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Action {
-        ExportState::handle_key(self, key)
     }
 }
 

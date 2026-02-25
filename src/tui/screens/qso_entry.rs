@@ -9,7 +9,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Row, Table};
 
 use crate::model::{Band, Log, Mode, Qso, validate_callsign, validate_park_ref};
-use crate::tui::action::{Action, ScreenState};
+use crate::tui::action::Action;
 use crate::tui::app::Screen;
 use crate::tui::widgets::form::{Form, FormField, draw_form};
 use crate::tui::widgets::{StatusBarContext, draw_status_bar};
@@ -301,12 +301,6 @@ impl QsoEntryState {
                 Action::None
             }
         }
-    }
-}
-
-impl ScreenState for QsoEntryState {
-    fn handle_key(&mut self, key: KeyEvent) -> Action {
-        QsoEntryState::handle_key(self, key)
     }
 }
 

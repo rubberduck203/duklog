@@ -47,19 +47,26 @@ Serialization uses `#[serde(tag = "log_type")]` so each variant round-trips corr
 
 ## Screen Architecture
 
-The TUI uses a `ScreenState` trait for key-event dispatch, with an `Action` enum for screen-to-app communication.
+The TUI uses explicit `match self.screen` dispatch in `App`, with an `Action` enum for screen-to-app communication. Each screen module owns its state struct and a free draw function.
 
-### ScreenState Trait
+### Dispatch Pattern
 
-Every screen state struct implements `ScreenState`:
+`App::handle_key` routes key events to the active screen via a match:
 
 ```rust
-pub trait ScreenState {
-    fn handle_key(&mut self, key: KeyEvent) -> Action;
-}
+let action = match self.screen {
+    Screen::LogSelect => self.log_select.handle_key(key),
+    Screen::LogCreate => self.log_create.handle_key(key),
+    Screen::QsoEntry  => self.qso_entry.handle_key(key),
+    Screen::QsoList   => self.qso_list.handle_key(key, count),
+    Screen::Export    => self.export.handle_key(key),
+    Screen::Help      => self.help.handle_key(key),
+};
 ```
 
-`App::current_screen_mut()` returns `&mut dyn ScreenState` for the active screen. `App::handle_key()` delegates to it, then calls `apply_action`. Adding a new screen requires one arm in `current_screen_mut` and one in the draw dispatch.
+`QsoListState::handle_key` takes an explicit `qso_count: usize` parameter because the list needs to know the count to clamp cursor movement, and the count lives on the `Log` in `App` — not on the screen state. Passing it explicitly at the call site makes the dependency visible; caching it on the struct would hide it.
+
+`navigate()` handles screen transitions with per-screen initialization logic (reset form, reload log list, prepare export path). Adding a new screen means one arm in `handle_key`, one arm in `navigate`, and one arm in `draw`.
 
 ### Action Enum
 
@@ -107,6 +114,39 @@ The QSO list screen dispatches `EditQso(index)` when the user presses Enter on a
 - **Adversarial code review**: `code-review` subagent (Sonnet) runs before every PR to catch issues the developer is blind to.
 - **Token-optimized CLAUDE.md**: Only always-needed content (62 lines) lives in CLAUDE.md. Domain knowledge, testing rules, and ADIF specs are in `.claude/rules/` with path-scoped loading. Coding standards are a skill preloaded into the code-review subagent.
 - **Continuous learning**: `/learn-from-feedback` skill processes PR comments and user corrections into the appropriate knowledge store (rules, skills, or auto memory) so mistakes don't recur.
+
+## Architecture Decision Records
+
+### ADR-1: Log enum over LogConfig-on-struct (Phase 4.0)
+
+**Decision:** `Log` is an enum (`General(GeneralLog)`, `Pota(PotaLog)`, future types) wrapping concrete structs that each embed a `LogHeader` for shared fields.
+
+**Rejected alternative:** A single `Log` struct with a `LogConfig` enum field carrying type-specific data.
+
+**Rationale:**
+- Type-specific fields are accessible without pattern matching through a config enum. `PotaLog.park_ref` is a direct field; `FieldDayLog.class` and `.section` will be direct fields.
+- Type-specific methods live on the concrete type, not on `Log`. `PotaLog::is_activated()` exists; `GeneralLog` simply has no such method.
+- The compiler enforces exhaustiveness at each dispatch point in `log.rs`. Adding a new log type surfaces all required method updates at compile time.
+- Each concrete type can be unit-tested in isolation without constructing the `Log` enum wrapper.
+- Serialization uses `#[serde(tag = "log_type")]`; existing JSONL files without `log_type` default to `Log::Pota` for backward compatibility.
+
+**Tradeoff accepted:** `Log` methods that delegate to `LogHeader` (e.g., `header()`, `header_mut()`, `add_qso()`) require one match arm per variant. This is mechanical boilerplate that grows linearly with log types — acceptable given the benefits.
+
+---
+
+### ADR-2: Explicit screen dispatch over a ScreenState trait (Phase 4.0)
+
+**Decision:** `App::handle_key` uses an explicit `match self.screen` to dispatch key events. Draw functions remain free functions called from a `match` in `App::draw`. Navigation initialization logic stays in `App::navigate`.
+
+**Rejected alternative:** A `ScreenState` trait extended with `on_enter(&mut self, ctx: &ScreenContext)` and `draw(&self, ctx: &DrawContext, frame: &mut Frame, area: Rect)`, eliminating the dispatch matches by pushing logic into screen state structs.
+
+**Rationale:**
+- The explicit matches are the honest representation of the coupling. `QsoListState::handle_key` needs the QSO count, which lives on the `Log` in `App`. Passing it as a parameter at the call site makes that dependency visible. A `ScreenState` trait that hides it — by caching the count on the struct and requiring `App` to call `set_qso_count()` before navigating — trades explicitness for a silent invariant that can be violated without a compile error.
+- `App::navigate` is the right place for initialization logic that reads from app-level state (`current_log`, `manager`). Moving it to `on_enter` methods would require a `ScreenContext` borrow that spans screen types — adding lifetime complexity without a behavioral benefit.
+- The draw matches and navigate match are additive: adding a screen appends one arm to each. This is low cognitive load and the compiler catches omissions.
+- With 6 screens, the ergonomic benefit of trait dispatch does not outweigh the hidden coupling it introduces.
+
+**When to revisit:** If the number of screens grows large enough that the matches become a maintenance burden (>~10 screens), or if a screen's initialization logic grows complex enough to warrant encapsulation, a narrow `on_enter` trait becomes worth the tradeoff.
 
 ## Dependencies
 
