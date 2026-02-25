@@ -14,18 +14,17 @@ pub fn export_adif(log: &Log, path: &Path) -> Result<(), StorageError> {
 
 /// Returns the default export path for a log.
 ///
-/// Format: `~/duklog-{PARK}-{YYYYMMDD}.adif` when a park ref is set,
+/// Format: `~/duklog-{PARK}-{YYYYMMDD}.adif` when a POTA park ref is set,
 /// or `~/duklog-{CALLSIGN}-{YYYYMMDD}.adif` otherwise.
 ///
 /// Returns `StorageError::NoHomeDir` if the home directory cannot be
 /// determined.
 pub fn default_export_path(log: &Log) -> Result<PathBuf, StorageError> {
     let prefix = log
-        .park_ref
-        .as_deref()
-        .unwrap_or(&log.station_callsign)
+        .park_ref()
+        .unwrap_or(&log.header().station_callsign)
         .replace('/', "_");
-    let date = log.created_at.format("%Y%m%d");
+    let date = log.header().created_at.format("%Y%m%d");
     let filename = format!("duklog-{prefix}-{date}.adif");
 
     let home = dirs::home_dir().ok_or(StorageError::NoHomeDir)?;
@@ -38,30 +37,30 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::model::{Band, Mode, Qso};
+    use crate::model::{Band, Mode, PotaLog, Qso};
 
     fn make_log() -> Log {
-        let mut log = Log::new(
+        let mut log = PotaLog::new(
             "W1AW".to_string(),
             Some("W1AW".to_string()),
             Some("K-0001".to_string()),
             "FN31".to_string(),
         )
         .unwrap();
-        log.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
-        log
+        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        Log::Pota(log)
     }
 
     fn make_log_without_park() -> Log {
-        let mut log = Log::new(
+        let mut log = PotaLog::new(
             "W1AW".to_string(),
             Some("W1AW".to_string()),
             None,
             "FN31".to_string(),
         )
         .unwrap();
-        log.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
-        log
+        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        Log::Pota(log)
     }
 
     fn make_qso() -> Qso {
@@ -129,7 +128,7 @@ mod tests {
     #[test]
     fn default_path_without_park_sanitizes_portable_callsign() {
         let mut log = make_log_without_park();
-        log.station_callsign = "W1AW/P".to_string();
+        log.header_mut().station_callsign = "W1AW/P".to_string();
         let path = default_export_path(&log).unwrap();
         let filename = path.file_name().unwrap().to_str().unwrap();
         assert_eq!(filename, "duklog-W1AW_P-20260216.adif");

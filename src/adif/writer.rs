@@ -35,7 +35,9 @@ fn encode_type_specific_fields(
     log: &Log,
     qso: &Qso,
 ) -> Result<(), AdifError> {
-    if let Some(ref park) = log.park_ref {
+    if let Log::Pota(pota) = log
+        && let Some(ref park) = pota.park_ref
+    {
         encode(encoder, buf, field_tag("MY_SIG", POTA_SIG))?;
         encode(encoder, buf, field_tag("MY_SIG_INFO", park.as_str()))?;
     }
@@ -67,7 +69,7 @@ pub fn format_header(log: &Log) -> Result<String, AdifError> {
     )?;
     buf.extend_from_slice(b"\n");
 
-    let timestamp = log.created_at.format("%Y%m%d %H%M%S").to_string();
+    let timestamp = log.header().created_at.format("%Y%m%d %H%M%S").to_string();
     encode(
         &mut encoder,
         &mut buf,
@@ -94,10 +96,10 @@ pub fn format_qso(log: &Log, qso: &Qso) -> Result<String, AdifError> {
     encode(
         &mut encoder,
         &mut buf,
-        field_tag("STATION_CALLSIGN", log.station_callsign.as_str()),
+        field_tag("STATION_CALLSIGN", log.header().station_callsign.as_str()),
     )?;
-    if let Some(ref op) = log.operator
-        && op != &log.station_callsign
+    if let Some(ref op) = log.header().operator
+        && op != &log.header().station_callsign
     {
         encode(&mut encoder, &mut buf, field_tag("OPERATOR", op.as_str()))?;
     }
@@ -139,7 +141,7 @@ pub fn format_qso(log: &Log, qso: &Qso) -> Result<String, AdifError> {
     encode(
         &mut encoder,
         &mut buf,
-        field_tag("MY_GRIDSQUARE", log.grid_square.as_str()),
+        field_tag("MY_GRIDSQUARE", log.header().grid_square.as_str()),
     )?;
 
     encode_type_specific_fields(&mut encoder, &mut buf, log, qso)?;
@@ -159,7 +161,8 @@ pub fn format_qso(log: &Log, qso: &Qso) -> Result<String, AdifError> {
 
 /// Formats a complete ADIF file (header + all QSO records).
 pub fn format_adif(log: &Log) -> Result<String, AdifError> {
-    log.qsos
+    log.header()
+        .qsos
         .iter()
         .try_fold(format_header(log)?, |mut output, qso| {
             output.push_str(&format_qso(log, qso)?);
@@ -173,54 +176,54 @@ mod tests {
     use quickcheck_macros::quickcheck;
 
     use super::*;
-    use crate::model::{Band, Mode};
+    use crate::model::{Band, Mode, PotaLog};
 
     fn make_log() -> Log {
-        let mut log = Log::new(
+        let mut log = PotaLog::new(
             "W1AW".to_string(),
             Some("W1AW".to_string()),
             Some("K-0001".to_string()),
             "FN31".to_string(),
         )
         .unwrap();
-        log.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
-        log
+        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        Log::Pota(log)
     }
 
     fn make_log_without_park() -> Log {
-        let mut log = Log::new(
+        let mut log = PotaLog::new(
             "W1AW".to_string(),
             Some("W1AW".to_string()),
             None,
             "FN31".to_string(),
         )
         .unwrap();
-        log.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
-        log
+        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        Log::Pota(log)
     }
 
     fn make_log_distinct_operator() -> Log {
-        let mut log = Log::new(
+        let mut log = PotaLog::new(
             "W1AW".to_string(),
             Some("N0CALL".to_string()),
             Some("K-0001".to_string()),
             "FN31".to_string(),
         )
         .unwrap();
-        log.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
-        log
+        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        Log::Pota(log)
     }
 
     fn make_log_none_operator() -> Log {
-        let mut log = Log::new(
+        let mut log = PotaLog::new(
             "W1AW".to_string(),
             None,
             Some("K-0001".to_string()),
             "FN31".to_string(),
         )
         .unwrap();
-        log.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
-        log
+        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        Log::Pota(log)
     }
 
     fn make_qso() -> Qso {

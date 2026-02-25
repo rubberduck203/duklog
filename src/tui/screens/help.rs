@@ -7,7 +7,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::tui::action::Action;
+use crate::tui::action::{Action, ScreenState};
 use crate::tui::app::Screen;
 
 static LOG_SELECT_KEYS: &[(&str, &str)] = &[
@@ -111,6 +111,12 @@ impl HelpState {
             KeyCode::Char('q') | KeyCode::Esc => Action::Navigate(self.origin),
             _ => Action::None,
         }
+    }
+}
+
+impl ScreenState for HelpState {
+    fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Action {
+        HelpState::handle_key(self, key)
     }
 }
 

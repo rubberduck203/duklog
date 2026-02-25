@@ -32,9 +32,34 @@ User Input → TUI Event Loop → Model Mutation → Auto-Save (Storage)
 4. **Persistence**: After every model mutation, storage layer auto-saves to JSONL
 5. **Export**: User-triggered ADIF export calls the pure ADIF writer, then writes to disk
 
+## Domain Model
+
+`Log` is an enum over concrete log types, each carrying a shared `LogHeader` plus type-specific fields:
+
+```
+LogHeader          — station_callsign, operator, grid_square, qsos, created_at, log_id
+GeneralLog         — header: LogHeader  (no type-specific fields)
+PotaLog            — header: LogHeader, park_ref: Option<String>
+Log enum           — General(GeneralLog) | Pota(PotaLog) | ...future types
+```
+
+Serialization uses `#[serde(tag = "log_type")]` so each variant round-trips correctly. Existing JSONL files without `log_type` default to `Log::Pota` for backward compatibility. Shared fields are accessed via `log.header()` / `log.header_mut()`. Type-specific methods (e.g., `PotaLog::is_activated`) live on the concrete type; the `Log` enum delegates to them via `match self`.
+
 ## Screen Architecture
 
-The TUI uses match-based dispatch with an `Action` enum rather than a `Screen` trait. With only 6 screens, a trait adds indirection for no benefit.
+The TUI uses a `ScreenState` trait for key-event dispatch, with an `Action` enum for screen-to-app communication.
+
+### ScreenState Trait
+
+Every screen state struct implements `ScreenState`:
+
+```rust
+pub trait ScreenState {
+    fn handle_key(&mut self, key: KeyEvent) -> Action;
+}
+```
+
+`App::current_screen_mut()` returns `&mut dyn ScreenState` for the active screen. `App::handle_key()` delegates to it, then calls `apply_action`. Adding a new screen requires one arm in `current_screen_mut` and one in the draw dispatch.
 
 ### Action Enum
 

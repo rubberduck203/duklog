@@ -5,7 +5,7 @@ mod qso;
 mod validation;
 
 pub use band::Band;
-pub use log::Log;
+pub use log::{GeneralLog, Log, LogHeader, PotaLog};
 pub use mode::Mode;
 pub use qso::Qso;
 pub use validation::{ValidationError, validate_callsign, validate_grid_square, validate_park_ref};

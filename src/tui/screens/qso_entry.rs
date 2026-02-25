@@ -9,7 +9,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Row, Table};
 
 use crate::model::{Band, Log, Mode, Qso, validate_callsign, validate_park_ref};
-use crate::tui::action::Action;
+use crate::tui::action::{Action, ScreenState};
 use crate::tui::app::Screen;
 use crate::tui::widgets::form::{Form, FormField, draw_form};
 use crate::tui::widgets::{StatusBarContext, draw_status_bar};
@@ -164,7 +164,7 @@ impl QsoEntryState {
 
     /// Populates recent QSOs from a log (last 3, newest first).
     pub fn set_log_context(&mut self, log: &Log) {
-        self.recent_qsos = log.qsos.iter().rev().take(3).cloned().collect();
+        self.recent_qsos = log.header().qsos.iter().rev().take(3).cloned().collect();
     }
 
     /// Adds a QSO to the recent list, keeping only the last 3 (newest first).
@@ -304,6 +304,12 @@ impl QsoEntryState {
     }
 }
 
+impl ScreenState for QsoEntryState {
+    fn handle_key(&mut self, key: KeyEvent) -> Action {
+        QsoEntryState::handle_key(self, key)
+    }
+}
+
 /// Cycles through a slice to find the next or previous element.
 ///
 /// # Panics
@@ -355,8 +361,8 @@ pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Fram
 
     let ctx = log
         .map(|l| StatusBarContext {
-            callsign: l.station_callsign.clone(),
-            park_ref: l.park_ref.clone(),
+            callsign: l.header().station_callsign.clone(),
+            park_ref: l.park_ref().map(|s| s.to_string()),
             qso_count: l.qso_count_today(),
             is_activated: l.is_activated(),
         })
@@ -365,9 +371,9 @@ pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Fram
 
     // Header: station info + band/mode
     if let Some(log) = log {
-        let callsign = &log.station_callsign;
-        let park = log.park_ref.as_deref().unwrap_or("-");
-        let grid = &log.grid_square;
+        let callsign = &log.header().station_callsign;
+        let park = log.park_ref().unwrap_or("-");
+        let grid = &log.header().grid_square;
         let today = log.qso_count_today();
         let needed = log.needs_for_activation();
 
@@ -481,6 +487,7 @@ mod tests {
     use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers};
 
     use super::*;
+    use crate::model::PotaLog;
 
     fn press(code: KeyCode) -> KeyEvent {
         KeyEvent {
@@ -1035,13 +1042,15 @@ mod tests {
         #[test]
         fn set_log_context_populates_recent() {
             let mut state = QsoEntryState::new();
-            let mut log = Log::new(
-                "W1AW".to_string(),
-                None,
-                Some("K-0001".to_string()),
-                "FN31".to_string(),
-            )
-            .unwrap();
+            let mut log = Log::Pota(
+                PotaLog::new(
+                    "W1AW".to_string(),
+                    None,
+                    Some("K-0001".to_string()),
+                    "FN31".to_string(),
+                )
+                .unwrap(),
+            );
             log.add_qso(make_qso("W3ABC", Band::M20, Mode::Ssb));
             log.add_qso(make_qso("N0CALL", Band::M40, Mode::Cw));
             log.add_qso(make_qso("KD9XYZ", Band::M20, Mode::Ssb));
@@ -1057,13 +1066,15 @@ mod tests {
         #[test]
         fn set_log_context_caps_at_3() {
             let mut state = QsoEntryState::new();
-            let mut log = Log::new(
-                "W1AW".to_string(),
-                None,
-                Some("K-0001".to_string()),
-                "FN31".to_string(),
-            )
-            .unwrap();
+            let mut log = Log::Pota(
+                PotaLog::new(
+                    "W1AW".to_string(),
+                    None,
+                    Some("K-0001".to_string()),
+                    "FN31".to_string(),
+                )
+                .unwrap(),
+            );
             for i in 0..5 {
                 log.add_qso(make_qso(&format!("W{i}AW"), Band::M20, Mode::Ssb));
             }
@@ -1132,13 +1143,15 @@ mod tests {
         #[test]
         fn set_log_context_with_empty_log() {
             let mut state = QsoEntryState::new();
-            let log = Log::new(
-                "W1AW".to_string(),
-                None,
-                Some("K-0001".to_string()),
-                "FN31".to_string(),
-            )
-            .unwrap();
+            let log = Log::Pota(
+                PotaLog::new(
+                    "W1AW".to_string(),
+                    None,
+                    Some("K-0001".to_string()),
+                    "FN31".to_string(),
+                )
+                .unwrap(),
+            );
             state.set_log_context(&log);
             assert!(state.recent_qsos().is_empty());
         }
@@ -1305,13 +1318,15 @@ mod tests {
         }
 
         fn make_log() -> Log {
-            Log::new(
-                "W1AW".to_string(),
-                None,
-                Some("K-0001".to_string()),
-                "FN31".to_string(),
+            Log::Pota(
+                PotaLog::new(
+                    "W1AW".to_string(),
+                    None,
+                    Some("K-0001".to_string()),
+                    "FN31".to_string(),
+                )
+                .unwrap(),
             )
-            .unwrap()
         }
 
         #[test]
@@ -1449,7 +1464,9 @@ mod tests {
         #[test]
         fn renders_park_dash_when_no_park_ref() {
             let state = QsoEntryState::new();
-            let log = Log::new("W1AW".to_string(), None, None, "FN31".to_string()).unwrap();
+            let log = Log::Pota(
+                PotaLog::new("W1AW".to_string(), None, None, "FN31".to_string()).unwrap(),
+            );
             let output = render_qso_entry(&state, Some(&log), 80, 30);
             assert!(
                 output.contains("W1AW @ -"),

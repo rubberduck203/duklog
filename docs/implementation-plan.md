@@ -26,6 +26,7 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 - **3.10 Duplicate QSO Detection** (`feature/duplicate-qso-detection`) — Done
 - **3.11 Duplicate Log Prevention** (`feature/duplicate-log-prevention`) — Done
 - **3.12 Polish** (`feature/polish`) — Done
+- **4.0 Log enum refactor + ScreenState trait** (`feature/polish`) — Done
 
 ---
 
@@ -46,24 +47,22 @@ Reference docs: `docs/reference/arrl-field-day-notes.md`, `docs/reference/winter
 | **Field Day** | callsign, operator, tx_count, fd_class, section | their_exchange (class+section) | `CONTEST_ID=ARRL-FIELD-DAY`, `STX_STRING`, `SRX_STRING` |
 | **Winter Field Day** | callsign, operator, tx_count, wfd_class, section | their_exchange (class+section) | `CONTEST_ID=WFD`, `STX_STRING`, `SRX_STRING` |
 
-#### 4.1 LogType data model (`feature/log-types-model`)
-**Files**: `src/model/log_type.rs`, `src/model/log.rs`, `src/model/qso.rs`
+#### 4.1 Add FieldDay and WFD types (`feature/log-types-model`)
+**Files**: `src/model/log.rs`, `src/model/qso.rs`
 
-- Add `LogType` enum: `GeneralPurpose`, `Pota`, `FieldDay`, `WinterFieldDay`
-- Add `LogConfig` enum carrying log-level setup fields:
-  - `Pota { park_ref: Option<String> }` (existing `park_ref` on `Log` moves here)
-  - `FieldDay { tx_count: u8, class: FdClass, section: String, power: FdPowerCategory }`
-  - `WinterFieldDay { tx_count: u8, class: WfdClass, section: String }`
-  - `GeneralPurpose` (no extra fields)
+The model now uses a `Log` enum (`General(GeneralLog)`, `Pota(PotaLog)`, future `FieldDay(FieldDayLog)`, `WinterFieldDay(WfdLog)`) backed by a shared `LogHeader`. See architecture.md for details.
+
+- Add `FieldDayLog` struct: `header: LogHeader`, `tx_count: u8`, `class: FdClass`, `section: String`, `power: FdPowerCategory`
+- Add `WfdLog` struct: `header: LogHeader`, `tx_count: u8`, `class: WfdClass`, `section: String`
+- Add new `Log` enum variants: `FieldDay(FieldDayLog)`, `WinterFieldDay(WfdLog)`
 - Add `FdClass` enum: `A`, `B`, `C`, `D`, `E`, `F`
 - Add `WfdClass` enum: `H`, `I`, `O`, `M`
 - Add `FdPowerCategory` enum: `Qrp` (≤5W non-commercial), `Low` (≤100W), `High` (>100W) — drives the ×5/×2/×1 multiplier
 - Add `exchange_rcvd: Option<String>` to `Qso` — stores received contest exchange verbatim (e.g., `3A CT`); `None` for POTA and General logs
 - Add `frequency: Option<u32>` to `Qso` — frequency in kHz; required for WFD ADIF (`FREQ` field); optional otherwise
 - `their_park: Option<String>` stays on `Qso`; the ADIF writer gates `SIG`/`SIG_INFO` emission on log type being `Pota`, so non-POTA logs never accidentally emit POTA fields even if `their_park` is somehow set
-- **Storage migration**: add `log_config` to serialized `Log` with `#[serde(default)]` so existing JSON files without the field deserialize to `LogConfig::Pota { park_ref: None }`. Add a round-trip deserialization test (deserializing a raw JSON log string without `log_config`) modelled on the existing `old_format_operator_string_deserializes_to_some` test.
 - **`log_id` generation**: prefix contest log IDs for readability — `FD-{callsign}-{YYYYMMDD-HHMMSS}` for Field Day, `WFD-{callsign}-{YYYYMMDD-HHMMSS}` for WFD, `{park_ref_or_callsign}-{timestamp}` unchanged for POTA/General
-- **Duplicate log check**: `LogManager::create_log` currently compares `park_ref` for uniqueness. Update to be type-aware: two logs of *different* types for the same callsign on the same day are not duplicates; within a type, apply the existing field comparison
+- **Duplicate log check**: `LogManager::create_log` is type-aware. Two logs of *different* types for the same callsign on the same day are not duplicates; within a type, apply the existing field comparison
 - **`find_duplicates` scope**: POTA logs use today-only scoping (existing). Field Day and WFD logs must scope across the entire log (events span two UTC calendar days; WFD also enforces a 3-contact-per-band limit across the whole event)
 - Update `is_activated()` to be type-aware:
   - POTA: ≥10 QSOs today (existing logic)
