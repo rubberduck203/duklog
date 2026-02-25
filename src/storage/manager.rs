@@ -634,10 +634,7 @@ mod tests {
     }
 
     fn make_pota_log_for_yesterday(id: &str) -> Log {
-        let mut log = match make_pota_log_for_today(id) {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut log = unwrap_pota(make_pota_log_for_today(id));
         let yesterday = Utc::now().date_naive().pred_opt().unwrap();
         log.header.created_at = Utc.from_utc_datetime(&yesterday.and_hms_opt(12, 0, 0).unwrap());
         Log::Pota(log)
@@ -652,6 +649,13 @@ mod tests {
         .unwrap();
         log.header.log_id = id.to_string();
         Log::General(log)
+    }
+
+    fn unwrap_pota(log: Log) -> PotaLog {
+        match log {
+            Log::Pota(p) => p,
+            _ => panic!("expected Pota log"),
+        }
     }
 
     #[test]
@@ -692,10 +696,7 @@ mod tests {
         let existing = make_pota_log_for_today("existing");
         manager.save_log(&existing).unwrap();
 
-        let mut new_log = match make_pota_log_for_today("new") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut new_log = unwrap_pota(make_pota_log_for_today("new"));
         new_log.header.station_callsign = "KD9XYZ".to_string();
         manager.create_log(&Log::Pota(new_log)).unwrap();
         assert_eq!(manager.list_logs().unwrap().len(), 2);
@@ -707,10 +708,7 @@ mod tests {
         let existing = make_pota_log_for_today("existing");
         manager.save_log(&existing).unwrap();
 
-        let mut new_log = match make_pota_log_for_today("new") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut new_log = unwrap_pota(make_pota_log_for_today("new"));
         new_log.header.operator = Some("KD9XYZ".to_string());
         manager.create_log(&Log::Pota(new_log)).unwrap();
         assert_eq!(manager.list_logs().unwrap().len(), 2);
@@ -722,10 +720,7 @@ mod tests {
         let existing = make_pota_log_for_today("existing");
         manager.save_log(&existing).unwrap();
 
-        let mut new_log = match make_pota_log_for_today("new") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut new_log = unwrap_pota(make_pota_log_for_today("new"));
         new_log.header.grid_square = "EM10".to_string();
         manager.create_log(&Log::Pota(new_log)).unwrap();
         assert_eq!(manager.list_logs().unwrap().len(), 2);
@@ -734,10 +729,7 @@ mod tests {
     #[test]
     fn create_log_rejects_duplicate_case_insensitive_callsign() {
         let (_dir, manager) = make_manager();
-        let mut existing = match make_pota_log_for_today("existing") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut existing = unwrap_pota(make_pota_log_for_today("existing"));
         existing.header.station_callsign = "w1aw".to_string();
         manager.save_log(&Log::Pota(existing)).unwrap();
 
@@ -750,10 +742,7 @@ mod tests {
     #[test]
     fn create_log_allows_none_vs_some_operator() {
         let (_dir, manager) = make_manager();
-        let mut existing = match make_pota_log_for_today("existing") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut existing = unwrap_pota(make_pota_log_for_today("existing"));
         existing.header.operator = None;
         manager.save_log(&Log::Pota(existing)).unwrap();
 
@@ -770,10 +759,7 @@ mod tests {
         // existing has operator = Some("W1AW")
         manager.save_log(&existing).unwrap();
 
-        let mut new_log = match make_pota_log_for_today("new") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut new_log = unwrap_pota(make_pota_log_for_today("new"));
         new_log.header.operator = None;
         // new_log has operator = None → not a duplicate
         manager.create_log(&Log::Pota(new_log)).unwrap();
@@ -783,17 +769,11 @@ mod tests {
     #[test]
     fn create_log_rejects_duplicate_none_operators() {
         let (_dir, manager) = make_manager();
-        let mut existing = match make_pota_log_for_today("existing") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut existing = unwrap_pota(make_pota_log_for_today("existing"));
         existing.header.operator = None;
         manager.save_log(&Log::Pota(existing)).unwrap();
 
-        let mut new_log = match make_pota_log_for_today("new") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut new_log = unwrap_pota(make_pota_log_for_today("new"));
         new_log.header.operator = None;
         let result = manager.create_log(&Log::Pota(new_log));
         assert!(matches!(result, Err(StorageError::DuplicateLog { .. })));
@@ -802,10 +782,7 @@ mod tests {
     #[test]
     fn create_log_rejects_duplicate_case_insensitive_grid() {
         let (_dir, manager) = make_manager();
-        let mut existing = match make_pota_log_for_today("existing") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut existing = unwrap_pota(make_pota_log_for_today("existing"));
         existing.header.grid_square = "fn31".to_string();
         manager.save_log(&Log::Pota(existing)).unwrap();
 
@@ -846,10 +823,7 @@ mod tests {
         // existing has park_ref = Some("K-0001")
         manager.save_log(&existing).unwrap();
 
-        let mut new_log = match make_pota_log_for_today("new") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut new_log = unwrap_pota(make_pota_log_for_today("new"));
         new_log.park_ref = Some("K-0002".to_string());
         // Different park on same day — not a duplicate
         manager.create_log(&Log::Pota(new_log)).unwrap();
@@ -876,10 +850,7 @@ mod tests {
         // existing has park_ref = Some("K-0001")
         manager.save_log(&existing).unwrap();
 
-        let mut new_log = match make_pota_log_for_today("new") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut new_log = unwrap_pota(make_pota_log_for_today("new"));
         new_log.park_ref = None;
         // POTA with no park vs POTA with park — different config, not a duplicate
         manager.create_log(&Log::Pota(new_log)).unwrap();
@@ -901,19 +872,13 @@ mod tests {
     #[test]
     fn create_log_rejects_duplicate_case_insensitive_operator() {
         let (_dir, manager) = make_manager();
-        let mut existing = match make_pota_log_for_today("existing") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut existing = unwrap_pota(make_pota_log_for_today("existing"));
         existing.header.station_callsign = "W3DUK".to_string();
         existing.header.operator = Some("w3duk".to_string());
         existing.park_ref = None;
         manager.save_log(&Log::Pota(existing)).unwrap();
 
-        let mut new_log = match make_pota_log_for_today("new") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut new_log = unwrap_pota(make_pota_log_for_today("new"));
         new_log.header.station_callsign = "W3DUK".to_string();
         new_log.header.operator = Some("W3DUK".to_string());
         new_log.park_ref = None;
@@ -927,17 +892,11 @@ mod tests {
     #[test]
     fn create_log_rejects_duplicate_none_park_refs() {
         let (_dir, manager) = make_manager();
-        let mut existing = match make_pota_log_for_today("existing") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut existing = unwrap_pota(make_pota_log_for_today("existing"));
         existing.park_ref = None;
         manager.save_log(&Log::Pota(existing)).unwrap();
 
-        let mut new_log = match make_pota_log_for_today("new") {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut new_log = unwrap_pota(make_pota_log_for_today("new"));
         new_log.park_ref = None;
         // Both POTA with no park ref — is a duplicate
         let result = manager.create_log(&Log::Pota(new_log));
@@ -1031,10 +990,7 @@ mod tests {
     #[test]
     fn log_id_with_slash_round_trips() {
         let (_dir, manager) = make_manager();
-        let mut log = match make_log() {
-            Log::Pota(p) => p,
-            _ => unreachable!(),
-        };
+        let mut log = unwrap_pota(make_log());
         log.header.log_id = "W1AW/P-20260216-120000".to_string();
         let log = Log::Pota(log);
         manager.save_log(&log).unwrap();

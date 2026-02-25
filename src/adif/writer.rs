@@ -176,7 +176,7 @@ mod tests {
     use quickcheck_macros::quickcheck;
 
     use super::*;
-    use crate::model::{Band, Mode, PotaLog};
+    use crate::model::{Band, GeneralLog, Mode, PotaLog};
 
     fn make_log() -> Log {
         let mut log = PotaLog::new(
@@ -354,6 +354,22 @@ mod tests {
 
         assert!(!record.contains("MY_SIG"));
         assert!(!record.contains("MY_SIG_INFO"));
+    }
+
+    #[test]
+    fn general_log_excludes_pota_sig_fields() {
+        let log =
+            Log::General(GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap());
+        let record = format_qso(&log, &make_qso()).unwrap();
+
+        assert!(
+            !record.contains("MY_SIG"),
+            "general log must not emit MY_SIG"
+        );
+        assert!(
+            !record.contains("SIG_INFO"),
+            "general log must not emit SIG_INFO"
+        );
     }
 
     #[test]

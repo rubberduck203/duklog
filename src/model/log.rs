@@ -1,5 +1,4 @@
 use chrono::{DateTime, NaiveDate, Utc};
-use serde::{Deserialize, Serialize};
 
 use super::band::Band;
 use super::mode::Mode;
@@ -18,14 +17,14 @@ fn duplicate_key(qso: &Qso) -> (String, Band, Mode) {
 }
 
 /// Fields shared by every log type.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LogHeader {
-    pub station_callsign: String,
-    pub operator: Option<String>,
-    pub grid_square: String,
-    pub qsos: Vec<Qso>,
-    pub created_at: DateTime<Utc>,
-    pub log_id: String,
+    pub(crate) station_callsign: String,
+    pub(crate) operator: Option<String>,
+    pub(crate) grid_square: String,
+    pub(crate) qsos: Vec<Qso>,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) log_id: String,
 }
 
 impl LogHeader {
@@ -65,22 +64,22 @@ impl LogHeader {
     /// Replaces the QSO at `index` with `qso`, returning the old QSO.
     ///
     /// Returns `None` if `index` is out of bounds.
-    pub fn replace_qso(&mut self, index: usize, qso: Qso) -> Option<Qso> {
+    pub(crate) fn replace_qso(&mut self, index: usize, qso: Qso) -> Option<Qso> {
         self.qsos
             .get_mut(index)
             .map(|slot| std::mem::replace(slot, qso))
     }
 
     /// Adds a QSO to this log.
-    pub fn add_qso(&mut self, qso: Qso) {
+    pub(crate) fn add_qso(&mut self, qso: Qso) {
         self.qsos.push(qso);
     }
 }
 
 /// General-purpose log — no type-specific setup fields.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GeneralLog {
-    pub header: LogHeader,
+    pub(crate) header: LogHeader,
 }
 
 impl GeneralLog {
@@ -118,10 +117,10 @@ impl GeneralLog {
 }
 
 /// POTA (Parks on the Air) activation log.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PotaLog {
-    pub header: LogHeader,
-    pub park_ref: Option<String>,
+    pub(crate) header: LogHeader,
+    pub(crate) park_ref: Option<String>,
 }
 
 impl PotaLog {
@@ -166,8 +165,7 @@ impl PotaLog {
 }
 
 /// Any log session. The variant determines type-specific behavior and ADIF output.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "log_type")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Log {
     /// General-purpose log — no type-specific fields.
     General(GeneralLog),
@@ -205,7 +203,6 @@ impl Log {
         self.header_mut().add_qso(qso);
     }
 
-    /// Counts unique contacts on the given date (UTC).
     #[cfg(test)]
     pub(crate) fn qso_count_on_date(&self, date: NaiveDate) -> usize {
         self.header().qso_count_on_date(date)
@@ -267,7 +264,7 @@ impl Log {
     pub fn display_label(&self) -> &str {
         match self {
             Self::Pota(p) => p.park_ref.as_deref().unwrap_or(&p.header.station_callsign),
-            _ => &self.header().station_callsign,
+            Self::General(l) => &l.header.station_callsign,
         }
     }
 }
@@ -818,76 +815,5 @@ mod tests {
         let mut log = make_log();
         let qso = make_qso_on_date(NaiveDate::from_ymd_opt(2026, 1, 15).unwrap());
         assert_eq!(log.replace_qso(0, qso), None);
-    }
-
-    // --- Serde ---
-
-    #[test]
-    fn pota_serde_round_trip() {
-        let mut log = make_log();
-        let qso = Qso::new(
-            "KD9XYZ".to_string(),
-            "59".to_string(),
-            "59".to_string(),
-            Band::M20,
-            Mode::Ssb,
-            Utc::now(),
-            String::new(),
-            None,
-        )
-        .unwrap();
-        log.add_qso(qso);
-
-        let json = serde_json::to_string(&log).unwrap();
-        let deserialized: Log = serde_json::from_str(&json).unwrap();
-        assert_eq!(log, deserialized);
-    }
-
-    #[test]
-    fn pota_serde_round_trip_without_park() {
-        let log = Log::Pota(
-            PotaLog::new(
-                "W1AW".to_string(),
-                Some("W1AW".to_string()),
-                None,
-                "FN31".to_string(),
-            )
-            .unwrap(),
-        );
-        let json = serde_json::to_string(&log).unwrap();
-        let deserialized: Log = serde_json::from_str(&json).unwrap();
-        assert_eq!(log, deserialized);
-    }
-
-    #[test]
-    fn pota_serde_round_trip_none_operator() {
-        let log = Log::Pota(
-            PotaLog::new(
-                "W1AW".to_string(),
-                None,
-                Some("K-0001".to_string()),
-                "FN31".to_string(),
-            )
-            .unwrap(),
-        );
-        let json = serde_json::to_string(&log).unwrap();
-        let deserialized: Log = serde_json::from_str(&json).unwrap();
-        assert_eq!(log, deserialized);
-        assert_eq!(deserialized.header().operator, None);
-    }
-
-    #[test]
-    fn general_serde_round_trip() {
-        let log = Log::General(
-            GeneralLog::new(
-                "W1AW".to_string(),
-                Some("W1AW".to_string()),
-                "FN31".to_string(),
-            )
-            .unwrap(),
-        );
-        let json = serde_json::to_string(&log).unwrap();
-        let deserialized: Log = serde_json::from_str(&json).unwrap();
-        assert_eq!(log, deserialized);
     }
 }

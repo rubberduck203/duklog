@@ -139,6 +139,7 @@ impl LogCreateState {
         let park_ref = (!park_ref_str.is_empty()).then_some(park_ref_str);
 
         // All individual validations passed, so PotaLog::new should succeed.
+        // Phase 4.2 will add log-type selection; for now all logs are POTA.
         match PotaLog::new(callsign, operator, park_ref, grid_square) {
             Ok(log) => Action::CreateLog(Log::Pota(log)),
             Err(e) => {

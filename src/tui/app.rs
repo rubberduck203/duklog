@@ -134,6 +134,7 @@ impl App {
             Screen::Export => self.export.handle_key(key),
             Screen::Help => self.help.handle_key(key),
         };
+
         self.apply_action(action);
     }
 

@@ -221,10 +221,6 @@ mod tests {
         log
     }
 
-    fn handle_with_count(state: &mut QsoListState, key: KeyEvent, count: usize) -> Action {
-        state.handle_key(key, count)
-    }
-
     mod construction {
         use super::*;
 
@@ -247,7 +243,7 @@ mod tests {
         #[test]
         fn down_increments_selected() {
             let mut state = QsoListState::new();
-            let action = handle_with_count(&mut state, press(KeyCode::Down), 5);
+            let action = state.handle_key(press(KeyCode::Down), 5);
             assert_eq!(action, Action::None);
             assert_eq!(state.selected(), 1);
         }
@@ -256,7 +252,7 @@ mod tests {
         fn up_decrements_selected() {
             let mut state = QsoListState::new();
             state.set_selected(3);
-            let action = handle_with_count(&mut state, press(KeyCode::Up), 5);
+            let action = state.handle_key(press(KeyCode::Up), 5);
             assert_eq!(action, Action::None);
             assert_eq!(state.selected(), 2);
         }
@@ -264,7 +260,7 @@ mod tests {
         #[test]
         fn up_at_top_saturates() {
             let mut state = QsoListState::new();
-            handle_with_count(&mut state, press(KeyCode::Up), 5);
+            state.handle_key(press(KeyCode::Up), 5);
             assert_eq!(state.selected(), 0);
         }
 
@@ -272,14 +268,14 @@ mod tests {
         fn down_at_bottom_saturates() {
             let mut state = QsoListState::new();
             state.set_selected(4);
-            handle_with_count(&mut state, press(KeyCode::Down), 5);
+            state.handle_key(press(KeyCode::Down), 5);
             assert_eq!(state.selected(), 4);
         }
 
         #[test]
         fn down_with_empty_list_stays_at_zero() {
             let mut state = QsoListState::new();
-            handle_with_count(&mut state, press(KeyCode::Down), 0);
+            state.handle_key(press(KeyCode::Down), 0);
             assert_eq!(state.selected(), 0);
         }
 
@@ -287,7 +283,7 @@ mod tests {
         fn home_jumps_to_first() {
             let mut state = QsoListState::new();
             state.set_selected(4);
-            let action = handle_with_count(&mut state, press(KeyCode::Home), 5);
+            let action = state.handle_key(press(KeyCode::Home), 5);
             assert_eq!(action, Action::None);
             assert_eq!(state.selected(), 0);
         }
@@ -295,7 +291,7 @@ mod tests {
         #[test]
         fn end_jumps_to_last() {
             let mut state = QsoListState::new();
-            let action = handle_with_count(&mut state, press(KeyCode::End), 5);
+            let action = state.handle_key(press(KeyCode::End), 5);
             assert_eq!(action, Action::None);
             assert_eq!(state.selected(), 4);
         }
@@ -303,7 +299,7 @@ mod tests {
         #[test]
         fn end_with_empty_list_stays_at_zero() {
             let mut state = QsoListState::new();
-            handle_with_count(&mut state, press(KeyCode::End), 0);
+            state.handle_key(press(KeyCode::End), 0);
             assert_eq!(state.selected(), 0);
         }
     }
@@ -314,7 +310,7 @@ mod tests {
         #[test]
         fn enter_returns_edit_qso() {
             let mut state = QsoListState::new();
-            let action = handle_with_count(&mut state, press(KeyCode::Enter), 5);
+            let action = state.handle_key(press(KeyCode::Enter), 5);
             assert_eq!(action, Action::EditQso(0));
         }
 
@@ -322,14 +318,14 @@ mod tests {
         fn enter_returns_selected_index() {
             let mut state = QsoListState::new();
             state.set_selected(3);
-            let action = handle_with_count(&mut state, press(KeyCode::Enter), 5);
+            let action = state.handle_key(press(KeyCode::Enter), 5);
             assert_eq!(action, Action::EditQso(3));
         }
 
         #[test]
         fn enter_on_empty_list_returns_none() {
             let mut state = QsoListState::new();
-            let action = handle_with_count(&mut state, press(KeyCode::Enter), 0);
+            let action = state.handle_key(press(KeyCode::Enter), 0);
             assert_eq!(action, Action::None);
         }
     }
@@ -340,14 +336,14 @@ mod tests {
         #[test]
         fn esc_navigates_to_qso_entry() {
             let mut state = QsoListState::new();
-            let action = handle_with_count(&mut state, press(KeyCode::Esc), 5);
+            let action = state.handle_key(press(KeyCode::Esc), 5);
             assert_eq!(action, Action::Navigate(Screen::QsoEntry));
         }
 
         #[test]
         fn q_navigates_to_qso_entry() {
             let mut state = QsoListState::new();
-            let action = handle_with_count(&mut state, press(KeyCode::Char('q')), 5);
+            let action = state.handle_key(press(KeyCode::Char('q')), 5);
             assert_eq!(action, Action::Navigate(Screen::QsoEntry));
         }
     }
@@ -358,14 +354,14 @@ mod tests {
         #[test]
         fn unhandled_key_returns_none() {
             let mut state = QsoListState::new();
-            let action = handle_with_count(&mut state, press(KeyCode::Char('x')), 5);
+            let action = state.handle_key(press(KeyCode::Char('x')), 5);
             assert_eq!(action, Action::None);
         }
 
         #[test]
         fn f1_returns_none() {
             let mut state = QsoListState::new();
-            let action = handle_with_count(&mut state, press(KeyCode::F(1)), 5);
+            let action = state.handle_key(press(KeyCode::F(1)), 5);
             assert_eq!(action, Action::None);
         }
     }
