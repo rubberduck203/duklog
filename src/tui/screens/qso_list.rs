@@ -93,8 +93,8 @@ pub fn draw_qso_list(state: &QsoListState, log: Option<&Log>, frame: &mut Frame,
 
     let ctx = log
         .map(|l| StatusBarContext {
-            callsign: l.station_callsign.clone(),
-            park_ref: l.park_ref.clone(),
+            callsign: l.header().station_callsign.clone(),
+            park_ref: l.park_ref().map(|s| s.to_string()),
             qso_count: l.qso_count_today(),
             is_activated: l.is_activated(),
         })
@@ -102,7 +102,7 @@ pub fn draw_qso_list(state: &QsoListState, log: Option<&Log>, frame: &mut Frame,
     draw_status_bar(&ctx, frame, status_area);
 
     // Title
-    let qso_count = log.map_or(0, |l| l.qsos.len());
+    let qso_count = log.map_or(0, |l| l.header().qsos.len());
     let title_text = if log.is_some() {
         format!("QSO List ({qso_count} QSOs)")
     } else {
@@ -118,12 +118,11 @@ pub fn draw_qso_list(state: &QsoListState, log: Option<&Log>, frame: &mut Frame,
     frame.render_widget(title, title_area);
 
     // Table or empty state
-    // qso_count > 0 guarantees log is Some, but we use if-let to avoid .unwrap()
     if qso_count == 0 {
         let empty = Paragraph::new("No QSOs logged yet").alignment(Alignment::Center);
         frame.render_widget(empty, table_area);
     } else if let Some(log) = log {
-        let qsos = &log.qsos;
+        let qsos = &log.header().qsos;
 
         let header = Row::new(vec![
             "Time", "Date", "Call", "Band", "Mode", "RST S/R", "Park", "Comments",
@@ -181,7 +180,7 @@ mod tests {
     use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers};
 
     use super::*;
-    use crate::model::{Band, Mode, Qso};
+    use crate::model::{Band, Mode, PotaLog, Qso};
 
     fn press(code: KeyCode) -> KeyEvent {
         KeyEvent {
@@ -207,13 +206,15 @@ mod tests {
     }
 
     fn make_log_with_qsos(n: usize) -> Log {
-        let mut log = Log::new(
-            "W1AW".to_string(),
-            None,
-            Some("K-0001".to_string()),
-            "FN31".to_string(),
-        )
-        .unwrap();
+        let mut log = Log::Pota(
+            PotaLog::new(
+                "W1AW".to_string(),
+                None,
+                Some("K-0001".to_string()),
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        );
         for i in 0..n {
             log.add_qso(make_qso(&format!("W{i}AW")));
         }

@@ -22,6 +22,34 @@ fn buf_to_string(buf: BytesMut) -> Result<String, AdifError> {
     Ok(String::from_utf8(buf.into())?)
 }
 
+// The SIG/MY_SIG value for POTA contacts.
+const POTA_SIG: &str = "POTA";
+
+/// Encodes log-type-specific ADIF fields (currently POTA).
+///
+/// Emits `MY_SIG`/`MY_SIG_INFO` when the log has a park reference, and
+/// `SIG`/`SIG_INFO` when the QSO has their park set.
+fn encode_type_specific_fields(
+    encoder: &mut TagEncoder,
+    buf: &mut BytesMut,
+    log: &Log,
+    qso: &Qso,
+) -> Result<(), AdifError> {
+    if let Log::Pota(pota) = log
+        && let Some(ref park) = pota.park_ref
+    {
+        encode(encoder, buf, field_tag("MY_SIG", POTA_SIG))?;
+        encode(encoder, buf, field_tag("MY_SIG_INFO", park.as_str()))?;
+    }
+
+    if let Some(ref their_park) = qso.their_park {
+        encode(encoder, buf, field_tag("SIG", POTA_SIG))?;
+        encode(encoder, buf, field_tag("SIG_INFO", their_park.as_str()))?;
+    }
+
+    Ok(())
+}
+
 /// Formats the ADIF file header for a log.
 ///
 /// Includes `ADIF_VER`, `PROGRAMID`, `PROGRAMVERSION`, and `CREATED_TIMESTAMP`,
@@ -41,7 +69,7 @@ pub fn format_header(log: &Log) -> Result<String, AdifError> {
     )?;
     buf.extend_from_slice(b"\n");
 
-    let timestamp = log.created_at.format("%Y%m%d %H%M%S").to_string();
+    let timestamp = log.header().created_at.format("%Y%m%d %H%M%S").to_string();
     encode(
         &mut encoder,
         &mut buf,
@@ -68,10 +96,10 @@ pub fn format_qso(log: &Log, qso: &Qso) -> Result<String, AdifError> {
     encode(
         &mut encoder,
         &mut buf,
-        field_tag("STATION_CALLSIGN", log.station_callsign.as_str()),
+        field_tag("STATION_CALLSIGN", log.header().station_callsign.as_str()),
     )?;
-    if let Some(ref op) = log.operator
-        && op != &log.station_callsign
+    if let Some(ref op) = log.header().operator
+        && op != &log.header().station_callsign
     {
         encode(&mut encoder, &mut buf, field_tag("OPERATOR", op.as_str()))?;
     }
@@ -113,26 +141,10 @@ pub fn format_qso(log: &Log, qso: &Qso) -> Result<String, AdifError> {
     encode(
         &mut encoder,
         &mut buf,
-        field_tag("MY_GRIDSQUARE", log.grid_square.as_str()),
+        field_tag("MY_GRIDSQUARE", log.header().grid_square.as_str()),
     )?;
 
-    if let Some(ref park) = log.park_ref {
-        encode(&mut encoder, &mut buf, field_tag("MY_SIG", "POTA"))?;
-        encode(
-            &mut encoder,
-            &mut buf,
-            field_tag("MY_SIG_INFO", park.as_str()),
-        )?;
-    }
-
-    if let Some(ref their_park) = qso.their_park {
-        encode(&mut encoder, &mut buf, field_tag("SIG", "POTA"))?;
-        encode(
-            &mut encoder,
-            &mut buf,
-            field_tag("SIG_INFO", their_park.as_str()),
-        )?;
-    }
+    encode_type_specific_fields(&mut encoder, &mut buf, log, qso)?;
 
     if !qso.comments.is_empty() {
         encode(
@@ -149,7 +161,8 @@ pub fn format_qso(log: &Log, qso: &Qso) -> Result<String, AdifError> {
 
 /// Formats a complete ADIF file (header + all QSO records).
 pub fn format_adif(log: &Log) -> Result<String, AdifError> {
-    log.qsos
+    log.header()
+        .qsos
         .iter()
         .try_fold(format_header(log)?, |mut output, qso| {
             output.push_str(&format_qso(log, qso)?);
@@ -163,54 +176,54 @@ mod tests {
     use quickcheck_macros::quickcheck;
 
     use super::*;
-    use crate::model::{Band, Mode};
+    use crate::model::{Band, GeneralLog, Mode, PotaLog};
 
     fn make_log() -> Log {
-        let mut log = Log::new(
+        let mut log = PotaLog::new(
             "W1AW".to_string(),
             Some("W1AW".to_string()),
             Some("K-0001".to_string()),
             "FN31".to_string(),
         )
         .unwrap();
-        log.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
-        log
+        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        Log::Pota(log)
     }
 
     fn make_log_without_park() -> Log {
-        let mut log = Log::new(
+        let mut log = PotaLog::new(
             "W1AW".to_string(),
             Some("W1AW".to_string()),
             None,
             "FN31".to_string(),
         )
         .unwrap();
-        log.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
-        log
+        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        Log::Pota(log)
     }
 
     fn make_log_distinct_operator() -> Log {
-        let mut log = Log::new(
+        let mut log = PotaLog::new(
             "W1AW".to_string(),
             Some("N0CALL".to_string()),
             Some("K-0001".to_string()),
             "FN31".to_string(),
         )
         .unwrap();
-        log.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
-        log
+        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        Log::Pota(log)
     }
 
     fn make_log_none_operator() -> Log {
-        let mut log = Log::new(
+        let mut log = PotaLog::new(
             "W1AW".to_string(),
             None,
             Some("K-0001".to_string()),
             "FN31".to_string(),
         )
         .unwrap();
-        log.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
-        log
+        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        Log::Pota(log)
     }
 
     fn make_qso() -> Qso {
@@ -341,6 +354,22 @@ mod tests {
 
         assert!(!record.contains("MY_SIG"));
         assert!(!record.contains("MY_SIG_INFO"));
+    }
+
+    #[test]
+    fn general_log_excludes_pota_sig_fields() {
+        let log =
+            Log::General(GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap());
+        let record = format_qso(&log, &make_qso()).unwrap();
+
+        assert!(
+            !record.contains("MY_SIG"),
+            "general log must not emit MY_SIG"
+        );
+        assert!(
+            !record.contains("SIG_INFO"),
+            "general log must not emit SIG_INFO"
+        );
     }
 
     #[test]

@@ -125,7 +125,10 @@ impl App {
             Screen::LogCreate => self.log_create.handle_key(key),
             Screen::QsoEntry => self.qso_entry.handle_key(key),
             Screen::QsoList => {
-                let count = self.current_log.as_ref().map_or(0, |l| l.qsos.len());
+                let count = self
+                    .current_log
+                    .as_ref()
+                    .map_or(0, |l| l.header().qsos.len());
                 self.qso_list.handle_key(key, count)
             }
             Screen::Export => self.export.handle_key(key),
@@ -174,7 +177,7 @@ impl App {
                 }
             },
             Action::EditQso(index) => match self.current_log {
-                Some(ref log) => match log.qsos.get(index) {
+                Some(ref log) => match log.header().qsos.get(index) {
                     Some(qso) => {
                         self.qso_entry.start_editing(index, qso);
                         self.screen = Screen::QsoEntry;
@@ -219,7 +222,7 @@ impl App {
                 if self
                     .current_log
                     .as_ref()
-                    .is_some_and(|l| l.log_id == log_id)
+                    .is_some_and(|l| l.header().log_id == log_id)
                 {
                     self.current_log = None;
                 }
@@ -236,7 +239,7 @@ impl App {
                             qso.their_call, qso.band, qso.mode
                         )
                     });
-                    if let Err(e) = self.manager.append_qso(&log.log_id, &qso) {
+                    if let Err(e) = self.manager.append_qso(&log.header().log_id, &qso) {
                         self.qso_entry.set_error(format!("Failed to save QSO: {e}"));
                         return;
                     }
@@ -318,6 +321,7 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 
     use super::*;
+    use crate::model::{LogHeader, PotaLog};
     use crate::storage::LogManager;
 
     fn make_app() -> (tempfile::TempDir, App) {
@@ -354,15 +358,17 @@ mod tests {
     }
 
     fn save_test_log(manager: &LogManager, id: &str) -> Log {
-        let log = Log {
-            station_callsign: "W1AW".into(),
-            operator: Some("W1AW".into()),
+        let log = Log::Pota(PotaLog {
+            header: LogHeader {
+                station_callsign: "W1AW".into(),
+                operator: Some("W1AW".into()),
+                grid_square: "FN31".into(),
+                qsos: vec![],
+                created_at: chrono::Utc::now(),
+                log_id: id.into(),
+            },
             park_ref: Some("K-0001".into()),
-            grid_square: "FN31".into(),
-            qsos: vec![],
-            created_at: chrono::Utc::now(),
-            log_id: id.into(),
-        };
+        });
         manager.save_log(&log).unwrap();
         log
     }
@@ -402,17 +408,19 @@ mod tests {
             let (_dir, mut app) = make_app();
             assert!(app.current_log().is_none());
 
-            let log = Log {
-                station_callsign: "W1AW".into(),
-                operator: Some("W1AW".into()),
-                park_ref: None,
-                grid_square: "FN31pr".into(),
-                qsos: vec![],
-                created_at: chrono::Utc::now(),
-                log_id: "test".into(),
-            };
+            use crate::model::GeneralLog;
+            let log = Log::General(GeneralLog {
+                header: LogHeader {
+                    station_callsign: "W1AW".into(),
+                    operator: Some("W1AW".into()),
+                    grid_square: "FN31pr".into(),
+                    qsos: vec![],
+                    created_at: chrono::Utc::now(),
+                    log_id: "test".into(),
+                },
+            });
             app.current_log = Some(log.clone());
-            assert_eq!(app.current_log().unwrap().log_id, "test");
+            assert_eq!(app.current_log().unwrap().header().log_id, "test");
         }
 
         #[test]
@@ -619,7 +627,7 @@ mod tests {
             app.handle_key(press(KeyCode::Enter));
             assert_eq!(app.screen(), Screen::QsoEntry);
             assert!(app.current_log().is_some());
-            assert_eq!(app.current_log().unwrap().station_callsign, "W1AW");
+            assert_eq!(app.current_log().unwrap().header().station_callsign, "W1AW");
         }
 
         #[test]
@@ -654,7 +662,7 @@ mod tests {
 
             let logs = app.manager().list_logs().unwrap();
             assert_eq!(logs.len(), 1);
-            assert_eq!(logs[0].station_callsign, "W1AW");
+            assert_eq!(logs[0].header().station_callsign, "W1AW");
         }
 
         #[test]
@@ -724,7 +732,7 @@ mod tests {
 
             app.handle_key(press(KeyCode::Enter));
             assert_eq!(app.screen(), Screen::QsoEntry);
-            assert_eq!(app.current_log().unwrap().log_id, "test-log");
+            assert_eq!(app.current_log().unwrap().header().log_id, "test-log");
         }
 
         #[test]
@@ -862,7 +870,7 @@ mod tests {
             // log list is sorted newest-first; select the highlighted one
             app.handle_key(press(KeyCode::Enter));
             assert!(app.current_log().is_some());
-            let open_id = app.current_log().unwrap().log_id.clone();
+            let open_id = app.current_log().unwrap().header().log_id.clone();
 
             // Return to log select; the other log is now highlighted at position 0
             app.handle_key(press(KeyCode::Esc));
@@ -871,7 +879,12 @@ mod tests {
             app.handle_key(press(KeyCode::Char('y')));
 
             // If the deleted log was not the open one, current_log should remain
-            let remaining_ids: Vec<_> = app.log_select.logs().iter().map(|l| &l.log_id).collect();
+            let remaining_ids: Vec<_> = app
+                .log_select
+                .logs()
+                .iter()
+                .map(|l| &l.header().log_id)
+                .collect();
             if remaining_ids.contains(&&open_id) {
                 assert!(
                     app.current_log().is_some(),
@@ -929,11 +942,14 @@ mod tests {
             // Should still be on QsoEntry
             assert_eq!(app.screen(), Screen::QsoEntry);
             // QSO should be in the current log
-            assert_eq!(app.current_log().unwrap().qsos.len(), 1);
-            assert_eq!(app.current_log().unwrap().qsos[0].their_call, "KD9XYZ");
+            assert_eq!(app.current_log().unwrap().header().qsos.len(), 1);
+            assert_eq!(
+                app.current_log().unwrap().header().qsos[0].their_call,
+                "KD9XYZ"
+            );
             // QSO should be persisted
             let loaded = app.manager().load_log("test-log").unwrap();
-            assert_eq!(loaded.qsos.len(), 1);
+            assert_eq!(loaded.header().qsos.len(), 1);
         }
 
         #[test]
@@ -982,10 +998,10 @@ mod tests {
             type_string(&mut app, "N0CALL");
             app.handle_key(press(KeyCode::Enter));
 
-            assert_eq!(app.current_log().unwrap().qsos.len(), 1);
-            let log_id = app.current_log().unwrap().log_id.clone();
+            assert_eq!(app.current_log().unwrap().header().qsos.len(), 1);
+            let log_id = app.current_log().unwrap().header().log_id.clone();
             let loaded = app.manager().load_log(&log_id).unwrap();
-            assert_eq!(loaded.qsos.len(), 1);
+            assert_eq!(loaded.header().qsos.len(), 1);
         }
 
         #[test]
@@ -1006,7 +1022,7 @@ mod tests {
                 None,
             )
             .unwrap();
-            manager.append_qso(&log.log_id, &qso).unwrap();
+            manager.append_qso(&log.header().log_id, &qso).unwrap();
 
             // Reload the log so it has the QSO
             let mut app = App::new(LogManager::with_path(dir.path()).unwrap()).unwrap();
@@ -1026,10 +1042,10 @@ mod tests {
             type_string(&mut app, "N0CALL");
             app.handle_key(press(KeyCode::Enter));
 
-            assert_eq!(app.current_log().unwrap().qsos.len(), 2);
+            assert_eq!(app.current_log().unwrap().header().qsos.len(), 2);
             assert_eq!(app.qso_entry.recent_qsos().len(), 2);
             let loaded = app.manager().load_log("test-log").unwrap();
-            assert_eq!(loaded.qsos.len(), 2);
+            assert_eq!(loaded.header().qsos.len(), 2);
         }
 
         #[test]
@@ -1085,12 +1101,12 @@ mod tests {
             let (_dir, mut app) = make_app_with_log();
             // First QSO — no duplicate
             submit_qso(&mut app);
-            assert_eq!(app.current_log().unwrap().qsos.len(), 1);
+            assert_eq!(app.current_log().unwrap().header().qsos.len(), 1);
             assert_eq!(app.qso_entry.error(), None);
 
             // Second QSO with same call+band+mode — duplicate warning shown
             submit_qso(&mut app);
-            assert_eq!(app.current_log().unwrap().qsos.len(), 2);
+            assert_eq!(app.current_log().unwrap().header().qsos.len(), 2);
             let err = app
                 .qso_entry
                 .error()
@@ -1143,7 +1159,7 @@ mod tests {
             // still be KD9XYZ — type a different call manually)
             type_string(&mut app, "W3ABC");
             app.handle_key(press(KeyCode::Enter));
-            assert_eq!(app.current_log().unwrap().qsos.len(), 3);
+            assert_eq!(app.current_log().unwrap().header().qsos.len(), 3);
             assert_eq!(app.qso_entry.error(), None);
         }
 
@@ -1164,7 +1180,7 @@ mod tests {
 
             // Should show error, QSO not added
             assert!(app.qso_entry.error().is_some());
-            assert_eq!(app.current_log().unwrap().qsos.len(), 0);
+            assert_eq!(app.current_log().unwrap().header().qsos.len(), 0);
         }
     }
 
@@ -1204,7 +1220,7 @@ mod tests {
             // Add a QSO first
             type_string(&mut app, "KD9XYZ");
             app.handle_key(press(KeyCode::Enter));
-            assert_eq!(app.current_log().unwrap().qsos.len(), 1);
+            assert_eq!(app.current_log().unwrap().header().qsos.len(), 1);
 
             app.handle_key(alt_press(KeyCode::Char('x')));
             assert_eq!(app.screen(), Screen::Export);
@@ -1462,10 +1478,13 @@ mod tests {
             app.handle_key(press(KeyCode::Enter));
 
             // Verify in-memory
-            assert_eq!(app.current_log().unwrap().qsos[0].their_call, "N0CALL");
+            assert_eq!(
+                app.current_log().unwrap().header().qsos[0].their_call,
+                "N0CALL"
+            );
             // Verify on disk
             let loaded = app.manager().load_log("test-log").unwrap();
-            assert_eq!(loaded.qsos[0].their_call, "N0CALL");
+            assert_eq!(loaded.header().qsos[0].their_call, "N0CALL");
         }
 
         #[test]
@@ -1503,7 +1522,7 @@ mod tests {
             std::fs::remove_file(dir.path().join("test-log.jsonl")).unwrap();
             std::fs::remove_dir_all(dir.path()).unwrap();
 
-            let qso = app.current_log().unwrap().qsos[0].clone();
+            let qso = app.current_log().unwrap().header().qsos[0].clone();
             app.apply_action(Action::UpdateQso(0, qso));
             assert!(app.qso_entry.error().is_some());
             assert!(!app.qso_entry.is_editing());
@@ -1515,7 +1534,7 @@ mod tests {
             type_string(&mut app, "KD9XYZ");
             app.handle_key(press(KeyCode::Enter));
 
-            let qso = app.current_log().unwrap().qsos[0].clone();
+            let qso = app.current_log().unwrap().header().qsos[0].clone();
             app.apply_action(Action::UpdateQso(99, qso));
             assert!(app.qso_entry.error().is_some());
             assert!(app.qso_entry.error().unwrap().contains("out of bounds"));

@@ -7,7 +7,7 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::model::{Log, validate_callsign, validate_grid_square, validate_park_ref};
+use crate::model::{Log, PotaLog, validate_callsign, validate_grid_square, validate_park_ref};
 use crate::tui::action::Action;
 use crate::tui::app::Screen;
 use crate::tui::widgets::form::{Form, FormField, draw_form};
@@ -138,9 +138,10 @@ impl LogCreateState {
 
         let park_ref = (!park_ref_str.is_empty()).then_some(park_ref_str);
 
-        // All individual validations passed, so Log::new should succeed.
-        match Log::new(callsign, operator, park_ref, grid_square) {
-            Ok(log) => Action::CreateLog(log),
+        // All individual validations passed, so PotaLog::new should succeed.
+        // Phase 4.2 will add log-type selection; for now all logs are POTA.
+        match PotaLog::new(callsign, operator, park_ref, grid_square) {
+            Ok(log) => Action::CreateLog(Log::Pota(log)),
             Err(e) => {
                 // Shouldn't happen since we validated above, but handle gracefully.
                 self.form.set_error(CALLSIGN, e.to_string());
@@ -352,10 +353,10 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             match action {
                 Action::CreateLog(log) => {
-                    assert_eq!(log.station_callsign, "W1AW");
-                    assert_eq!(log.operator, Some("W1AW".to_string()));
-                    assert_eq!(log.park_ref, None);
-                    assert_eq!(log.grid_square, "FN31");
+                    assert_eq!(log.header().station_callsign, "W1AW");
+                    assert_eq!(log.header().operator, Some("W1AW".to_string()));
+                    assert_eq!(log.park_ref(), None);
+                    assert_eq!(log.header().grid_square, "FN31");
                 }
                 other => panic!("expected CreateLog, got {other:?}"),
             }
@@ -380,7 +381,7 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             match action {
                 Action::CreateLog(log) => {
-                    assert_eq!(log.operator, None);
+                    assert_eq!(log.header().operator, None);
                 }
                 other => panic!("expected CreateLog, got {other:?}"),
             }
@@ -394,7 +395,7 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             match action {
                 Action::CreateLog(log) => {
-                    assert_eq!(log.park_ref, Some("K-0001".to_string()));
+                    assert_eq!(log.park_ref(), Some("K-0001"));
                 }
                 other => panic!("expected CreateLog, got {other:?}"),
             }

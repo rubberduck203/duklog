@@ -146,10 +146,10 @@ impl LogSelectState {
         };
         let label = format!(
             "{} {}",
-            log.park_ref.as_deref().unwrap_or(&log.station_callsign),
-            log.created_at.format("%Y-%m-%d")
+            log.display_label(),
+            log.header().created_at.format("%Y-%m-%d")
         );
-        self.pending_delete = Some((log.log_id.clone(), label));
+        self.pending_delete = Some((log.header().log_id.clone(), label));
         Action::None
     }
 }
@@ -193,11 +193,11 @@ pub fn draw_log_select(state: &LogSelectState, frame: &mut Frame, area: Rect) {
                 Style::default()
             };
             Row::new(vec![
-                log.station_callsign.clone(),
-                log.created_at.format("%Y-%m-%d").to_string(),
-                log.park_ref.as_deref().unwrap_or("-").to_string(),
-                log.grid_square.clone(),
-                log.qsos.len().to_string(),
+                log.header().station_callsign.clone(),
+                log.header().created_at.format("%Y-%m-%d").to_string(),
+                log.park_ref().unwrap_or("-").to_string(),
+                log.header().grid_square.clone(),
+                log.header().qsos.len().to_string(),
             ])
             .style(style)
         })
@@ -241,6 +241,7 @@ mod tests {
     use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers};
 
     use super::*;
+    use crate::model::{LogHeader, PotaLog};
 
     fn press(code: KeyCode) -> KeyEvent {
         KeyEvent {
@@ -252,15 +253,17 @@ mod tests {
     }
 
     fn make_log(id: &str, callsign: &str, park: Option<&str>) -> Log {
-        Log {
-            station_callsign: callsign.into(),
-            operator: Some(callsign.into()),
+        Log::Pota(PotaLog {
+            header: LogHeader {
+                station_callsign: callsign.into(),
+                operator: Some(callsign.into()),
+                grid_square: "FN31".into(),
+                qsos: vec![],
+                created_at: Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap(),
+                log_id: id.into(),
+            },
             park_ref: park.map(Into::into),
-            grid_square: "FN31".into(),
-            qsos: vec![],
-            created_at: Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap(),
-            log_id: id.into(),
-        }
+        })
     }
 
     fn make_populated_state() -> LogSelectState {
@@ -380,7 +383,7 @@ mod tests {
             let mut state = make_populated_state();
             let action = state.handle_key(press(KeyCode::Enter));
             match action {
-                Action::SelectLog(log) => assert_eq!(log.log_id, "log1"),
+                Action::SelectLog(log) => assert_eq!(log.header().log_id, "log1"),
                 other => panic!("expected SelectLog, got {other:?}"),
             }
         }

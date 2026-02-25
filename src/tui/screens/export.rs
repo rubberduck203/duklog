@@ -54,7 +54,7 @@ impl ExportState {
         self.status = ExportStatus::Ready;
         match log {
             Some(log) => {
-                self.qso_count = log.qsos.len();
+                self.qso_count = log.header().qsos.len();
                 self.path = default_export_path(log)
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|e| format!("<error: {e}>"));
@@ -117,8 +117,8 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
 
     let ctx = log
         .map(|l| StatusBarContext {
-            callsign: l.station_callsign.clone(),
-            park_ref: l.park_ref.clone(),
+            callsign: l.header().station_callsign.clone(),
+            park_ref: l.park_ref().map(|s| s.to_string()),
             qso_count: l.qso_count_today(),
             is_activated: l.is_activated(),
         })
@@ -144,10 +144,9 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
     let mut lines = Vec::new();
 
     if let Some(log) = log {
-        let callsign = &log.station_callsign;
+        let callsign = &log.header().station_callsign;
         let park = log
-            .park_ref
-            .as_deref()
+            .park_ref()
             .map(|p| format!("  Park: {p}"))
             .unwrap_or_default();
         lines.push(Line::from(Span::styled(
@@ -197,7 +196,7 @@ mod tests {
     use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers};
 
     use super::*;
-    use crate::model::{Band, Mode, Qso};
+    use crate::model::{Band, Mode, PotaLog, Qso};
 
     fn press(code: KeyCode) -> KeyEvent {
         KeyEvent {
@@ -209,15 +208,15 @@ mod tests {
     }
 
     fn make_log() -> Log {
-        let mut log = Log::new(
+        let mut log = PotaLog::new(
             "W1AW".to_string(),
             None,
             Some("K-0001".to_string()),
             "FN31".to_string(),
         )
         .unwrap();
-        log.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
-        log
+        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        Log::Pota(log)
     }
 
     fn make_qso() -> Qso {
@@ -293,7 +292,9 @@ mod tests {
         fn path_without_park_uses_callsign() {
             let mut state = ExportState::new();
             let mut log = make_log();
-            log.park_ref = None;
+            if let Log::Pota(ref mut p) = log {
+                p.park_ref = None;
+            }
 
             state.prepare(Some(&log));
             assert!(state.path().contains("duklog-W1AW"));
@@ -499,7 +500,9 @@ mod tests {
         fn renders_without_park_ref() {
             let mut state = ExportState::new();
             let mut log = make_log();
-            log.park_ref = None;
+            if let Log::Pota(ref mut p) = log {
+                p.park_ref = None;
+            }
             state.prepare(Some(&log));
             let output = render_export(&state, Some(&log), 80, 15);
             assert!(output.contains("W1AW"), "should show callsign");
