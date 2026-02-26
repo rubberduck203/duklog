@@ -40,10 +40,20 @@ User Input → TUI Event Loop → Model Mutation → Auto-Save (Storage)
 LogHeader          — station_callsign, operator, grid_square, qsos, created_at, log_id
 GeneralLog         — header: LogHeader  (no type-specific fields)
 PotaLog            — header: LogHeader, park_ref: Option<String>
-Log enum           — General(GeneralLog) | Pota(PotaLog) | ...future types
+FieldDayLog        — header: LogHeader, tx_count: u8, class: FdClass, section: String, power: FdPowerCategory
+WfdLog             — header: LogHeader, tx_count: u8, class: WfdClass, section: String
+Log enum           — General(GeneralLog) | Pota(PotaLog) | FieldDay(FieldDayLog) | WinterFieldDay(WfdLog)
 ```
 
-Serialization uses `#[serde(tag = "log_type")]` so each variant round-trips correctly. Existing JSONL files without `log_type` default to `Log::Pota` for backward compatibility. Shared fields are accessed via `log.header()` / `log.header_mut()`. Type-specific methods (e.g., `PotaLog::is_activated`) live on the concrete type; the `Log` enum delegates to them via `match self`.
+Qso carries two optional contest fields: `exchange_rcvd: Option<String>` (received exchange verbatim, e.g. `"3A CT"`) and `frequency: Option<u32>` (kHz, required for WFD ADIF). Both default to `None` for POTA and General logs; they are populated during QSO entry for contest log types (Phase 4.3).
+
+Serialization for storage lives in `src/storage/manager.rs` via a flat `LogMetadata` struct with optional FD/WFD fields and a `StoredLogType` discriminant. Existing JSONL files without `log_type` default to `Log::Pota` for backward compatibility. Shared fields are accessed via `log.header()` / `log.header_mut()`.
+
+### Duplicate detection scoping
+
+`Log::find_duplicates` is type-aware:
+- **POTA / General**: scoped to today (UTC) — matches the existing behaviour
+- **FieldDay / WinterFieldDay**: scoped across the entire log — these events span two UTC calendar days
 
 ## Screen Architecture
 

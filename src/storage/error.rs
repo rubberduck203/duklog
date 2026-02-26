@@ -39,4 +39,8 @@ pub enum StorageError {
         /// The UTC date of the conflict.
         date: NaiveDate,
     },
+
+    /// A log file contains valid JSON but is missing required fields for its declared log type.
+    #[error("corrupt log metadata: {0}")]
+    CorruptMetadata(String),
 }

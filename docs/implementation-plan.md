@@ -27,6 +27,7 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 - **3.11 Duplicate Log Prevention** (`feature/duplicate-log-prevention`) — Done
 - **3.12 Polish** (`feature/polish`) — Done
 - **4.0 Log enum refactor** (`feature/polish`) — Done
+- **4.1 FieldDay and WFD model types** (`feature/log-types-model`) — Done
 
 ---
 

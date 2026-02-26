@@ -37,7 +37,7 @@ Always use `make` targets, not raw `cargo` commands:
 - Prefer **expressions** over explicit `return`
 - Prefer **`match`** over `if let` chains
 - No `.unwrap()` or `.expect()` in library code — use `?` or proper error handling
-- `.unwrap()` is acceptable only in tests and `main.rs`
+- `.unwrap()` and `.expect("message")` are acceptable in tests and `main.rs`; prefer `.expect()` in tests since it produces better failure output
 - Derive order: `Debug`, `Clone`, `Copy`, `PartialEq`, `Eq`, `Hash`, `PartialOrd`, `Ord`, `Serialize`, `Deserialize`
 - Group imports: std, external crates, crate-internal — separated by blank lines
 - Use specific imports, not glob imports

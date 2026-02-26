@@ -236,6 +236,8 @@ mod tests {
             Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
             String::new(),
             None,
+            None,
+            None,
         )
         .unwrap()
     }
@@ -250,6 +252,8 @@ mod tests {
             Utc.with_ymd_and_hms(2026, 2, 16, 15, 0, 0).unwrap(),
             String::new(),
             Some("K-1234".to_string()),
+            None,
+            None,
         )
         .unwrap()
     }
@@ -263,6 +267,8 @@ mod tests {
             Mode::Ssb,
             Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
             "Good signal".to_string(),
+            None,
+            None,
             None,
         )
         .unwrap()
@@ -458,6 +464,8 @@ mod tests {
             Mode::Ssb,
             Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
             String::new(),
+            None,
+            None,
             None,
         ) {
             Ok(q) => q,

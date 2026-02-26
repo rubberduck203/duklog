@@ -6,7 +6,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::error::StorageError;
-use crate::model::{GeneralLog, Log, LogHeader, PotaLog, Qso};
+use crate::model::{
+    FdClass, FdPowerCategory, FieldDayLog, GeneralLog, Log, LogHeader, PotaLog, Qso, WfdClass,
+    WfdLog,
+};
 
 /// Storage-internal log type discriminant.
 ///
@@ -17,6 +20,8 @@ enum StoredLogType {
     #[default]
     Pota,
     General,
+    FieldDay,
+    WinterFieldDay,
 }
 
 /// Serializable log metadata (everything except QSOs).
@@ -27,6 +32,7 @@ struct LogMetadata {
     station_callsign: String,
     operator: Option<String>,
     /// POTA park reference — present for POTA logs, absent for General logs.
+    #[serde(default)]
     park_ref: Option<String>,
     grid_square: String,
     created_at: DateTime<Utc>,
@@ -34,27 +40,65 @@ struct LogMetadata {
     /// Log type discriminant; defaults to `Pota` when missing (backward compat).
     #[serde(default)]
     log_type: StoredLogType,
+    /// Transmitter count — Field Day and Winter Field Day only.
+    #[serde(default)]
+    tx_count: Option<u8>,
+    /// Field Day class — Field Day only.
+    #[serde(default)]
+    fd_class: Option<FdClass>,
+    /// Winter Field Day class — Winter Field Day only.
+    #[serde(default)]
+    wfd_class: Option<WfdClass>,
+    /// Contest section (ARRL/RAC) — Field Day and Winter Field Day only.
+    #[serde(default)]
+    section: Option<String>,
+    /// Field Day power category — Field Day only.
+    #[serde(default)]
+    power: Option<FdPowerCategory>,
 }
 
 impl LogMetadata {
     fn from_log(log: &Log) -> Self {
-        let (log_type, park_ref) = match log {
-            Log::Pota(p) => (StoredLogType::Pota, p.park_ref.clone()),
-            Log::General(_) => (StoredLogType::General, None),
-        };
         let header = log.header();
-        Self {
+        let mut meta = Self {
             station_callsign: header.station_callsign.clone(),
             operator: header.operator.clone(),
-            park_ref,
+            park_ref: None,
             grid_square: header.grid_square.clone(),
             created_at: header.created_at,
             log_id: header.log_id.clone(),
-            log_type,
+            log_type: StoredLogType::Pota,
+            tx_count: None,
+            fd_class: None,
+            wfd_class: None,
+            section: None,
+            power: None,
+        };
+        match log {
+            Log::Pota(p) => {
+                meta.park_ref = p.park_ref.clone();
+            }
+            Log::General(_) => {
+                meta.log_type = StoredLogType::General;
+            }
+            Log::FieldDay(fd) => {
+                meta.log_type = StoredLogType::FieldDay;
+                meta.tx_count = Some(fd.tx_count);
+                meta.fd_class = Some(fd.class);
+                meta.section = Some(fd.section.clone());
+                meta.power = Some(fd.power);
+            }
+            Log::WinterFieldDay(wfd) => {
+                meta.log_type = StoredLogType::WinterFieldDay;
+                meta.tx_count = Some(wfd.tx_count);
+                meta.wfd_class = Some(wfd.class);
+                meta.section = Some(wfd.section.clone());
+            }
         }
+        meta
     }
 
-    fn into_log(self, qsos: Vec<Qso>) -> Log {
+    fn into_log(self, qsos: Vec<Qso>) -> Result<Log, StorageError> {
         let header = LogHeader {
             station_callsign: self.station_callsign,
             operator: self.operator,
@@ -64,11 +108,49 @@ impl LogMetadata {
             log_id: self.log_id,
         };
         match self.log_type {
-            StoredLogType::Pota => Log::Pota(PotaLog {
+            StoredLogType::Pota => Ok(Log::Pota(PotaLog {
                 header,
                 park_ref: self.park_ref,
-            }),
-            StoredLogType::General => Log::General(GeneralLog { header }),
+            })),
+            StoredLogType::General => Ok(Log::General(GeneralLog { header })),
+            StoredLogType::FieldDay => {
+                let tx_count = self.tx_count.ok_or_else(|| {
+                    StorageError::CorruptMetadata("FieldDay log missing tx_count".into())
+                })?;
+                let class = self.fd_class.ok_or_else(|| {
+                    StorageError::CorruptMetadata("FieldDay log missing fd_class".into())
+                })?;
+                let section = self.section.filter(|s| !s.is_empty()).ok_or_else(|| {
+                    StorageError::CorruptMetadata("FieldDay log missing section".into())
+                })?;
+                let power = self.power.ok_or_else(|| {
+                    StorageError::CorruptMetadata("FieldDay log missing power".into())
+                })?;
+                Ok(Log::FieldDay(FieldDayLog {
+                    header,
+                    tx_count,
+                    class,
+                    section,
+                    power,
+                }))
+            }
+            StoredLogType::WinterFieldDay => {
+                let tx_count = self.tx_count.ok_or_else(|| {
+                    StorageError::CorruptMetadata("WinterFieldDay log missing tx_count".into())
+                })?;
+                let class = self.wfd_class.ok_or_else(|| {
+                    StorageError::CorruptMetadata("WinterFieldDay log missing wfd_class".into())
+                })?;
+                let section = self.section.filter(|s| !s.is_empty()).ok_or_else(|| {
+                    StorageError::CorruptMetadata("WinterFieldDay log missing section".into())
+                })?;
+                Ok(Log::WinterFieldDay(WfdLog {
+                    header,
+                    tx_count,
+                    class,
+                    section,
+                }))
+            }
         }
     }
 }
@@ -219,11 +301,23 @@ fn operator_eq(a: &Option<String>, b: &Option<String>) -> bool {
 /// Returns `true` if two logs have the same type-specific configuration.
 ///
 /// Logs of different types are never considered equal. Within the same type,
-/// type-specific fields are compared (e.g., park reference for POTA logs).
+/// type-specific fields are compared (e.g., park reference for POTA logs,
+/// tx_count/class/section/power for Field Day, tx_count/class/section for WFD).
 fn log_config_eq(a: &Log, b: &Log) -> bool {
     match (a, b) {
         (Log::Pota(pa), Log::Pota(pb)) => park_ref_eq(&pa.park_ref, &pb.park_ref),
         (Log::General(_), Log::General(_)) => true,
+        (Log::FieldDay(fa), Log::FieldDay(fb)) => {
+            fa.tx_count == fb.tx_count
+                && fa.class == fb.class
+                && fa.section.to_uppercase() == fb.section.to_uppercase()
+                && fa.power == fb.power
+        }
+        (Log::WinterFieldDay(wa), Log::WinterFieldDay(wb)) => {
+            wa.tx_count == wb.tx_count
+                && wa.class == wb.class
+                && wa.section.to_uppercase() == wb.section.to_uppercase()
+        }
         _ => false,
     }
 }
@@ -261,7 +355,7 @@ fn load_log_from_path(path: &Path) -> Result<Log, StorageError> {
         })
         .collect::<Result<Vec<Qso>, StorageError>>()?;
 
-    Ok(metadata.into_log(qsos))
+    metadata.into_log(qsos)
 }
 
 #[cfg(test)]
@@ -311,6 +405,8 @@ mod tests {
             Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
             String::new(),
             None,
+            None,
+            None,
         )
         .unwrap()
     }
@@ -325,6 +421,8 @@ mod tests {
             Utc.with_ymd_and_hms(2026, 2, 16, 15, 0, 0).unwrap(),
             "P2P".to_string(),
             Some("K-1234".to_string()),
+            None,
+            None,
         )
         .unwrap()
     }
@@ -534,6 +632,33 @@ mod tests {
         let nested = dir.path().join("a").join("b").join("c");
         let _manager = LogManager::with_path(&nested).unwrap();
         assert!(nested.exists());
+    }
+
+    // --- CorruptMetadata ---
+
+    #[test]
+    fn field_day_missing_section_returns_corrupt_metadata_error() {
+        let (dir, manager) = make_manager();
+        // FieldDay metadata without the `section` field
+        let json = r#"{"station_callsign":"W1AW","operator":null,"grid_square":"FN31","created_at":"2026-02-16T12:00:00Z","log_id":"fd-corrupt","log_type":"FieldDay","tx_count":1,"fd_class":"B","power":"Low"}"#;
+        fs::write(dir.path().join("fd-corrupt.jsonl"), format!("{json}\n")).unwrap();
+        let result = manager.load_log("fd-corrupt");
+        assert!(
+            matches!(result, Err(StorageError::CorruptMetadata(_))),
+            "expected CorruptMetadata, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn wfd_missing_tx_count_returns_corrupt_metadata_error() {
+        let (dir, manager) = make_manager();
+        let json = r#"{"station_callsign":"W1AW","operator":null,"grid_square":"FN31","created_at":"2026-02-16T12:00:00Z","log_id":"wfd-corrupt","log_type":"WinterFieldDay","wfd_class":"H","section":"EPA"}"#;
+        fs::write(dir.path().join("wfd-corrupt.jsonl"), format!("{json}\n")).unwrap();
+        let result = manager.load_log("wfd-corrupt");
+        assert!(
+            matches!(result, Err(StorageError::CorruptMetadata(_))),
+            "expected CorruptMetadata, got {result:?}"
+        );
     }
 
     // --- Metadata round-trip ---
@@ -983,6 +1108,130 @@ mod tests {
         fn different_park_ref_differ() {
             assert!(!park_ref_eq(&Some("K-0001".into()), &Some("K-0002".into())));
         }
+    }
+
+    // --- FieldDay and WFD round-trips ---
+
+    fn make_fd_log_for_today(id: &str) -> Log {
+        let mut log = FieldDayLog::new(
+            "W1AW".to_string(),
+            Some("W1AW".to_string()),
+            2,
+            crate::model::FdClass::B,
+            "EPA".to_string(),
+            crate::model::FdPowerCategory::Low,
+            "FN31".to_string(),
+        )
+        .unwrap();
+        log.header.log_id = id.to_string();
+        Log::FieldDay(log)
+    }
+
+    fn make_wfd_log_for_today(id: &str) -> Log {
+        let mut log = WfdLog::new(
+            "W1AW".to_string(),
+            Some("W1AW".to_string()),
+            1,
+            crate::model::WfdClass::H,
+            "EPA".to_string(),
+            "FN31".to_string(),
+        )
+        .unwrap();
+        log.header.log_id = id.to_string();
+        Log::WinterFieldDay(log)
+    }
+
+    fn unwrap_fd(log: Log) -> FieldDayLog {
+        match log {
+            Log::FieldDay(fd) => fd,
+            _ => panic!("expected FieldDay log"),
+        }
+    }
+
+    fn unwrap_wfd(log: Log) -> WfdLog {
+        match log {
+            Log::WinterFieldDay(wfd) => wfd,
+            _ => panic!("expected WinterFieldDay log"),
+        }
+    }
+
+    #[test]
+    fn field_day_log_round_trips() {
+        let (_dir, manager) = make_manager();
+        let log = make_fd_log_for_today("fd-test");
+        manager.save_log(&log).unwrap();
+
+        let loaded = manager.load_log("fd-test").unwrap();
+        assert!(matches!(loaded, Log::FieldDay(_)));
+        assert_eq!(loaded, log);
+    }
+
+    #[test]
+    fn wfd_log_round_trips() {
+        let (_dir, manager) = make_manager();
+        let log = make_wfd_log_for_today("wfd-test");
+        manager.save_log(&log).unwrap();
+
+        let loaded = manager.load_log("wfd-test").unwrap();
+        assert!(matches!(loaded, Log::WinterFieldDay(_)));
+        assert_eq!(loaded, log);
+    }
+
+    #[test]
+    fn create_log_rejects_duplicate_field_day_same_config() {
+        let (_dir, manager) = make_manager();
+        let existing = make_fd_log_for_today("existing");
+        manager.save_log(&existing).unwrap();
+
+        let new_log = make_fd_log_for_today("new");
+        let result = manager.create_log(&new_log);
+        assert!(matches!(result, Err(StorageError::DuplicateLog { .. })));
+    }
+
+    #[test]
+    fn create_log_allows_field_day_vs_wfd_same_callsign() {
+        let (_dir, manager) = make_manager();
+        let existing = make_fd_log_for_today("existing");
+        manager.save_log(&existing).unwrap();
+
+        let new_log = make_wfd_log_for_today("new");
+        manager.create_log(&new_log).unwrap();
+        assert_eq!(manager.list_logs().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn create_log_allows_field_day_different_section() {
+        let (_dir, manager) = make_manager();
+        let existing = make_fd_log_for_today("existing");
+        manager.save_log(&existing).unwrap();
+
+        let mut new_log = unwrap_fd(make_fd_log_for_today("new"));
+        new_log.section = "CT".to_string();
+        manager.create_log(&Log::FieldDay(new_log)).unwrap();
+        assert_eq!(manager.list_logs().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn create_log_rejects_duplicate_wfd_same_config() {
+        let (_dir, manager) = make_manager();
+        let existing = make_wfd_log_for_today("existing");
+        manager.save_log(&existing).unwrap();
+
+        let new_log = make_wfd_log_for_today("new");
+        let result = manager.create_log(&new_log);
+        assert!(matches!(result, Err(StorageError::DuplicateLog { .. })));
+    }
+
+    #[test]
+    fn create_log_allows_wfd_different_tx_count() {
+        let (_dir, manager) = make_manager();
+        let existing = make_wfd_log_for_today("existing");
+        manager.save_log(&existing).unwrap();
+
+        let mut new_log = unwrap_wfd(make_wfd_log_for_today("new"));
+        new_log.tx_count = 2;
+        manager.create_log(&Log::WinterFieldDay(new_log)).unwrap();
+        assert_eq!(manager.list_logs().unwrap().len(), 2);
     }
 
     // --- Path safety ---

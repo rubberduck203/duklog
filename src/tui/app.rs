@@ -235,7 +235,7 @@ impl App {
                 Some(ref mut log) => {
                     let duplicate_warning = (!log.find_duplicates(&qso).is_empty()).then(|| {
                         format!(
-                            "Warning: duplicate contact — {} {} {} already logged today",
+                            "Warning: duplicate contact — {} {} {} already logged",
                             qso.their_call, qso.band, qso.mode
                         )
                     });
@@ -1020,6 +1020,8 @@ mod tests {
                 chrono::Utc::now(),
                 String::new(),
                 None,
+                None,
+                None,
             )
             .unwrap();
             manager.append_qso(&log.header().log_id, &qso).unwrap();
@@ -1122,7 +1124,10 @@ mod tests {
             );
             assert!(err.contains("20M"), "should name the band, got: {err}");
             assert!(err.contains("SSB"), "should name the mode, got: {err}");
-            assert!(err.contains("today"), "should say today, got: {err}");
+            assert!(
+                err.contains("already logged"),
+                "should say already logged, got: {err}"
+            );
         }
 
         #[test]

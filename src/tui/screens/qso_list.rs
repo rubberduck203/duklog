@@ -201,6 +201,8 @@ mod tests {
             Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
             String::new(),
             None,
+            None,
+            None,
         )
         .unwrap()
     }
@@ -527,6 +529,8 @@ mod tests {
                 Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
                 "nice signal".to_string(),
                 Some("K-5678".to_string()),
+                None,
+                None,
             )
             .unwrap();
             log.add_qso(qso);
