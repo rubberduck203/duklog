@@ -364,7 +364,40 @@ pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Fram
         .unwrap_or_default();
     draw_status_bar(&ctx, frame, status_area);
 
-    // Header: station info + band/mode
+    draw_header(state, log, frame, header_area);
+
+    // Form fields
+    draw_form(state.form(), frame, form_area);
+
+    // Error message
+    if let Some(err) = state.error() {
+        let err_paragraph = Paragraph::new(Span::styled(err, Style::default().fg(Color::Red)));
+        // Render at bottom of form area
+        let err_area = Rect {
+            x: form_area.x,
+            y: form_area.y + form_area.height.saturating_sub(1),
+            width: form_area.width,
+            height: 1,
+        };
+        frame.render_widget(err_paragraph, err_area);
+    }
+
+    draw_recent_qsos(state, frame, recent_area);
+
+    // Footer
+    let footer_text = if state.is_editing() {
+        "Tab/Shift+Tab: next/prev  Alt+b/m: band/mode (Shift: reverse)  Enter: save  Esc: cancel"
+    } else {
+        "Tab/Shift+Tab: next/prev  Alt+b/m: band/mode (Shift: reverse)  Alt+e: edit  Alt+x: export  Enter: log  Esc: back"
+    };
+    let footer =
+        Paragraph::new(Line::from(footer_text)).style(Style::default().fg(Color::DarkGray));
+    frame.render_widget(footer, footer_area);
+}
+
+/// Renders the station info, band/mode, and activation progress header.
+#[mutants::skip]
+fn draw_header(state: &QsoEntryState, log: Option<&Log>, frame: &mut Frame, area: Rect) {
     if let Some(log) = log {
         let callsign = &log.header().station_callsign;
         let park = log.park_ref().unwrap_or("-");
@@ -399,36 +432,20 @@ pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Fram
             Style::default().fg(Color::DarkGray),
         ));
 
-        frame.render_widget(
-            Paragraph::new(vec![header_line1, header_line2]),
-            header_area,
-        );
+        frame.render_widget(Paragraph::new(vec![header_line1, header_line2]), area);
     }
+}
 
-    // Form fields
-    draw_form(state.form(), frame, form_area);
-
-    // Error message
-    if let Some(err) = state.error() {
-        let err_paragraph = Paragraph::new(Span::styled(err, Style::default().fg(Color::Red)));
-        // Render at bottom of form area
-        let err_area = Rect {
-            x: form_area.x,
-            y: form_area.y + form_area.height.saturating_sub(1),
-            width: form_area.width,
-            height: 1,
-        };
-        frame.render_widget(err_paragraph, err_area);
-    }
-
-    // Recent QSOs table
+/// Renders the recent QSOs table widget.
+#[mutants::skip]
+fn draw_recent_qsos(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
     let recent_block = Block::default()
         .title(" Recent QSOs ")
         .borders(Borders::TOP)
         .border_style(Style::default().fg(Color::DarkGray));
 
-    let recent_inner = recent_block.inner(recent_area);
-    frame.render_widget(recent_block, recent_area);
+    let recent_inner = recent_block.inner(area);
+    frame.render_widget(recent_block, area);
 
     if !state.recent_qsos().is_empty() {
         let rows: Vec<Row> = state
@@ -464,16 +481,6 @@ pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Fram
         let table = Table::new(rows, widths);
         frame.render_widget(table, recent_inner);
     }
-
-    // Footer
-    let footer_text = if state.is_editing() {
-        "Tab/Shift+Tab: next/prev  Alt+b/m: band/mode (Shift: reverse)  Enter: save  Esc: cancel"
-    } else {
-        "Tab/Shift+Tab: next/prev  Alt+b/m: band/mode (Shift: reverse)  Alt+e: edit  Alt+x: export  Enter: log  Esc: back"
-    };
-    let footer =
-        Paragraph::new(Line::from(footer_text)).style(Style::default().fg(Color::DarkGray));
-    frame.render_widget(footer, footer_area);
 }
 
 #[cfg(test)]

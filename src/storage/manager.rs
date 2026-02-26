@@ -113,56 +113,84 @@ impl LogMetadata {
                 park_ref: self.park_ref,
             })),
             StoredLogType::General => Ok(Log::General(GeneralLog { header })),
-            StoredLogType::FieldDay => {
-                let tx_count = self.tx_count.ok_or_else(|| {
-                    StorageError::CorruptMetadata("FieldDay log missing tx_count".into())
-                })?;
-                validate_tx_count(tx_count).map_err(|_| {
-                    StorageError::CorruptMetadata(
-                        "FieldDay log has invalid tx_count: must be at least 1".into(),
-                    )
-                })?;
-                let class = self.fd_class.ok_or_else(|| {
-                    StorageError::CorruptMetadata("FieldDay log missing fd_class".into())
-                })?;
-                let section = self.section.filter(|s| !s.is_empty()).ok_or_else(|| {
-                    StorageError::CorruptMetadata("FieldDay log missing section".into())
-                })?;
-                let power = self.power.ok_or_else(|| {
-                    StorageError::CorruptMetadata("FieldDay log missing power".into())
-                })?;
-                Ok(Log::FieldDay(FieldDayLog {
-                    header,
-                    tx_count,
-                    class,
-                    section,
-                    power,
-                }))
-            }
+            StoredLogType::FieldDay => reconstruct_field_day(
+                self.tx_count,
+                self.fd_class,
+                self.section,
+                self.power,
+                header,
+            ),
             StoredLogType::WinterFieldDay => {
-                let tx_count = self.tx_count.ok_or_else(|| {
-                    StorageError::CorruptMetadata("WinterFieldDay log missing tx_count".into())
-                })?;
-                validate_tx_count(tx_count).map_err(|_| {
-                    StorageError::CorruptMetadata(
-                        "WinterFieldDay log has invalid tx_count: must be at least 1".into(),
-                    )
-                })?;
-                let class = self.wfd_class.ok_or_else(|| {
-                    StorageError::CorruptMetadata("WinterFieldDay log missing wfd_class".into())
-                })?;
-                let section = self.section.filter(|s| !s.is_empty()).ok_or_else(|| {
-                    StorageError::CorruptMetadata("WinterFieldDay log missing section".into())
-                })?;
-                Ok(Log::WinterFieldDay(WfdLog {
-                    header,
-                    tx_count,
-                    class,
-                    section,
-                }))
+                reconstruct_wfd(self.tx_count, self.wfd_class, self.section, header)
             }
         }
     }
+}
+
+/// Reconstructs a [`Log::FieldDay`] from individual metadata fields and a pre-built header.
+///
+/// Returns [`StorageError::CorruptMetadata`] if any required Field Day field is
+/// missing or invalid.
+fn reconstruct_field_day(
+    tx_count: Option<u8>,
+    fd_class: Option<FdClass>,
+    section: Option<String>,
+    power: Option<FdPowerCategory>,
+    header: LogHeader,
+) -> Result<Log, StorageError> {
+    let tx_count = tx_count
+        .ok_or_else(|| StorageError::CorruptMetadata("FieldDay log missing tx_count".into()))?;
+    validate_tx_count(tx_count).map_err(|_| {
+        StorageError::CorruptMetadata(
+            "FieldDay log has invalid tx_count: must be at least 1".into(),
+        )
+    })?;
+    let class = fd_class
+        .ok_or_else(|| StorageError::CorruptMetadata("FieldDay log missing fd_class".into()))?;
+    let section = section
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| StorageError::CorruptMetadata("FieldDay log missing section".into()))?;
+    let power =
+        power.ok_or_else(|| StorageError::CorruptMetadata("FieldDay log missing power".into()))?;
+    Ok(Log::FieldDay(FieldDayLog {
+        header,
+        tx_count,
+        class,
+        section,
+        power,
+    }))
+}
+
+/// Reconstructs a [`Log::WinterFieldDay`] from individual metadata fields and a pre-built header.
+///
+/// Returns [`StorageError::CorruptMetadata`] if any required Winter Field Day
+/// field is missing or invalid.
+fn reconstruct_wfd(
+    tx_count: Option<u8>,
+    wfd_class: Option<WfdClass>,
+    section: Option<String>,
+    header: LogHeader,
+) -> Result<Log, StorageError> {
+    let tx_count = tx_count.ok_or_else(|| {
+        StorageError::CorruptMetadata("WinterFieldDay log missing tx_count".into())
+    })?;
+    validate_tx_count(tx_count).map_err(|_| {
+        StorageError::CorruptMetadata(
+            "WinterFieldDay log has invalid tx_count: must be at least 1".into(),
+        )
+    })?;
+    let class = wfd_class.ok_or_else(|| {
+        StorageError::CorruptMetadata("WinterFieldDay log missing wfd_class".into())
+    })?;
+    let section = section.filter(|s| !s.is_empty()).ok_or_else(|| {
+        StorageError::CorruptMetadata("WinterFieldDay log missing section".into())
+    })?;
+    Ok(Log::WinterFieldDay(WfdLog {
+        header,
+        tx_count,
+        class,
+        section,
+    }))
 }
 
 /// Manages JSONL-based log persistence.
@@ -272,14 +300,7 @@ impl LogManager {
     pub fn create_log(&self, log: &Log) -> Result<(), StorageError> {
         let new_date = log.header().created_at.date_naive();
         for existing in self.list_logs()? {
-            if existing.header().created_at.date_naive() == new_date
-                && existing.header().station_callsign.to_lowercase()
-                    == log.header().station_callsign.to_lowercase()
-                && operator_eq(&existing.header().operator, &log.header().operator)
-                && existing.header().grid_square.to_lowercase()
-                    == log.header().grid_square.to_lowercase()
-                && log_config_eq(&existing, log)
-            {
+            if is_duplicate_log(&existing, log, new_date) {
                 return Err(StorageError::DuplicateLog {
                     callsign: log.header().station_callsign.clone(),
                     date: new_date,
@@ -295,6 +316,21 @@ impl LogManager {
         fs::remove_file(&path)?;
         Ok(())
     }
+}
+
+/// Returns `true` if `existing` would be a duplicate of `new_log` on `new_date`.
+///
+/// Two logs are duplicates when they have the same creation date (UTC), station
+/// callsign, operator, grid square, and type-specific configuration. All string
+/// comparisons are case-insensitive.
+fn is_duplicate_log(existing: &Log, new_log: &Log, new_date: chrono::NaiveDate) -> bool {
+    existing.header().created_at.date_naive() == new_date
+        && existing.header().station_callsign.to_lowercase()
+            == new_log.header().station_callsign.to_lowercase()
+        && operator_eq(&existing.header().operator, &new_log.header().operator)
+        && existing.header().grid_square.to_lowercase()
+            == new_log.header().grid_square.to_lowercase()
+        && log_config_eq(existing, new_log)
 }
 
 /// Returns `true` if two operator fields represent the same operator.
@@ -317,19 +353,29 @@ fn log_config_eq(a: &Log, b: &Log) -> bool {
     match (a, b) {
         (Log::Pota(pa), Log::Pota(pb)) => park_ref_eq(&pa.park_ref, &pb.park_ref),
         (Log::General(_), Log::General(_)) => true,
-        (Log::FieldDay(fa), Log::FieldDay(fb)) => {
-            fa.tx_count == fb.tx_count
-                && fa.class == fb.class
-                && fa.section.to_uppercase() == fb.section.to_uppercase()
-                && fa.power == fb.power
-        }
-        (Log::WinterFieldDay(wa), Log::WinterFieldDay(wb)) => {
-            wa.tx_count == wb.tx_count
-                && wa.class == wb.class
-                && wa.section.to_uppercase() == wb.section.to_uppercase()
-        }
+        (Log::FieldDay(fa), Log::FieldDay(fb)) => fd_config_eq(fa, fb),
+        (Log::WinterFieldDay(wa), Log::WinterFieldDay(wb)) => wfd_config_eq(wa, wb),
         _ => false,
     }
+}
+
+/// Returns `true` if two Field Day logs have the same type-specific configuration.
+///
+/// Compares tx_count, class, section (case-insensitive), and power category.
+fn fd_config_eq(a: &FieldDayLog, b: &FieldDayLog) -> bool {
+    a.tx_count == b.tx_count
+        && a.class == b.class
+        && a.section.to_uppercase() == b.section.to_uppercase()
+        && a.power == b.power
+}
+
+/// Returns `true` if two Winter Field Day logs have the same type-specific configuration.
+///
+/// Compares tx_count, class, and section (case-insensitive).
+fn wfd_config_eq(a: &WfdLog, b: &WfdLog) -> bool {
+    a.tx_count == b.tx_count
+        && a.class == b.class
+        && a.section.to_uppercase() == b.section.to_uppercase()
 }
 
 /// Returns `true` if two park reference fields represent the same park.
