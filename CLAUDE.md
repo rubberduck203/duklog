@@ -59,6 +59,5 @@ Each module defines its own error type using `thiserror`. Errors propagate with 
 
 - Feature branches off `main`, one per implementation step
 - Run `make ci` before every commit
-- Run `make mutants` per module after implementation
 - Run the `code-review` subagent before creating PRs
 - PRs to `main` with descriptive titles and summaries

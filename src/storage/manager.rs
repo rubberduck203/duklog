@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::error::StorageError;
 use crate::model::{
     FdClass, FdPowerCategory, FieldDayLog, GeneralLog, Log, LogHeader, PotaLog, Qso, WfdClass,
-    WfdLog,
+    WfdLog, validate_tx_count,
 };
 
 /// Storage-internal log type discriminant.
@@ -117,6 +117,11 @@ impl LogMetadata {
                 let tx_count = self.tx_count.ok_or_else(|| {
                     StorageError::CorruptMetadata("FieldDay log missing tx_count".into())
                 })?;
+                validate_tx_count(tx_count).map_err(|_| {
+                    StorageError::CorruptMetadata(
+                        "FieldDay log has invalid tx_count: must be at least 1".into(),
+                    )
+                })?;
                 let class = self.fd_class.ok_or_else(|| {
                     StorageError::CorruptMetadata("FieldDay log missing fd_class".into())
                 })?;
@@ -137,6 +142,11 @@ impl LogMetadata {
             StoredLogType::WinterFieldDay => {
                 let tx_count = self.tx_count.ok_or_else(|| {
                     StorageError::CorruptMetadata("WinterFieldDay log missing tx_count".into())
+                })?;
+                validate_tx_count(tx_count).map_err(|_| {
+                    StorageError::CorruptMetadata(
+                        "WinterFieldDay log has invalid tx_count: must be at least 1".into(),
+                    )
                 })?;
                 let class = self.wfd_class.ok_or_else(|| {
                     StorageError::CorruptMetadata("WinterFieldDay log missing wfd_class".into())
@@ -655,6 +665,30 @@ mod tests {
         let json = r#"{"station_callsign":"W1AW","operator":null,"grid_square":"FN31","created_at":"2026-02-16T12:00:00Z","log_id":"wfd-corrupt","log_type":"WinterFieldDay","wfd_class":"H","section":"EPA"}"#;
         fs::write(dir.path().join("wfd-corrupt.jsonl"), format!("{json}\n")).unwrap();
         let result = manager.load_log("wfd-corrupt");
+        assert!(
+            matches!(result, Err(StorageError::CorruptMetadata(_))),
+            "expected CorruptMetadata, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn field_day_zero_tx_count_returns_corrupt_metadata_error() {
+        let (dir, manager) = make_manager();
+        let json = r#"{"station_callsign":"W1AW","operator":null,"grid_square":"FN31","created_at":"2026-02-16T12:00:00Z","log_id":"fd-zero-tx","log_type":"FieldDay","tx_count":0,"fd_class":"B","section":"EPA","power":"Low"}"#;
+        fs::write(dir.path().join("fd-zero-tx.jsonl"), format!("{json}\n")).unwrap();
+        let result = manager.load_log("fd-zero-tx");
+        assert!(
+            matches!(result, Err(StorageError::CorruptMetadata(_))),
+            "expected CorruptMetadata, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn wfd_zero_tx_count_returns_corrupt_metadata_error() {
+        let (dir, manager) = make_manager();
+        let json = r#"{"station_callsign":"W1AW","operator":null,"grid_square":"FN31","created_at":"2026-02-16T12:00:00Z","log_id":"wfd-zero-tx","log_type":"WinterFieldDay","tx_count":0,"wfd_class":"H","section":"EPA"}"#;
+        fs::write(dir.path().join("wfd-zero-tx.jsonl"), format!("{json}\n")).unwrap();
+        let result = manager.load_log("wfd-zero-tx");
         assert!(
             matches!(result, Err(StorageError::CorruptMetadata(_))),
             "expected CorruptMetadata, got {result:?}"
