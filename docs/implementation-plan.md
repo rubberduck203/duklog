@@ -69,6 +69,15 @@ The model now uses a `Log` enum (`General(GeneralLog)`, `Pota(PotaLog)`, future 
   - POTA: ≥10 QSOs today (existing logic)
   - Field Day / WFD / General: always `false` (score-based, no activation threshold)
 
+#### 4.1.5 Refactor: submodule extraction and function decomposition (`feature/refactor-structure`)
+
+Before adding more features, audit the codebase for structural improvements to keep complexity manageable:
+
+- **Submodule candidates** — `src/model/log.rs` has grown to include `Log`, `LogHeader`, `GeneralLog`, `PotaLog`, `FieldDayLog`, `WfdLog`, `FdClass`, `WfdClass`, `FdPowerCategory`, and their impls; consider splitting into per-type files under `src/model/log/`
+- **Function extraction candidates** — `src/storage/manager.rs` has grown; identify long or multi-concern functions and extract named helpers
+- Not limited to those two modules — do a full sweep and extract anywhere complexity warrants it
+- No behaviour changes; `make ci` must pass before and after
+
 #### 4.2 Log type selection in log create flow (`feature/log-type-selection`)
 **Files**: `src/tui/screens/log_create.rs`, `src/tui/app.rs`
 
@@ -100,7 +109,7 @@ The model now uses a `Log` enum (`General(GeneralLog)`, `Pota(PotaLog)`, future 
   - WFD: `[1H EPA] 18 QSOs`
   - General: `[W1AW] 5 QSOs`
 
-> **Dependencies**: 4.1 → 4.2 → 4.3; 4.4 depends on 4.1 and can be done alongside 4.2–4.3.
+> **Dependencies**: 4.1 → 4.1.5 → 4.2 → 4.3; 4.4 depends on 4.1 and can be done alongside 4.2–4.3.
 > 4.1 should be done after 3.12 is complete (avoids mid-polish data model churn).
 
 ---
@@ -109,6 +118,8 @@ The model now uses a `Log` enum (`General(GeneralLog)`, `Pota(PotaLog)`, future 
 
 ```
 4.1
+ ↓
+4.1.5
  ↓
 4.2
  ↓
