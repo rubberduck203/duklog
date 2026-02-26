@@ -78,6 +78,15 @@ Before adding more features, audit the codebase for structural improvements to k
 - Not limited to those two modules — do a full sweep and extract anywhere complexity warrants it
 - No behaviour changes; `make ci` must pass before and after
 
+#### 4.1.6 Validation bug fixes (`feature/validation-fixes`)
+**Files**: `src/model/`, `src/tui/screens/log_create.rs`, `src/tui/screens/qso_entry.rs`
+
+Audit and fix input validation bugs found during manual testing:
+
+- **Case sensitivity**: park reference validator rejects lowercase input (e.g., `us-1903` should be accepted and normalised to `US-1903`); grid square validator rejects lowercase (e.g., `em90` should be treated as `EM90`) — auto-uppercase on input or case-insensitive validation
+- **Lockup on validation error**: log creation appeared to lock up when a validation error was present; investigate whether this is still reproducible on `main`, and fix if confirmed
+- Sweep all other validated fields (callsign, section, etc.) for the same class of case-sensitivity issues
+
 #### 4.2 Log type selection in log create flow (`feature/log-type-selection`)
 **Files**: `src/tui/screens/log_create.rs`, `src/tui/app.rs`
 
@@ -90,12 +99,31 @@ Before adding more features, audit the codebase for structural improvements to k
 - Section field (FD/WFD): permissive free-text, auto-uppercase; accepts any non-empty string (handles `DX`, unusual sections, and future additions without a hardcoded list)
 - Update `CreateLog` action to carry `LogConfig`
 
-#### 4.3 Field Day QSO entry (`feature/field-day-qso`)
+#### 4.3 Field Day QSO entry + form layout redesign (`feature/field-day-qso`)
 **Files**: `src/tui/screens/qso_entry.rs`, `src/adif/writer.rs`
 
-- Add `Their Exchange` field to QSO entry form when log type is `FieldDay` or `WinterFieldDay`
+- **Two-row form layout**: reorganise the QSO entry form from a single column into two rows to free vertical space for a larger recent-QSO list and a more prominent status bar:
+  - Row 1 (always): Their Callsign, RST Sent, RST Rcvd
+  - Row 2 (type-specific, left slot + Comments): see per-type breakdown below
+
+- **Per-log-type field sets** — different log types have different row-2 fields; the implementation must account for this explicitly. Two viable approaches:
+  - **Separate layout paths**: `draw_qso_entry` branches on log type and renders a different layout per type; field index constants are defined per-type or as a single enum; preferred if types diverge significantly in future
+  - **Dynamic form construction**: `QsoEntryState` is initialised with a log-type parameter and builds the `Form` with the appropriate fields at construction time; field indices are per-type constants or a shared enum
+
+  Whichever approach is chosen, document the decision in `docs/architecture.md`.
+
+- **Row 2 by log type**:
+  | Log type | Left slot | Right slot |
+  |----------|-----------|------------|
+  | General  | *(empty)* | Comments |
+  | POTA     | Their Park (optional) | Comments |
+  | Field Day | Their Exchange (**required**) | Comments |
+  | Winter Field Day | Their Exchange (**required**) | Comments |
+
+- Their Exchange field:
   - Free-text input; stores received exchange verbatim (e.g., `3A CT`)
   - Auto-uppercase
+  - Required on submit for FD/WFD log types
 - ADIF export: emit `CONTEST_ID`, `STX_STRING` (from log config), `SRX_STRING` (from QSO) for contest logs
 - Remove `MY_SIG`/`SIG` fields from non-POTA logs
 
@@ -108,8 +136,15 @@ Before adding more features, audit the codebase for structural improvements to k
   - Field Day: `[1B EPA] 42 QSOs`
   - WFD: `[1H EPA] 18 QSOs`
   - General: `[W1AW] 5 QSOs`
+- Add `F1: Help` to the bottom menu bar; audit current keymap for overlap with standard F1 conventions
 
-> **Dependencies**: 4.1 → 4.1.5 → 4.2 → 4.3; 4.4 depends on 4.1 and can be done alongside 4.2–4.3.
+#### 4.4.5 QSO deletion (`feature/qso-delete`)
+**Files**: `src/tui/screens/qso_list.rs`, `src/tui/app.rs`, `src/storage/manager.rs`
+
+- Add a delete action on the QSO list screen (e.g., `d` key with a confirmation prompt)
+- Prevents accidental permanent removal of a QSO without confirmation
+
+> **Dependencies**: 4.1 → 4.1.5 → 4.1.6 → 4.2 → 4.3; 4.4 depends on 4.1 and can be done alongside 4.2–4.3; 4.4.5 depends on 4.4.
 > 4.1 should be done after 3.12 is complete (avoids mid-polish data model churn).
 
 ---
@@ -121,10 +156,14 @@ Before adding more features, audit the codebase for structural improvements to k
  ↓
 4.1.5
  ↓
+4.1.6
+ ↓
 4.2
  ↓
 4.3
 4.4 (parallel with 4.2–4.3, depends on 4.1)
+ ↓
+4.4.5
 ```
 
 ---
