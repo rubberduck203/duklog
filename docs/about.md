@@ -39,6 +39,16 @@ Is that worth it? Probably. It's about what my time costs an hour, so it would b
 
 As I now have to return to billable work, I will attempt to set off a task in the morning, then another after the usage reset moving forward.
 
+---
+
+Around [PR #23](https://github.com/rubberduck203/duklog/pull/23) I felt the need to get involved a little bit with the code.  
+The agent really struggled with the change and went through multiple rounds with the code reviewer.  
+I believe this is because some of the code files were becoming too large.  
+I intervened and had it stop to do a refactoring to extract out modules and functions, but am currently unsure of how to prevent the situation from happenging to begin with.
+Perhaps some tweaks to the `code-review` agent? I'm not sure exactly what kind right now though.
+
+---
+
 Below are the original notes I gave to claude to get the project started.
 
 ```text
