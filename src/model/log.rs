@@ -1,14 +1,85 @@
+use std::fmt;
+
 use chrono::{DateTime, NaiveDate, Utc};
+use serde::{Deserialize, Serialize};
 
 use super::band::Band;
 use super::mode::Mode;
 use super::qso::Qso;
 use super::validation::{
-    ValidationError, validate_callsign, validate_grid_square, validate_park_ref,
+    ValidationError, validate_callsign, validate_grid_square, validate_park_ref, validate_section,
+    validate_tx_count,
 };
 
 /// Minimum unique QSOs required for a valid POTA activation (per UTC day).
 const POTA_ACTIVATION_THRESHOLD: usize = 10;
+
+/// ARRL Field Day operating class (sent as part of every QSO exchange).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum FdClass {
+    /// Club or non-club group, 3+ persons, portable.
+    A,
+    /// 1–2 person portable.
+    B,
+    /// Mobile (vehicle, maritime, aeronautical).
+    C,
+    /// Home station on commercial power.
+    D,
+    /// Home station on emergency/alternative power only.
+    E,
+    /// Emergency Operations Center.
+    F,
+}
+
+impl fmt::Display for FdClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::A => "A",
+            Self::B => "B",
+            Self::C => "C",
+            Self::D => "D",
+            Self::E => "E",
+            Self::F => "F",
+        };
+        f.write_str(s)
+    }
+}
+
+/// Winter Field Day operating class (sent as part of every QSO exchange).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum WfdClass {
+    /// Home — inside a permanent livable residence.
+    H,
+    /// Indoor — weather-protected building on permanent foundation.
+    I,
+    /// Outdoor — partly or fully exposed shelter.
+    O,
+    /// Mobile — RV, car, van, boat, or similar.
+    M,
+}
+
+impl fmt::Display for WfdClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::H => "H",
+            Self::I => "I",
+            Self::O => "O",
+            Self::M => "M",
+        };
+        f.write_str(s)
+    }
+}
+
+/// Field Day power category, which determines the QSO point multiplier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum FdPowerCategory {
+    /// ≤5 W non-commercial power (×5 multiplier).
+    Qrp,
+    /// ≤100 W any source (×2 multiplier).
+    Low,
+    /// >100 W (×1 multiplier).
+    High,
+}
 
 /// The key that determines whether two QSOs are considered duplicates:
 /// same callsign (case-insensitive), band, and mode.
@@ -164,6 +235,122 @@ impl PotaLog {
     }
 }
 
+/// ARRL Field Day log.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldDayLog {
+    pub(crate) header: LogHeader,
+    pub(crate) tx_count: u8,
+    pub(crate) class: FdClass,
+    pub(crate) section: String,
+    pub(crate) power: FdPowerCategory,
+}
+
+impl FieldDayLog {
+    /// Creates a new Field Day log, validating all fields.
+    ///
+    /// `section` is stored as-is (callers should normalise to uppercase).
+    /// `tx_count` must be ≥ 1. `section` must be non-empty.
+    ///
+    /// Generates `log_id` as `"FD-{callsign}-{YYYYMMDD-HHMMSS}"`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        station_callsign: String,
+        operator: Option<String>,
+        tx_count: u8,
+        class: FdClass,
+        section: String,
+        power: FdPowerCategory,
+        grid_square: String,
+    ) -> Result<Self, ValidationError> {
+        validate_callsign(&station_callsign)?;
+        if let Some(ref op) = operator {
+            validate_callsign(op)?;
+        }
+        validate_tx_count(tx_count)?;
+        validate_section(&section)?;
+        validate_grid_square(&grid_square)?;
+
+        let now = Utc::now();
+        let log_id = format!("FD-{}-{}", station_callsign, now.format("%Y%m%d-%H%M%S"));
+
+        Ok(Self {
+            header: LogHeader {
+                station_callsign,
+                operator,
+                grid_square,
+                qsos: Vec::new(),
+                created_at: now,
+                log_id,
+            },
+            tx_count,
+            class,
+            section,
+            power,
+        })
+    }
+
+    /// Returns the sent exchange string, e.g. `"1B EPA"`.
+    pub(crate) fn sent_exchange(&self) -> String {
+        format!("{}{} {}", self.tx_count, self.class, self.section)
+    }
+}
+
+/// Winter Field Day log.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WfdLog {
+    pub(crate) header: LogHeader,
+    pub(crate) tx_count: u8,
+    pub(crate) class: WfdClass,
+    pub(crate) section: String,
+}
+
+impl WfdLog {
+    /// Creates a new Winter Field Day log, validating all fields.
+    ///
+    /// `section` is stored as-is (callers should normalise to uppercase).
+    /// `tx_count` must be ≥ 1. `section` must be non-empty.
+    ///
+    /// Generates `log_id` as `"WFD-{callsign}-{YYYYMMDD-HHMMSS}"`.
+    pub fn new(
+        station_callsign: String,
+        operator: Option<String>,
+        tx_count: u8,
+        class: WfdClass,
+        section: String,
+        grid_square: String,
+    ) -> Result<Self, ValidationError> {
+        validate_callsign(&station_callsign)?;
+        if let Some(ref op) = operator {
+            validate_callsign(op)?;
+        }
+        validate_tx_count(tx_count)?;
+        validate_section(&section)?;
+        validate_grid_square(&grid_square)?;
+
+        let now = Utc::now();
+        let log_id = format!("WFD-{}-{}", station_callsign, now.format("%Y%m%d-%H%M%S"));
+
+        Ok(Self {
+            header: LogHeader {
+                station_callsign,
+                operator,
+                grid_square,
+                qsos: Vec::new(),
+                created_at: now,
+                log_id,
+            },
+            tx_count,
+            class,
+            section,
+        })
+    }
+
+    /// Returns the sent exchange string, e.g. `"1H EPA"`.
+    pub(crate) fn sent_exchange(&self) -> String {
+        format!("{}{} {}", self.tx_count, self.class, self.section)
+    }
+}
+
 /// Any log session. The variant determines type-specific behavior and ADIF output.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Log {
@@ -171,6 +358,10 @@ pub enum Log {
     General(GeneralLog),
     /// POTA (Parks on the Air) activation log.
     Pota(PotaLog),
+    /// ARRL Field Day contest log.
+    FieldDay(FieldDayLog),
+    /// Winter Field Day contest log.
+    WinterFieldDay(WfdLog),
 }
 
 impl Log {
@@ -179,6 +370,8 @@ impl Log {
         match self {
             Self::General(l) => &l.header,
             Self::Pota(l) => &l.header,
+            Self::FieldDay(l) => &l.header,
+            Self::WinterFieldDay(l) => &l.header,
         }
     }
 
@@ -187,6 +380,8 @@ impl Log {
         match self {
             Self::General(l) => &mut l.header,
             Self::Pota(l) => &mut l.header,
+            Self::FieldDay(l) => &mut l.header,
+            Self::WinterFieldDay(l) => &mut l.header,
         }
     }
 
@@ -233,12 +428,20 @@ impl Log {
         }
     }
 
-    /// Returns QSOs from today (UTC) that match the given callsign, band, and mode.
+    /// Returns QSOs matching the given callsign, band, and mode within the
+    /// applicable scope for this log type.
     ///
-    /// Callsign comparison is case-insensitive. A non-empty result indicates a
-    /// potential duplicate contact within the current UTC day.
+    /// - POTA and General logs: scoped to today (UTC) — a non-empty result
+    ///   indicates a potential duplicate within the current UTC day.
+    /// - Field Day and Winter Field Day logs: scoped across the entire log —
+    ///   these events span multiple UTC calendar days.
+    ///
+    /// Callsign comparison is case-insensitive.
     pub fn find_duplicates(&self, qso: &Qso) -> Vec<&Qso> {
-        self.find_duplicates_on(qso, Some(Utc::now().date_naive()))
+        match self {
+            Self::FieldDay(_) | Self::WinterFieldDay(_) => self.find_duplicates_on(qso, None),
+            _ => self.find_duplicates_on(qso, Some(Utc::now().date_naive())),
+        }
     }
 
     /// Returns QSOs matching the given callsign, band, and mode, optionally
@@ -259,12 +462,19 @@ impl Log {
 
     /// Returns a short display label for this log.
     ///
-    /// For POTA logs: park reference if present, otherwise station callsign.
-    /// For all other log types: station callsign.
-    pub fn display_label(&self) -> &str {
+    /// - POTA: park reference if present, otherwise station callsign.
+    /// - Field Day / Winter Field Day: sent exchange string (e.g. `"1B EPA"`).
+    /// - General: station callsign.
+    pub fn display_label(&self) -> String {
         match self {
-            Self::Pota(p) => p.park_ref.as_deref().unwrap_or(&p.header.station_callsign),
-            Self::General(l) => &l.header.station_callsign,
+            Self::Pota(p) => p
+                .park_ref
+                .as_deref()
+                .unwrap_or(&p.header.station_callsign)
+                .to_string(),
+            Self::General(l) => l.header.station_callsign.clone(),
+            Self::FieldDay(l) => l.sent_exchange(),
+            Self::WinterFieldDay(l) => l.sent_exchange(),
         }
     }
 }
@@ -307,6 +517,8 @@ mod tests {
             Mode::Ssb,
             timestamp,
             String::new(),
+            None,
+            None,
             None,
         )
         .unwrap()
@@ -370,6 +582,230 @@ mod tests {
         let log =
             Log::General(GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap());
         assert_eq!(log.display_label(), "W1AW");
+    }
+
+    #[test]
+    fn display_label_field_day_returns_exchange() {
+        let log = Log::FieldDay(
+            FieldDayLog::new(
+                "W1AW".to_string(),
+                None,
+                1,
+                FdClass::B,
+                "EPA".to_string(),
+                FdPowerCategory::Low,
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        );
+        assert_eq!(log.display_label(), "1B EPA");
+    }
+
+    #[test]
+    fn display_label_wfd_returns_exchange() {
+        let log = Log::WinterFieldDay(
+            WfdLog::new(
+                "W1AW".to_string(),
+                None,
+                2,
+                WfdClass::H,
+                "CT".to_string(),
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        );
+        assert_eq!(log.display_label(), "2H CT");
+    }
+
+    #[test]
+    fn valid_field_day_log_creation() {
+        let log = Log::FieldDay(
+            FieldDayLog::new(
+                "W1AW".to_string(),
+                Some("KD9XYZ".to_string()),
+                3,
+                FdClass::A,
+                "EPA".to_string(),
+                FdPowerCategory::High,
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        );
+        assert_eq!(log.header().station_callsign, "W1AW");
+        assert_eq!(log.header().operator, Some("KD9XYZ".to_string()));
+        assert_eq!(log.park_ref(), None);
+        assert!(log.header().log_id.starts_with("FD-W1AW-"));
+        assert!(!log.is_activated());
+        assert_eq!(log.needs_for_activation(), 0);
+    }
+
+    #[test]
+    fn valid_wfd_log_creation() {
+        let log = Log::WinterFieldDay(
+            WfdLog::new(
+                "W1AW".to_string(),
+                None,
+                1,
+                WfdClass::O,
+                "EPA".to_string(),
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        );
+        assert_eq!(log.header().station_callsign, "W1AW");
+        assert_eq!(log.park_ref(), None);
+        assert!(log.header().log_id.starts_with("WFD-W1AW-"));
+        assert!(!log.is_activated());
+        assert_eq!(log.needs_for_activation(), 0);
+    }
+
+    #[test]
+    fn field_day_zero_tx_count_rejected() {
+        let result = FieldDayLog::new(
+            "W1AW".to_string(),
+            None,
+            0,
+            FdClass::B,
+            "EPA".to_string(),
+            FdPowerCategory::Low,
+            "FN31".to_string(),
+        );
+        assert_eq!(result, Err(ValidationError::InvalidTxCount));
+    }
+
+    #[test]
+    fn field_day_empty_section_rejected() {
+        let result = FieldDayLog::new(
+            "W1AW".to_string(),
+            None,
+            1,
+            FdClass::B,
+            String::new(),
+            FdPowerCategory::Low,
+            "FN31".to_string(),
+        );
+        assert_eq!(result, Err(ValidationError::EmptySection));
+    }
+
+    #[test]
+    fn wfd_zero_tx_count_rejected() {
+        let result = WfdLog::new(
+            "W1AW".to_string(),
+            None,
+            0,
+            WfdClass::H,
+            "EPA".to_string(),
+            "FN31".to_string(),
+        );
+        assert_eq!(result, Err(ValidationError::InvalidTxCount));
+    }
+
+    #[test]
+    fn wfd_empty_section_rejected() {
+        let result = WfdLog::new(
+            "W1AW".to_string(),
+            None,
+            1,
+            WfdClass::H,
+            String::new(),
+            "FN31".to_string(),
+        );
+        assert_eq!(result, Err(ValidationError::EmptySection));
+    }
+
+    #[test]
+    fn field_day_find_duplicates_spans_all_dates() {
+        let mut log = Log::FieldDay(
+            FieldDayLog::new(
+                "W1AW".to_string(),
+                None,
+                1,
+                FdClass::B,
+                "EPA".to_string(),
+                FdPowerCategory::Low,
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        );
+        let yesterday = Utc::now().date_naive().pred_opt().unwrap();
+        let old_ts = Utc.from_utc_datetime(&yesterday.and_hms_opt(12, 0, 0).unwrap());
+        let old_qso = Qso::new(
+            "KD9XYZ".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M20,
+            Mode::Ssb,
+            old_ts,
+            String::new(),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        log.add_qso(old_qso);
+
+        let candidate = Qso::new(
+            "KD9XYZ".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M20,
+            Mode::Ssb,
+            Utc::now(),
+            String::new(),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        // FD logs scope duplicates across ALL dates — yesterday's QSO is found
+        assert_eq!(log.find_duplicates(&candidate).len(), 1);
+    }
+
+    #[test]
+    fn wfd_find_duplicates_spans_all_dates() {
+        let mut log = Log::WinterFieldDay(
+            WfdLog::new(
+                "W1AW".to_string(),
+                None,
+                1,
+                WfdClass::H,
+                "EPA".to_string(),
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        );
+        let yesterday = Utc::now().date_naive().pred_opt().unwrap();
+        let old_ts = Utc.from_utc_datetime(&yesterday.and_hms_opt(12, 0, 0).unwrap());
+        let old_qso = Qso::new(
+            "KD9XYZ".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M20,
+            Mode::Ssb,
+            old_ts,
+            String::new(),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        log.add_qso(old_qso);
+
+        let candidate = Qso::new(
+            "KD9XYZ".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M20,
+            Mode::Ssb,
+            Utc::now(),
+            String::new(),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        // WFD logs scope duplicates across ALL dates
+        assert_eq!(log.find_duplicates(&candidate).len(), 1);
     }
 
     #[test]
@@ -451,6 +887,8 @@ mod tests {
             Utc::now(),
             String::new(),
             None,
+            None,
+            None,
         )
         .unwrap();
         log.add_qso(qso);
@@ -525,6 +963,8 @@ mod tests {
             ts_before,
             String::new(),
             None,
+            None,
+            None,
         )
         .unwrap();
         let qso2 = Qso::new(
@@ -535,6 +975,8 @@ mod tests {
             Mode::Ssb,
             ts_after,
             String::new(),
+            None,
+            None,
             None,
         )
         .unwrap();
@@ -558,6 +1000,8 @@ mod tests {
                 Mode::Ssb,
                 Utc::now(),
                 String::new(),
+                None,
+                None,
                 None,
             )
             .unwrap();
@@ -625,6 +1069,8 @@ mod tests {
             ts,
             String::new(),
             None,
+            None,
+            None,
         )
         .unwrap();
         let qso2 = Qso::new(
@@ -635,6 +1081,8 @@ mod tests {
             Mode::Ssb,
             ts,
             String::new(),
+            None,
+            None,
             None,
         )
         .unwrap();
@@ -654,6 +1102,8 @@ mod tests {
             mode,
             Utc::now(),
             String::new(),
+            None,
+            None,
             None,
         )
         .unwrap()
@@ -736,6 +1186,8 @@ mod tests {
             old_ts,
             String::new(),
             None,
+            None,
+            None,
         )
         .unwrap();
         log.add_qso(old_qso);
@@ -758,6 +1210,8 @@ mod tests {
             Mode::Ssb,
             old_ts,
             String::new(),
+            None,
+            None,
             None,
         )
         .unwrap();
@@ -782,6 +1236,8 @@ mod tests {
             Mode::Ssb,
             old_ts,
             String::new(),
+            None,
+            None,
             None,
         )
         .unwrap();

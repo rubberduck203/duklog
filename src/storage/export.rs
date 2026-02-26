@@ -73,6 +73,8 @@ mod tests {
             Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
             String::new(),
             None,
+            None,
+            None,
         )
         .unwrap()
     }

@@ -34,7 +34,7 @@ Each exported file contains a header followed by QSO records:
 | Field | Source | Always Present |
 |---|---|---|
 | `STATION_CALLSIGN` | Log station callsign | Yes |
-| `OPERATOR` | Operator callsign | Yes |
+| `OPERATOR` | Operator callsign | No (omitted when same as station callsign) |
 | `CALL` | Other station's callsign | Yes |
 | `QSO_DATE` | QSO UTC date (YYYYMMDD) | Yes |
 | `TIME_ON` | QSO UTC time (HHMMSS) | Yes |
@@ -48,6 +48,17 @@ Each exported file contains a header followed by QSO records:
 | `SIG` | `POTA` (only for P2P contacts) | No |
 | `SIG_INFO` | Other station's park ref (P2P) | No (with `SIG`) |
 | `COMMENT` | QSO comments/notes | No (when non-empty) |
+
+## Log Type Support
+
+| Log Type | Export Supported | Notes |
+|---|---|---|
+| POTA | Yes | Includes `MY_SIG`/`MY_SIG_INFO` when park ref is set |
+| General | Yes | No POTA-specific fields |
+| Field Day | Planned (Phase 4.3) | Will include `CONTEST_ID`, `STX_STRING`, `SRX_STRING` |
+| Winter Field Day | Planned (Phase 4.3) | Will include `CONTEST_ID`, `STX_STRING`, `SRX_STRING`, `FREQ` |
+
+The `Qso` struct carries `exchange_rcvd: Option<String>` (received contest exchange) and `frequency: Option<u32>` (kHz) for use by Field Day and WFD export in Phase 4.3. These fields are not written to ADIF by the current POTA/General exporter.
 
 ## POTA Submission
 

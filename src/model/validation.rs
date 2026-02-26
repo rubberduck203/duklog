@@ -14,6 +14,10 @@ pub enum ValidationError {
     InvalidParkRef(String),
     #[error("invalid grid square: {0}")]
     InvalidGridSquare(String),
+    #[error("section cannot be empty")]
+    EmptySection,
+    #[error("transmitter count must be at least 1")]
+    InvalidTxCount,
 }
 
 static PARK_REF_RE: LazyLock<Regex> =
@@ -37,6 +41,28 @@ pub fn validate_park_ref(park_ref: &str) -> Result<(), ValidationError> {
         Ok(())
     } else {
         Err(ValidationError::InvalidParkRef(park_ref.to_string()))
+    }
+}
+
+/// Validates a contest section: must be non-empty.
+///
+/// Accepts any non-empty string (handles `DX`, unusual sections, and future
+/// additions without a hardcoded list). Callers are responsible for
+/// normalising to uppercase before storing.
+pub fn validate_section(section: &str) -> Result<(), ValidationError> {
+    if section.is_empty() {
+        Err(ValidationError::EmptySection)
+    } else {
+        Ok(())
+    }
+}
+
+/// Validates a transmitter count: must be at least 1.
+pub fn validate_tx_count(count: u8) -> Result<(), ValidationError> {
+    if count == 0 {
+        Err(ValidationError::InvalidTxCount)
+    } else {
+        Ok(())
     }
 }
 
@@ -153,9 +179,16 @@ mod tests {
     }
 
     #[quickcheck]
-    fn park_ref_valid_format_always_accepted(prefix_len: u8, num: u32) -> bool {
-        let prefix_len = (prefix_len % 3) + 1; // 1-3
-        let prefix: String = (0..prefix_len).map(|i| (b'A' + (i % 26)) as char).collect();
+    fn park_ref_valid_format_always_accepted(prefix_bytes: Vec<u8>, num: u32) -> bool {
+        // Build a 1–3 char uppercase prefix from random bytes
+        let prefix: String = prefix_bytes
+            .iter()
+            .take(3)
+            .map(|b| (b'A' + (b % 26)) as char)
+            .collect();
+        if prefix.is_empty() {
+            return true; // skip — need at least one char
+        }
         let num = (num % 90000) + 1000; // 4-5 digits
         let park_ref = format!("{prefix}-{num:04}");
         validate_park_ref(&park_ref).is_ok()
@@ -229,5 +262,50 @@ mod tests {
         let d2 = (d2 % 10) + b'0';
         let grid = format!("{}{}{}{}", f1 as char, f2 as char, d1 as char, d2 as char);
         validate_grid_square(&grid).is_ok()
+    }
+
+    // --- validate_section ---
+
+    #[test]
+    fn section_nonempty_is_valid() {
+        assert_eq!(validate_section("EPA"), Ok(()));
+    }
+
+    #[test]
+    fn section_dx_is_valid() {
+        assert_eq!(validate_section("DX"), Ok(()));
+    }
+
+    #[test]
+    fn section_empty_is_invalid() {
+        assert_eq!(validate_section(""), Err(ValidationError::EmptySection));
+    }
+
+    #[quickcheck]
+    fn section_any_nonempty_string_is_valid(s: String) -> bool {
+        if s.is_empty() {
+            return true; // skip empty — tested separately
+        }
+        validate_section(&s).is_ok()
+    }
+
+    // --- validate_tx_count ---
+
+    #[test]
+    fn tx_count_one_is_valid() {
+        assert_eq!(validate_tx_count(1), Ok(()));
+    }
+
+    #[test]
+    fn tx_count_zero_is_invalid() {
+        assert_eq!(validate_tx_count(0), Err(ValidationError::InvalidTxCount));
+    }
+
+    #[quickcheck]
+    fn tx_count_nonzero_always_valid(n: u8) -> bool {
+        if n == 0 {
+            return true; // skip
+        }
+        validate_tx_count(n).is_ok()
     }
 }

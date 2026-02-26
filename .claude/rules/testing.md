@@ -12,10 +12,11 @@ paths:
 - Use **quickcheck** for numeric threshold/boundary logic (prefer properties over hand-written boundary values)
 - Assert on **specific values**, not just `is_ok()` / `is_empty()` — critical for mutation testing
 - Use `tempfile::tempdir()` for all storage tests — never write to real paths
+- For storage deserialization: test corrupt-but-parseable inputs (e.g., `tx_count: 0`, empty section), not just missing fields — these bypass `None` guards but still violate domain invariants
 - Tests must be deterministic and fast
 - **Organize tests with submodules** (`mod typing { ... }`, `mod validation { ... }`), not section comments (`// --- Typing ---`)
 - **Extract test helpers** to reduce repetition — tests are code too; refactor shared setup into helper functions
-- After implementing a module: `make mutants-module MOD=src/<module>/` — no surviving mutants
+- Prefer `.expect("descriptive message")` over bare `.unwrap()` in tests — the message surfaces in failure output and makes failures easier to diagnose
 - Minimum 90% line coverage enforced by `make coverage`
 
 ## TUI Render Testing

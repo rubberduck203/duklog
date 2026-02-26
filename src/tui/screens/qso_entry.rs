@@ -291,6 +291,7 @@ impl QsoEntryState {
 
         match Qso::new(
             their_call, rst_sent, rst_rcvd, self.band, self.mode, timestamp, comments, their_park,
+            None, None,
         ) {
             Ok(qso) => match self.editing {
                 Some((idx, _)) => Action::UpdateQso(idx, qso),
@@ -534,6 +535,8 @@ mod tests {
             mode,
             Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
             String::new(),
+            None,
+            None,
             None,
         )
         .unwrap()
@@ -1186,6 +1189,8 @@ mod tests {
                 Utc.with_ymd_and_hms(2026, 1, 10, 12, 0, 0).unwrap(),
                 "test comment".to_string(),
                 Some("K-5678".to_string()),
+                None,
+                None,
             )
             .unwrap()
         }
@@ -1433,6 +1438,8 @@ mod tests {
                 Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
                 String::new(),
                 Some("K-5678".to_string()),
+                None,
+                None,
             )
             .unwrap();
             state.add_recent_qso(qso);

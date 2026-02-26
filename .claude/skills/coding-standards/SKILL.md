@@ -12,6 +12,10 @@ description: duklog coding standards, testing requirements, and review checklist
 - Specific imports (no globs), grouped: std / external / crate-internal
 - Each module has its own `thiserror` error type; propagate with `?`
 
+## Domain Invariants
+- **Never construct domain structs with struct literal syntax from outside the module** — always go through `::new()` or a dedicated constructor that enforces validation. Struct literal construction in the storage layer silently bypasses invariants (e.g., `tx_count >= 1`) that `::new()` enforces.
+- **Loading from storage must enforce the same invariants as creation** — if a constructor validates a field, the deserialization path must validate it too. Check for `ok_or_else` guards that catch `None` but silently accept invalid `Some(0)` or empty-string values.
+
 ## Testing
 - Every `pub fn` tested with success and failure paths
 - Assert on **specific values**, not `is_ok()`/`is_empty()` — critical for mutation testing
@@ -20,6 +24,7 @@ description: duklog coding standards, testing requirements, and review checklist
 - Use `tempfile::tempdir()` for storage tests — never real paths
 - Deterministic and fast; no surviving mutants per module
 - 90% minimum line coverage
+- For storage deserialization: test corrupt-but-parseable inputs (e.g., `tx_count: 0`, empty section) — not just missing fields
 
 ## Coverage Exclusions
 - Allowed: `main.rs` setup, event loop methods requiring a real terminal

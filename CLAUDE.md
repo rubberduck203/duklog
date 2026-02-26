@@ -37,7 +37,7 @@ Always use `make` targets, not raw `cargo` commands:
 - Prefer **expressions** over explicit `return`
 - Prefer **`match`** over `if let` chains
 - No `.unwrap()` or `.expect()` in library code — use `?` or proper error handling
-- `.unwrap()` is acceptable only in tests and `main.rs`
+- `.unwrap()` and `.expect("message")` are acceptable in tests and `main.rs`; prefer `.expect()` in tests since it produces better failure output
 - Derive order: `Debug`, `Clone`, `Copy`, `PartialEq`, `Eq`, `Hash`, `PartialOrd`, `Ord`, `Serialize`, `Deserialize`
 - Group imports: std, external crates, crate-internal — separated by blank lines
 - Use specific imports, not glob imports
@@ -59,6 +59,5 @@ Each module defines its own error type using `thiserror`. Errors propagate with 
 
 - Feature branches off `main`, one per implementation step
 - Run `make ci` before every commit
-- Run `make mutants` per module after implementation
 - Run the `code-review` subagent before creating PRs
 - PRs to `main` with descriptive titles and summaries

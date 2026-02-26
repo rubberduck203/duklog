@@ -16,6 +16,16 @@ pub struct Qso {
     pub timestamp: DateTime<Utc>,
     pub comments: String,
     pub their_park: Option<String>,
+    /// Received contest exchange verbatim (e.g. `"3A CT"`).
+    ///
+    /// `None` for POTA and General logs.
+    #[serde(default)]
+    pub exchange_rcvd: Option<String>,
+    /// Frequency in kHz.
+    ///
+    /// Required for WFD ADIF export (`FREQ` field); optional otherwise.
+    #[serde(default)]
+    pub frequency: Option<u32>,
 }
 
 impl Qso {
@@ -30,6 +40,8 @@ impl Qso {
         timestamp: DateTime<Utc>,
         comments: String,
         their_park: Option<String>,
+        exchange_rcvd: Option<String>,
+        frequency: Option<u32>,
     ) -> Result<Self, ValidationError> {
         validate_callsign(&their_call)?;
         if let Some(ref park) = their_park {
@@ -44,6 +56,8 @@ impl Qso {
             timestamp,
             comments,
             their_park,
+            exchange_rcvd,
+            frequency,
         })
     }
 }
@@ -64,6 +78,8 @@ mod tests {
             Utc::now(),
             String::new(),
             None,
+            None,
+            None,
         )
         .unwrap()
     }
@@ -78,6 +94,27 @@ mod tests {
         assert_eq!(qso.mode, Mode::Ssb);
         assert_eq!(qso.comments, "");
         assert_eq!(qso.their_park, None);
+        assert_eq!(qso.exchange_rcvd, None);
+        assert_eq!(qso.frequency, None);
+    }
+
+    #[test]
+    fn contest_qso_with_exchange_and_frequency() {
+        let qso = Qso::new(
+            "W3ABC".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M20,
+            Mode::Ssb,
+            Utc::now(),
+            String::new(),
+            None,
+            Some("3A CT".to_string()),
+            Some(14_225),
+        )
+        .unwrap();
+        assert_eq!(qso.exchange_rcvd, Some("3A CT".to_string()));
+        assert_eq!(qso.frequency, Some(14_225));
     }
 
     #[test]
@@ -91,6 +128,8 @@ mod tests {
             Utc::now(),
             "P2P".to_string(),
             Some("K-1234".to_string()),
+            None,
+            None,
         )
         .unwrap();
         assert_eq!(qso.their_call, "KD9XYZ");
@@ -109,6 +148,8 @@ mod tests {
             Utc::now(),
             String::new(),
             None,
+            None,
+            None,
         );
         assert_eq!(result, Err(ValidationError::EmptyCallsign));
     }
@@ -124,6 +165,8 @@ mod tests {
             Utc::now(),
             String::new(),
             Some("bad".to_string()),
+            None,
+            None,
         );
         assert_eq!(
             result,
@@ -142,6 +185,8 @@ mod tests {
             Mode::Cw,
             ts,
             "test comment".to_string(),
+            None,
+            None,
             None,
         )
         .unwrap();
