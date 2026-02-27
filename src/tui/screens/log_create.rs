@@ -8,8 +8,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::model::{
-    Log, PotaLog, normalize_grid_square, normalize_park_ref, validate_callsign,
-    validate_grid_square, validate_park_ref,
+    Log, PotaLog, normalize_grid_square, validate_callsign, validate_grid_square, validate_park_ref,
 };
 use crate::tui::action::Action;
 use crate::tui::app::Screen;
@@ -115,7 +114,8 @@ impl LogCreateState {
         let callsign = self.form.value(CALLSIGN).to_string();
         let operator_str = self.form.value(OPERATOR).to_string();
         let operator = (!operator_str.is_empty()).then_some(operator_str);
-        let park_ref_str = normalize_park_ref(self.form.value(PARK_REF));
+        // PARK_REF is auto-uppercased at input time so the value is already uppercase here.
+        let park_ref_str = self.form.value(PARK_REF).to_string();
         let grid_square = normalize_grid_square(self.form.value(GRID_SQUARE));
 
         // Validate each field individually to show all errors at once.
@@ -473,7 +473,9 @@ mod tests {
         }
 
         #[test]
-        fn lowercase_park_ref_normalised_on_submit() {
+        fn lowercase_input_accepted_and_stored_uppercase() {
+            // PARK_REF is auto-uppercased at input, so lowercase typed characters are
+            // converted before reaching submit; the stored value is always uppercase.
             let mut state = LogCreateState::new();
             fill_form_with_park_ref(&mut state, "k-0001");
             let action = state.handle_key(press(KeyCode::Enter));

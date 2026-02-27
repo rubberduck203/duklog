@@ -48,8 +48,8 @@ A form for creating a new log.
 
 - **Station Callsign** (required) — your operating callsign
 - **Operator** (optional) — only needed if different from the station callsign
-- **Park Ref** (optional) — POTA park reference (e.g. `K-0001`)
-- **Grid Square** (required) — Maidenhead locator (e.g. `FN31` or `FN31pr`)
+- **Park Ref** (optional) — POTA park reference (e.g. `K-0001`), auto-uppercased as you type
+- **Grid Square** (required) — Maidenhead locator (e.g. `FN31` or `FN31pr`); any case accepted, normalised to canonical form on submit (`fn31pr` → `FN31pr`)
 
 | Key | Action |
 |---|---|
