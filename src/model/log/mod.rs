@@ -233,61 +233,6 @@ mod tests {
         log
     }
 
-    // --- display_label ---
-
-    #[test]
-    fn display_label_with_park_returns_park_ref() {
-        let log = make_log();
-        assert_eq!(log.display_label(), "K-0001");
-    }
-
-    #[test]
-    fn display_label_pota_without_park_returns_callsign() {
-        let log =
-            Log::Pota(PotaLog::new("W1AW".to_string(), None, None, "FN31".to_string()).unwrap());
-        assert_eq!(log.display_label(), "W1AW");
-    }
-
-    #[test]
-    fn display_label_general_returns_callsign() {
-        let log =
-            Log::General(GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap());
-        assert_eq!(log.display_label(), "W1AW");
-    }
-
-    #[test]
-    fn display_label_field_day_returns_exchange() {
-        let log = Log::FieldDay(
-            FieldDayLog::new(
-                "W1AW".to_string(),
-                None,
-                1,
-                FdClass::B,
-                "EPA".to_string(),
-                FdPowerCategory::Low,
-                "FN31".to_string(),
-            )
-            .unwrap(),
-        );
-        assert_eq!(log.display_label(), "1B EPA");
-    }
-
-    #[test]
-    fn display_label_wfd_returns_exchange() {
-        let log = Log::WinterFieldDay(
-            WfdLog::new(
-                "W1AW".to_string(),
-                None,
-                2,
-                WfdClass::H,
-                "CT".to_string(),
-                "FN31".to_string(),
-            )
-            .unwrap(),
-        );
-        assert_eq!(log.display_label(), "2H CT");
-    }
-
     // --- QSO operations ---
 
     #[test]
@@ -426,15 +371,6 @@ mod tests {
     }
 
     #[test]
-    fn general_log_is_never_activated() {
-        let mut log =
-            Log::General(GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap());
-        add_today_qsos(&mut log, 20);
-        assert!(!log.is_activated());
-        assert_eq!(log.needs_for_activation(), 0);
-    }
-
-    #[test]
     fn duplicate_qso_not_counted_for_activation() {
         let mut log = make_log();
         let date = NaiveDate::from_ymd_opt(2026, 6, 15).unwrap();
@@ -566,101 +502,6 @@ mod tests {
         log.add_qso(old_qso);
         let candidate = make_candidate("KD9XYZ", Band::M20, Mode::Ssb);
         assert_eq!(log.find_duplicates(&candidate).len(), 0);
-    }
-
-    #[test]
-    fn field_day_find_duplicates_spans_all_dates() {
-        let mut log = Log::FieldDay(
-            FieldDayLog::new(
-                "W1AW".to_string(),
-                None,
-                1,
-                FdClass::B,
-                "EPA".to_string(),
-                FdPowerCategory::Low,
-                "FN31".to_string(),
-            )
-            .unwrap(),
-        );
-        let yesterday = Utc::now().date_naive().pred_opt().unwrap();
-        let old_ts = Utc.from_utc_datetime(&yesterday.and_hms_opt(12, 0, 0).unwrap());
-        let old_qso = Qso::new(
-            "KD9XYZ".to_string(),
-            "59".to_string(),
-            "59".to_string(),
-            Band::M20,
-            Mode::Ssb,
-            old_ts,
-            String::new(),
-            None,
-            None,
-            None,
-        )
-        .unwrap();
-        log.add_qso(old_qso);
-
-        let candidate = Qso::new(
-            "KD9XYZ".to_string(),
-            "59".to_string(),
-            "59".to_string(),
-            Band::M20,
-            Mode::Ssb,
-            Utc::now(),
-            String::new(),
-            None,
-            None,
-            None,
-        )
-        .unwrap();
-        // FD logs scope duplicates across ALL dates — yesterday's QSO is found
-        assert_eq!(log.find_duplicates(&candidate).len(), 1);
-    }
-
-    #[test]
-    fn wfd_find_duplicates_spans_all_dates() {
-        let mut log = Log::WinterFieldDay(
-            WfdLog::new(
-                "W1AW".to_string(),
-                None,
-                1,
-                WfdClass::H,
-                "EPA".to_string(),
-                "FN31".to_string(),
-            )
-            .unwrap(),
-        );
-        let yesterday = Utc::now().date_naive().pred_opt().unwrap();
-        let old_ts = Utc.from_utc_datetime(&yesterday.and_hms_opt(12, 0, 0).unwrap());
-        let old_qso = Qso::new(
-            "KD9XYZ".to_string(),
-            "59".to_string(),
-            "59".to_string(),
-            Band::M20,
-            Mode::Ssb,
-            old_ts,
-            String::new(),
-            None,
-            None,
-            None,
-        )
-        .unwrap();
-        log.add_qso(old_qso);
-
-        let candidate = Qso::new(
-            "KD9XYZ".to_string(),
-            "59".to_string(),
-            "59".to_string(),
-            Band::M20,
-            Mode::Ssb,
-            Utc::now(),
-            String::new(),
-            None,
-            None,
-            None,
-        )
-        .unwrap();
-        // WFD logs scope duplicates across ALL dates
-        assert_eq!(log.find_duplicates(&candidate).len(), 1);
     }
 
     // --- find_duplicates_on ---

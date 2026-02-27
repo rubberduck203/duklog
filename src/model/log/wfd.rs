@@ -91,7 +91,75 @@ impl WfdLog {
 
 #[cfg(test)]
 mod tests {
+    use chrono::{TimeZone, Utc};
+
+    use crate::model::band::Band;
+    use crate::model::mode::Mode;
+    use crate::model::qso::Qso;
     use crate::model::{Log, ValidationError, WfdClass, WfdLog};
+
+    #[test]
+    fn display_label_wfd_returns_exchange() {
+        let log = Log::WinterFieldDay(
+            WfdLog::new(
+                "W1AW".to_string(),
+                None,
+                2,
+                WfdClass::H,
+                "CT".to_string(),
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        );
+        assert_eq!(log.display_label(), "2H CT");
+    }
+
+    #[test]
+    fn wfd_find_duplicates_spans_all_dates() {
+        let mut log = Log::WinterFieldDay(
+            WfdLog::new(
+                "W1AW".to_string(),
+                None,
+                1,
+                WfdClass::H,
+                "EPA".to_string(),
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        );
+        let yesterday = Utc::now().date_naive().pred_opt().unwrap();
+        let old_ts = Utc.from_utc_datetime(&yesterday.and_hms_opt(12, 0, 0).unwrap());
+        let old_qso = Qso::new(
+            "KD9XYZ".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M20,
+            Mode::Ssb,
+            old_ts,
+            String::new(),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        log.add_qso(old_qso);
+
+        let candidate = Qso::new(
+            "KD9XYZ".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M20,
+            Mode::Ssb,
+            Utc::now(),
+            String::new(),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        // WFD logs scope duplicates across ALL dates
+        assert_eq!(log.find_duplicates(&candidate).len(), 1);
+    }
 
     #[test]
     fn valid_wfd_log_creation() {

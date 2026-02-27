@@ -58,6 +58,27 @@ mod tests {
     use crate::model::{Log, PotaLog, ValidationError};
 
     #[test]
+    fn display_label_with_park_returns_park_ref() {
+        let log = Log::Pota(
+            PotaLog::new(
+                "W1AW".to_string(),
+                Some("W1AW".to_string()),
+                Some("K-0001".to_string()),
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        );
+        assert_eq!(log.display_label(), "K-0001");
+    }
+
+    #[test]
+    fn display_label_pota_without_park_returns_callsign() {
+        let log =
+            Log::Pota(PotaLog::new("W1AW".to_string(), None, None, "FN31".to_string()).unwrap());
+        assert_eq!(log.display_label(), "W1AW");
+    }
+
+    #[test]
     fn valid_pota_log_creation_with_park() {
         let log = Log::Pota(
             PotaLog::new(

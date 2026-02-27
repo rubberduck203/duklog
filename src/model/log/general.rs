@@ -45,7 +45,43 @@ impl GeneralLog {
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
+
+    use crate::model::band::Band;
+    use crate::model::mode::Mode;
+    use crate::model::qso::Qso;
     use crate::model::{GeneralLog, Log};
+
+    #[test]
+    fn display_label_general_returns_callsign() {
+        let log =
+            Log::General(GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap());
+        assert_eq!(log.display_label(), "W1AW");
+    }
+
+    #[test]
+    fn general_log_is_never_activated() {
+        let mut log =
+            Log::General(GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap());
+        for i in 0..20usize {
+            let qso = Qso::new(
+                format!("W{i}AW"),
+                "59".to_string(),
+                "59".to_string(),
+                Band::M20,
+                Mode::Ssb,
+                Utc::now(),
+                String::new(),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+            log.add_qso(qso);
+        }
+        assert!(!log.is_activated());
+        assert_eq!(log.needs_for_activation(), 0);
+    }
 
     #[test]
     fn valid_general_log_creation() {
