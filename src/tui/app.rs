@@ -3,7 +3,7 @@ use std::path::Path;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{Frame, Terminal};
 
-use crate::model::Log;
+use crate::model::{Log, Qso};
 use crate::storage::{self, LogManager, StorageError};
 
 use super::action::Action;
@@ -149,111 +149,139 @@ impl App {
                 self.current_log = Some(log);
                 self.screen = Screen::QsoEntry;
             }
-            Action::CreateLog(log) => match self.manager.create_log(&log) {
-                Err(e @ StorageError::DuplicateLog { .. }) => {
-                    self.log_create.set_error(e.to_string());
-                }
-                Err(e) => {
-                    self.log_select
-                        .set_error(format!("Failed to save log: {e}"));
-                    self.screen = Screen::LogSelect;
-                }
-                Ok(()) => {
-                    self.qso_entry.set_log_context(&log);
-                    self.current_log = Some(log);
-                    self.screen = Screen::QsoEntry;
-                }
-            },
-            Action::ExportLog => match self.current_log {
-                Some(ref log) => {
-                    let path = Path::new(self.export.path());
-                    match storage::export_adif(log, path) {
-                        Ok(()) => self.export.set_success(),
-                        Err(e) => self.export.set_error(e.to_string()),
-                    }
-                }
-                None => {
-                    self.export.set_error("No active log selected".into());
-                }
-            },
-            Action::EditQso(index) => match self.current_log {
-                Some(ref log) => match log.header().qsos.get(index) {
-                    Some(qso) => {
-                        self.qso_entry.start_editing(index, qso);
-                        self.screen = Screen::QsoEntry;
-                    }
-                    None => {
-                        self.qso_entry
-                            .set_error(format!("QSO index {index} out of bounds"));
-                        self.screen = Screen::QsoEntry;
-                    }
-                },
-                None => {
-                    self.qso_entry.set_error("No active log selected".into());
-                    self.screen = Screen::QsoEntry;
-                }
-            },
-            Action::UpdateQso(index, qso) => match self.current_log {
-                Some(ref mut log) => {
-                    if log.replace_qso(index, qso).is_none() {
-                        self.qso_entry
-                            .set_error(format!("QSO index {index} out of bounds"));
-                        self.qso_entry.clear_editing();
-                        return;
-                    }
-                    if let Err(e) = self.manager.save_log(log) {
-                        self.qso_entry.set_error(format!("Failed to save log: {e}"));
-                        self.qso_entry.clear_editing();
-                        return;
-                    }
-                    self.qso_entry.clear_editing();
-                    self.screen = Screen::QsoList;
-                }
-                None => {
-                    self.qso_entry.set_error("No active log selected".into());
-                }
-            },
-            Action::DeleteLog(log_id) => {
-                if let Err(e) = self.manager.delete_log(&log_id) {
-                    self.log_select
-                        .set_error(format!("Failed to delete log: {e}"));
-                    return;
-                }
-                if self
-                    .current_log
-                    .as_ref()
-                    .is_some_and(|l| l.header().log_id == log_id)
-                {
-                    self.current_log = None;
-                }
-                if let Err(e) = self.log_select.load(&self.manager) {
-                    self.log_select
-                        .set_error(format!("Failed to load logs: {e}"));
+            Action::CreateLog(log) => self.apply_create_log(log),
+            Action::ExportLog => self.apply_export_log(),
+            Action::EditQso(index) => self.apply_edit_qso(index),
+            Action::UpdateQso(index, qso) => self.apply_update_qso(index, qso),
+            Action::DeleteLog(log_id) => self.apply_delete_log(log_id),
+            Action::AddQso(qso) => self.apply_add_qso(qso),
+        }
+    }
+
+    /// Creates a log, navigating to QSO entry on success or surfacing errors.
+    fn apply_create_log(&mut self, log: Log) {
+        match self.manager.create_log(&log) {
+            Err(e @ StorageError::DuplicateLog { .. }) => {
+                self.log_create.set_error(e.to_string());
+            }
+            Err(e) => {
+                self.log_select
+                    .set_error(format!("Failed to save log: {e}"));
+                self.screen = Screen::LogSelect;
+            }
+            Ok(()) => {
+                self.qso_entry.set_log_context(&log);
+                self.current_log = Some(log);
+                self.screen = Screen::QsoEntry;
+            }
+        }
+    }
+
+    /// Exports the active log to ADIF, updating export screen status.
+    fn apply_export_log(&mut self) {
+        match self.current_log {
+            Some(ref log) => {
+                let path = Path::new(self.export.path());
+                match storage::export_adif(log, path) {
+                    Ok(()) => self.export.set_success(),
+                    Err(e) => self.export.set_error(e.to_string()),
                 }
             }
-            Action::AddQso(qso) => match self.current_log {
-                Some(ref mut log) => {
-                    let duplicate_warning = (!log.find_duplicates(&qso).is_empty()).then(|| {
-                        format!(
-                            "Warning: duplicate contact — {} {} {} already logged",
-                            qso.their_call, qso.band, qso.mode
-                        )
-                    });
-                    if let Err(e) = self.manager.append_qso(&log.header().log_id, &qso) {
-                        self.qso_entry.set_error(format!("Failed to save QSO: {e}"));
-                        return;
-                    }
-                    log.add_qso(qso.clone());
-                    self.qso_entry.add_recent_qso(qso);
-                    self.qso_entry.clear_fast_fields();
-                    if let Some(msg) = duplicate_warning {
-                        self.qso_entry.set_error(msg);
-                    }
+            None => {
+                self.export.set_error("No active log selected".into());
+            }
+        }
+    }
+
+    /// Begins editing the QSO at `index` in the active log.
+    fn apply_edit_qso(&mut self, index: usize) {
+        match self.current_log {
+            Some(ref log) => match log.header().qsos.get(index) {
+                Some(qso) => {
+                    self.qso_entry.start_editing(index, qso);
+                    self.screen = Screen::QsoEntry;
                 }
                 None => {
-                    self.qso_entry.set_error("No active log selected".into());
+                    self.qso_entry
+                        .set_error(format!("QSO index {index} out of bounds"));
+                    self.screen = Screen::QsoEntry;
                 }
             },
+            None => {
+                self.qso_entry.set_error("No active log selected".into());
+                self.screen = Screen::QsoEntry;
+            }
+        }
+    }
+
+    /// Replaces the QSO at `index` with `qso` and persists the log.
+    fn apply_update_qso(&mut self, index: usize, qso: Qso) {
+        match self.current_log {
+            Some(ref mut log) => {
+                if log.replace_qso(index, qso).is_none() {
+                    self.qso_entry
+                        .set_error(format!("QSO index {index} out of bounds"));
+                    self.qso_entry.clear_editing();
+                    return;
+                }
+                if let Err(e) = self.manager.save_log(log) {
+                    self.qso_entry.set_error(format!("Failed to save log: {e}"));
+                    self.qso_entry.clear_editing();
+                    return;
+                }
+                self.qso_entry.clear_editing();
+                self.screen = Screen::QsoList;
+            }
+            None => {
+                self.qso_entry.set_error("No active log selected".into());
+            }
+        }
+    }
+
+    /// Deletes the log identified by `log_id` and reloads the log list.
+    fn apply_delete_log(&mut self, log_id: String) {
+        if let Err(e) = self.manager.delete_log(&log_id) {
+            self.log_select
+                .set_error(format!("Failed to delete log: {e}"));
+            return;
+        }
+        if self
+            .current_log
+            .as_ref()
+            .is_some_and(|l| l.header().log_id == log_id)
+        {
+            self.current_log = None;
+        }
+        if let Err(e) = self.log_select.load(&self.manager) {
+            self.log_select
+                .set_error(format!("Failed to load logs: {e}"));
+        }
+    }
+
+    /// Appends `qso` to the active log, surfacing any duplicate warning.
+    fn apply_add_qso(&mut self, qso: Qso) {
+        match self.current_log {
+            Some(ref mut log) => {
+                let duplicate_warning = (!log.find_duplicates(&qso).is_empty()).then(|| {
+                    format!(
+                        "Warning: duplicate contact — {} {} {} already logged",
+                        qso.their_call, qso.band, qso.mode
+                    )
+                });
+                if let Err(e) = self.manager.append_qso(&log.header().log_id, &qso) {
+                    self.qso_entry.set_error(format!("Failed to save QSO: {e}"));
+                    return;
+                }
+                log.add_qso(qso.clone());
+                self.qso_entry.add_recent_qso(qso);
+                self.qso_entry.clear_fast_fields();
+                if let Some(msg) = duplicate_warning {
+                    self.qso_entry.set_error(msg);
+                }
+            }
+            None => {
+                self.qso_entry.set_error("No active log selected".into());
+            }
         }
     }
 

@@ -15,6 +15,7 @@ paths:
 - For storage deserialization: test corrupt-but-parseable inputs (e.g., `tx_count: 0`, empty section), not just missing fields — these bypass `None` guards but still violate domain invariants
 - Tests must be deterministic and fast
 - **Organize tests with submodules** (`mod typing { ... }`, `mod validation { ... }`), not section comments (`// --- Typing ---`)
+- **Tests that exercise only one enum variant belong in that variant's submodule file.** If a test creates only a `Log::FieldDay(...)` and asserts on `Log`-level behaviour specific to that variant, move it to `field_day.rs`, not `mod.rs`. Tests that compare multiple variants or test shared/generic behaviour stay in the enum's module.
 - **Extract test helpers** to reduce repetition — tests are code too; refactor shared setup into helper functions
 - Prefer `.expect("descriptive message")` over bare `.unwrap()` in tests — the message surfaces in failure output and makes failures easier to diagnose
 - Minimum 90% line coverage enforced by `make coverage`
