@@ -8,7 +8,9 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Row, Table};
 
-use crate::model::{Band, Log, Mode, Qso, validate_callsign, validate_park_ref};
+use crate::model::{
+    Band, Log, Mode, Qso, normalize_park_ref, validate_callsign, validate_park_ref,
+};
 use crate::tui::action::Action;
 use crate::tui::app::Screen;
 use crate::tui::widgets::form::{Form, FormField, draw_form};
@@ -262,7 +264,7 @@ impl QsoEntryState {
         let their_call = self.form.value(THEIR_CALL).to_string();
         let rst_sent = self.form.value(RST_SENT).to_string();
         let rst_rcvd = self.form.value(RST_RCVD).to_string();
-        let their_park_str = self.form.value(THEIR_PARK).to_string();
+        let their_park_str = normalize_park_ref(self.form.value(THEIR_PARK));
         let comments = self.form.value(COMMENTS).to_string();
 
         if let Err(e) = validate_callsign(&their_call) {

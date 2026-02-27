@@ -28,6 +28,8 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 - **3.12 Polish** (`feature/polish`) — Done
 - **4.0 Log enum refactor** (`feature/polish`) — Done
 - **4.1 FieldDay and WFD model types** (`feature/log-types-model`) — Done
+- **4.1.5 Refactor: submodule extraction and function decomposition** (`feature/refactor-structure`) — Done
+- **4.1.6 Validation bug fixes** (`feature/validation-fixes`) — Done: added `normalize_park_ref`/`normalize_grid_square`; PARK_REF auto-uppercased in `log_create.rs`; grid square normalised at submit; defensive normalize in `qso_entry.rs`; lockup investigated, not reproducible
 
 ---
 
@@ -68,24 +70,6 @@ The model now uses a `Log` enum (`General(GeneralLog)`, `Pota(PotaLog)`, future 
 - Update `is_activated()` to be type-aware:
   - POTA: ≥10 QSOs today (existing logic)
   - Field Day / WFD / General: always `false` (score-based, no activation threshold)
-
-#### 4.1.5 Refactor: submodule extraction and function decomposition (`feature/refactor-structure`)
-
-Before adding more features, audit the codebase for structural improvements to keep complexity manageable:
-
-- **Submodule candidates** — `src/model/log.rs` has grown to include `Log`, `LogHeader`, `GeneralLog`, `PotaLog`, `FieldDayLog`, `WfdLog`, `FdClass`, `WfdClass`, `FdPowerCategory`, and their impls; consider splitting into per-type files under `src/model/log/`
-- **Function extraction candidates** — `src/storage/manager.rs` has grown; identify long or multi-concern functions and extract named helpers
-- Not limited to those two modules — do a full sweep and extract anywhere complexity warrants it
-- No behaviour changes; `make ci` must pass before and after
-
-#### 4.1.6 Validation bug fixes (`feature/validation-fixes`)
-**Files**: `src/model/`, `src/tui/screens/log_create.rs`, `src/tui/screens/qso_entry.rs`
-
-Audit and fix input validation bugs found during manual testing:
-
-- **Case sensitivity**: park reference validator rejects lowercase input (e.g., `us-1903` should be accepted and normalised to `US-1903`); grid square validator rejects lowercase (e.g., `em90` should be treated as `EM90`) — auto-uppercase on input or case-insensitive validation
-- **Lockup on validation error**: log creation appeared to lock up when a validation error was present; investigate whether this is still reproducible on `main`, and fix if confirmed
-- Sweep all other validated fields (callsign, section, etc.) for the same class of case-sensitivity issues
 
 #### 4.2 Log type selection in log create flow (`feature/log-type-selection`)
 **Files**: `src/tui/screens/log_create.rs`, `src/tui/app.rs`

@@ -11,6 +11,6 @@ pub use log::{
 pub use mode::Mode;
 pub use qso::Qso;
 pub use validation::{
-    ValidationError, validate_callsign, validate_grid_square, validate_park_ref, validate_section,
-    validate_tx_count,
+    ValidationError, normalize_grid_square, normalize_park_ref, validate_callsign,
+    validate_grid_square, validate_park_ref, validate_section, validate_tx_count,
 };

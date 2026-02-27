@@ -10,6 +10,10 @@ paths:
 - Validation functions must test both valid and invalid inputs
 - Use **quickcheck** for functions that accept string inputs
 - Use **quickcheck** for numeric threshold/boundary logic (prefer properties over hand-written boundary values)
+- **Be aggressive**: any new pure function should get at least one quickcheck property — default to quickcheck, not hand-written examples
+- **Idempotency**: every normalization/transform function must have a `fn foo_is_idempotent(s: String) -> bool` property
+- **Normalize → validate roundtrip**: when a normalizer feeds into a validator, add a property that constructs invalid-case-but-structurally-valid input, normalizes it, and asserts validation passes
+- **ASCII guard**: when a function is documented to operate on ASCII inputs (e.g., callsigns, grid squares), add `if !s.is_ascii() { return true; }` at the top of idempotency properties — this avoids spurious failures from Unicode expansion edge cases and documents the domain
 - Assert on **specific values**, not just `is_ok()` / `is_empty()` — critical for mutation testing
 - Use `tempfile::tempdir()` for all storage tests — never write to real paths
 - For storage deserialization: test corrupt-but-parseable inputs (e.g., `tx_count: 0`, empty section), not just missing fields — these bypass `None` guards but still violate domain invariants

@@ -20,7 +20,10 @@ description: duklog coding standards, testing requirements, and review checklist
 - Every `pub fn` tested with success and failure paths
 - Assert on **specific values**, not `is_ok()`/`is_empty()` — critical for mutation testing
 - Test **boundary values** (e.g., activation threshold at 9, 10, 11 QSOs)
-- Use **quickcheck** for string-input functions
+- Use **quickcheck** aggressively — default to it for any new pure function, not just validators
+- Every normalization/transform function needs an idempotency property: `fn foo_is_idempotent(s: String) -> bool`
+- Every normalize → validate pipeline needs a roundtrip property (construct invalid-case-but-valid-structure input, normalize, assert validates)
+- Add `if !s.is_ascii() { return true; }` guard in quickcheck properties for ASCII-domain functions (callsigns, grid squares) to avoid Unicode expansion false failures
 - Use `tempfile::tempdir()` for storage tests — never real paths
 - Deterministic and fast; no surviving mutants per module
 - 90% minimum line coverage

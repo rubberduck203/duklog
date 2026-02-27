@@ -7,7 +7,10 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::model::{Log, PotaLog, validate_callsign, validate_grid_square, validate_park_ref};
+use crate::model::{
+    Log, PotaLog, normalize_grid_square, normalize_park_ref, validate_callsign,
+    validate_grid_square, validate_park_ref,
+};
 use crate::tui::action::Action;
 use crate::tui::app::Screen;
 use crate::tui::widgets::form::{Form, FormField, draw_form};
@@ -60,8 +63,9 @@ impl LogCreateState {
                 Action::None
             }
             KeyCode::Char(ch) => {
-                let should_uppercase =
-                    self.form.focus() == CALLSIGN || self.form.focus() == OPERATOR;
+                let should_uppercase = self.form.focus() == CALLSIGN
+                    || self.form.focus() == OPERATOR
+                    || self.form.focus() == PARK_REF;
                 let ch = if should_uppercase {
                     ch.to_ascii_uppercase()
                 } else {
@@ -111,8 +115,8 @@ impl LogCreateState {
         let callsign = self.form.value(CALLSIGN).to_string();
         let operator_str = self.form.value(OPERATOR).to_string();
         let operator = (!operator_str.is_empty()).then_some(operator_str);
-        let park_ref_str = self.form.value(PARK_REF).to_string();
-        let grid_square = self.form.value(GRID_SQUARE).to_string();
+        let park_ref_str = normalize_park_ref(self.form.value(PARK_REF));
+        let grid_square = normalize_grid_square(self.form.value(GRID_SQUARE));
 
         // Validate each field individually to show all errors at once.
         if let Err(e) = validate_callsign(&callsign) {
@@ -288,15 +292,29 @@ mod tests {
         }
 
         #[test]
-        fn park_ref_not_uppercased() {
+        fn park_ref_auto_uppercased() {
             let mut state = LogCreateState::new();
             state.handle_key(press(KeyCode::Tab)); // operator
             state.handle_key(press(KeyCode::Tab)); // park ref
             for ch in "k-0001".chars() {
                 state.handle_key(press(KeyCode::Char(ch)));
             }
-            // park ref is not auto-uppercased (validation will catch bad case)
-            assert_eq!(state.form().value(PARK_REF), "k-0001");
+            assert_eq!(state.form().value(PARK_REF), "K-0001");
+        }
+
+        #[test]
+        fn grid_square_not_auto_uppercased() {
+            // Grid square is normalised at submit time (not at input time) because
+            // subsquare chars must be stored lowercase; auto-uppercasing would
+            // prevent typing the correct mixed-case form.
+            let mut state = LogCreateState::new();
+            state.handle_key(press(KeyCode::Tab)); // operator
+            state.handle_key(press(KeyCode::Tab)); // park ref
+            state.handle_key(press(KeyCode::Tab)); // grid square
+            for ch in "fn31pr".chars() {
+                state.handle_key(press(KeyCode::Char(ch)));
+            }
+            assert_eq!(state.form().value(GRID_SQUARE), "fn31pr");
         }
     }
 
@@ -407,6 +425,62 @@ mod tests {
             fill_valid_form(&mut state);
             let action = state.handle_key(press(KeyCode::Enter));
             assert!(matches!(action, Action::CreateLog(_)));
+        }
+
+        #[test]
+        fn grid_square_lowercase_normalised_on_submit() {
+            let mut state = LogCreateState::new();
+            type_string(&mut state, "W1AW");
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "fn31");
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::CreateLog(log) => assert_eq!(log.header().grid_square, "FN31"),
+                other => panic!("expected CreateLog, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn grid_square_all_uppercase_subsquare_normalised_on_submit() {
+            let mut state = LogCreateState::new();
+            type_string(&mut state, "W1AW");
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "FN31PR");
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::CreateLog(log) => assert_eq!(log.header().grid_square, "FN31pr"),
+                other => panic!("expected CreateLog, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn grid_square_all_lowercase_six_char_normalised_on_submit() {
+            let mut state = LogCreateState::new();
+            type_string(&mut state, "W1AW");
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "fn31pr");
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::CreateLog(log) => assert_eq!(log.header().grid_square, "FN31pr"),
+                other => panic!("expected CreateLog, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn lowercase_park_ref_normalised_on_submit() {
+            let mut state = LogCreateState::new();
+            fill_form_with_park_ref(&mut state, "k-0001");
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::CreateLog(log) => assert_eq!(log.park_ref(), Some("K-0001")),
+                other => panic!("expected CreateLog, got {other:?}"),
+            }
         }
     }
 
