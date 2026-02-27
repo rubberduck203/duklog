@@ -8,7 +8,9 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Row, Table};
 
-use crate::model::{Band, Log, Mode, Qso, validate_callsign, validate_park_ref};
+use crate::model::{
+    Band, Log, Mode, Qso, normalize_park_ref, validate_callsign, validate_park_ref,
+};
 use crate::tui::action::Action;
 use crate::tui::app::Screen;
 use crate::tui::widgets::form::{Form, FormField, draw_form};
@@ -262,7 +264,10 @@ impl QsoEntryState {
         let their_call = self.form.value(THEIR_CALL).to_string();
         let rst_sent = self.form.value(RST_SENT).to_string();
         let rst_rcvd = self.form.value(RST_RCVD).to_string();
-        let their_park_str = self.form.value(THEIR_PARK).to_string();
+        // Normalize even though handle_char auto-uppercases at input: start_editing sets
+        // the form value directly (bypassing handle_char), so stored lowercase park refs
+        // loaded from pre-fix log files would reach submit without auto-uppercase.
+        let their_park_str = normalize_park_ref(self.form.value(THEIR_PARK));
         let comments = self.form.value(COMMENTS).to_string();
 
         if let Err(e) = validate_callsign(&their_call) {
@@ -1287,6 +1292,26 @@ mod tests {
             state.start_editing(0, &make_test_qso());
             assert!(!state.form().has_errors());
             assert_eq!(state.error(), None);
+        }
+
+        #[test]
+        fn editing_qso_with_stored_lowercase_park_normalises_on_resubmit() {
+            // Simulates a pre-fix stored QSO whose their_park was saved in lowercase.
+            // start_editing sets the form value directly (bypassing handle_char's auto-uppercase),
+            // so normalize_park_ref in submit() is the only safeguard.
+            let mut base = make_qso("W3ABC", Band::M20, Mode::Ssb);
+            base.their_park = Some("k-1234".to_string()); // bypass Qso::new validation
+
+            let mut state = QsoEntryState::new();
+            state.start_editing(0, &base);
+
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::UpdateQso(_, updated) => {
+                    assert_eq!(updated.their_park, Some("K-1234".to_string()));
+                }
+                other => panic!("expected UpdateQso, got {other:?}"),
+            }
         }
     }
 

@@ -75,6 +75,29 @@ pub fn validate_grid_square(grid: &str) -> Result<(), ValidationError> {
     }
 }
 
+/// Normalises a POTA park reference to canonical uppercase form (e.g., `k-0001` → `K-0001`).
+pub fn normalize_park_ref(s: &str) -> String {
+    s.to_uppercase()
+}
+
+/// Normalises a Maidenhead grid square to canonical mixed-case form.
+///
+/// Field characters (positions 0–3) are uppercased; subsquare characters
+/// (positions 4–5, if present) are lowercased. Handles any input case:
+/// - `"fn31"` → `"FN31"`, `"FN31PR"` → `"FN31pr"`, `"fn31pr"` → `"FN31pr"`
+pub fn normalize_grid_square(s: &str) -> String {
+    let upper = s.to_uppercase();
+    if upper.chars().count() == 6 {
+        upper
+            .chars()
+            .enumerate()
+            .map(|(i, c)| if i >= 4 { c.to_ascii_lowercase() } else { c })
+            .collect()
+    } else {
+        upper
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use quickcheck_macros::quickcheck;
@@ -262,6 +285,110 @@ mod tests {
         let d2 = (d2 % 10) + b'0';
         let grid = format!("{}{}{}{}", f1 as char, f2 as char, d1 as char, d2 as char);
         validate_grid_square(&grid).is_ok()
+    }
+
+    // --- normalize_park_ref ---
+
+    #[test]
+    fn normalize_park_ref_lowercase() {
+        assert_eq!(normalize_park_ref("k-0001"), "K-0001");
+    }
+
+    #[test]
+    fn normalize_park_ref_already_correct() {
+        assert_eq!(normalize_park_ref("K-0001"), "K-0001");
+    }
+
+    #[quickcheck]
+    fn normalize_park_ref_is_idempotent(s: String) -> bool {
+        // Park refs are always ASCII; limit to ASCII domain where idempotency is guaranteed.
+        if !s.is_ascii() {
+            return true;
+        }
+        let normalized = normalize_park_ref(&s);
+        normalize_park_ref(&normalized) == normalized
+    }
+
+    #[quickcheck]
+    fn normalize_park_ref_then_validate_accepts_any_lowercase_valid_ref(
+        prefix_bytes: Vec<u8>,
+        num: u32,
+    ) -> bool {
+        // Build a valid park ref in all-lowercase and verify normalize → validate roundtrip
+        let prefix: String = prefix_bytes
+            .iter()
+            .take(3)
+            .map(|b| (b'a' + (b % 26)) as char)
+            .collect();
+        if prefix.is_empty() {
+            return true; // skip — need at least one char
+        }
+        let num = (num % 90000) + 1000; // 4-5 digits
+        let lower = format!("{prefix}-{num:04}");
+        validate_park_ref(&normalize_park_ref(&lower)).is_ok()
+    }
+
+    // --- normalize_grid_square ---
+
+    #[test]
+    fn normalize_grid_four_char_lowercase() {
+        assert_eq!(normalize_grid_square("fn31"), "FN31");
+    }
+
+    #[test]
+    fn normalize_grid_six_char_all_uppercase() {
+        assert_eq!(normalize_grid_square("FN31PR"), "FN31pr");
+    }
+
+    #[test]
+    fn normalize_grid_six_char_all_lowercase() {
+        assert_eq!(normalize_grid_square("fn31pr"), "FN31pr");
+    }
+
+    #[quickcheck]
+    fn normalize_grid_square_is_idempotent(s: String) -> bool {
+        // Grid squares are always ASCII; limit to ASCII domain where idempotency is guaranteed.
+        if !s.is_ascii() {
+            return true;
+        }
+        let normalized = normalize_grid_square(&s);
+        normalize_grid_square(&normalized) == normalized
+    }
+
+    #[quickcheck]
+    fn normalize_grid_then_validate_accepts_any_case_four_char(
+        f1: u8,
+        f2: u8,
+        d1: u8,
+        d2: u8,
+    ) -> bool {
+        // Build a valid 4-char grid in lowercase and verify normalize → validate roundtrip
+        let f1 = (f1 % 18 + b'a') as char; // a-r
+        let f2 = (f2 % 18 + b'a') as char;
+        let d1 = (d1 % 10 + b'0') as char;
+        let d2 = (d2 % 10 + b'0') as char;
+        let grid = format!("{f1}{f2}{d1}{d2}");
+        validate_grid_square(&normalize_grid_square(&grid)).is_ok()
+    }
+
+    #[quickcheck]
+    fn normalize_grid_then_validate_accepts_uppercase_subsquare(
+        f1: u8,
+        f2: u8,
+        d1: u8,
+        d2: u8,
+        s1: u8,
+        s2: u8,
+    ) -> bool {
+        // Build a valid 6-char grid with uppercase subsquare (invalid raw, valid after normalize)
+        let f1 = (f1 % 18 + b'A') as char; // A-R
+        let f2 = (f2 % 18 + b'A') as char;
+        let d1 = (d1 % 10 + b'0') as char;
+        let d2 = (d2 % 10 + b'0') as char;
+        let s1 = (s1 % 24 + b'A') as char; // A-X (normalized to a-x)
+        let s2 = (s2 % 24 + b'A') as char;
+        let grid = format!("{f1}{f2}{d1}{d2}{s1}{s2}");
+        validate_grid_square(&normalize_grid_square(&grid)).is_ok()
     }
 
     // --- validate_section ---
