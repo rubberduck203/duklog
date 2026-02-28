@@ -105,6 +105,17 @@ The `App` calls `apply_action` to interpret these, keeping all global state tran
 
 The QSO list screen dispatches `EditQso(index)` when the user presses Enter on a row. `App::apply_action` populates the QSO entry form with the selected QSO's data and switches to QsoEntry in edit mode. On submit, the entry screen returns `UpdateQso(index, qso)` instead of `AddQso(qso)`. The app replaces the QSO in-memory, saves the full log, and returns to the QSO list.
 
+### Log Create Screen
+
+`screens/log_create.rs` manages `LogCreateState`, which holds:
+
+- `log_type: LogType` — `General | Pota | FieldDay | WinterFieldDay`
+- `focus_area: FocusArea` — `TypeSelector | Fields`; determines whether keyboard input targets the type selector row or the form
+- `form: Form` — rebuilt whenever the type changes; pre-populated from per-type value buffers
+- Per-type value buffers (`callsign_buf`, `grid_square_buf`, `park_ref_buf`, etc.) — persisted across type switches so the user's typing is not lost
+
+`Left`/`Right` cycle the log type when `TypeSelector` is focused; `Tab` moves from `TypeSelector` to the first form field, and wraps from the last form field back to `TypeSelector`. `BackTab` reverses the direction. Typing is ignored while `TypeSelector` is focused. On submit, `submit()` dispatches to `submit_general`, `submit_pota`, `submit_field_day`, or `submit_wfd` based on the active type; each validates its type-specific fields and returns `Action::CreateLog(Log::*)`.
+
 ### Form Widget
 
 `widgets/form.rs` provides a reusable `Form` with `FormField` entries. It handles focus cycling, character insert/delete, per-field errors, and rendering. Screens like LogCreate wrap a `Form` and add validation logic on submit.

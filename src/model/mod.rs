@@ -7,6 +7,7 @@ mod validation;
 pub use band::Band;
 pub use log::{
     FdClass, FdPowerCategory, FieldDayLog, GeneralLog, Log, LogHeader, PotaLog, WfdClass, WfdLog,
+    parse_fd_class, parse_wfd_class,
 };
 pub use mode::Mode;
 pub use qso::Qso;

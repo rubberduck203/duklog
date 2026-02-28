@@ -30,6 +30,7 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 - **4.1 FieldDay and WFD model types** (`feature/log-types-model`) — Done
 - **4.1.5 Refactor: submodule extraction and function decomposition** (`feature/refactor-structure`) — Done
 - **4.1.6 Validation bug fixes** (`feature/validation-fixes`) — Done: added `normalize_park_ref`/`normalize_grid_square`; PARK_REF auto-uppercased in `log_create.rs`; grid square normalised at submit; defensive normalize in `qso_entry.rs`; lockup investigated, not reproducible
+- **4.2 Log type selection in log create flow** — Done: `LogType` enum (General/Pota/FieldDay/WinterFieldDay); type selector row above form with Left/Right cycling; `FocusArea` (TypeSelector/Fields); per-type form construction with buffer preservation across type switches; `submit_general`, `submit_pota`, `submit_field_day`, `submit_wfd` dispatch; `parse_fd_class`/`parse_wfd_class` added to model with quickcheck tests; `InvalidFdClass`/`InvalidWfdClass` `ValidationError` variants
 
 ---
 
