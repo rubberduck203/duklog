@@ -8,6 +8,19 @@ use crate::model::validation::{
     ValidationError, validate_callsign, validate_grid_square, validate_section, validate_tx_count,
 };
 
+/// Parses a Winter Field Day class from a string.
+///
+/// Accepts `"H"`, `"I"`, `"O"`, `"M"` (case-insensitive). Returns an error for any other value.
+pub fn parse_wfd_class(s: &str) -> Result<WfdClass, ValidationError> {
+    match s.to_uppercase().as_str() {
+        "H" => Ok(WfdClass::H),
+        "I" => Ok(WfdClass::I),
+        "O" => Ok(WfdClass::O),
+        "M" => Ok(WfdClass::M),
+        _ => Err(ValidationError::InvalidWfdClass(s.to_string())),
+    }
+}
+
 /// Winter Field Day operating class (sent as part of every QSO exchange).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum WfdClass {
@@ -92,11 +105,68 @@ impl WfdLog {
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
+    use quickcheck_macros::quickcheck;
 
     use crate::model::band::Band;
     use crate::model::mode::Mode;
     use crate::model::qso::Qso;
     use crate::model::{Log, ValidationError, WfdClass, WfdLog};
+
+    use super::parse_wfd_class;
+
+    impl quickcheck::Arbitrary for WfdClass {
+        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            *g.choose(&[WfdClass::H, WfdClass::I, WfdClass::O, WfdClass::M])
+                .unwrap()
+        }
+    }
+
+    // --- parse_wfd_class ---
+
+    #[test]
+    fn parse_wfd_class_valid_letters() {
+        assert_eq!(parse_wfd_class("H"), Ok(WfdClass::H));
+        assert_eq!(parse_wfd_class("I"), Ok(WfdClass::I));
+        assert_eq!(parse_wfd_class("O"), Ok(WfdClass::O));
+        assert_eq!(parse_wfd_class("M"), Ok(WfdClass::M));
+    }
+
+    #[test]
+    fn parse_wfd_class_lowercase_accepted() {
+        assert_eq!(parse_wfd_class("h"), Ok(WfdClass::H));
+        assert_eq!(parse_wfd_class("m"), Ok(WfdClass::M));
+    }
+
+    #[test]
+    fn parse_wfd_class_invalid_returns_err() {
+        assert_eq!(
+            parse_wfd_class("A"),
+            Err(ValidationError::InvalidWfdClass("A".to_string()))
+        );
+    }
+
+    #[quickcheck]
+    fn parse_wfd_class_invalid_string_returns_err(s: String) -> bool {
+        if !s.is_ascii() {
+            return true;
+        }
+        let upper = s.to_uppercase();
+        let valid = matches!(upper.as_str(), "H" | "I" | "O" | "M");
+        if valid {
+            return true; // skip valid inputs
+        }
+        parse_wfd_class(&s).is_err()
+    }
+
+    #[quickcheck]
+    fn parse_wfd_class_round_trip(class: WfdClass) -> bool {
+        parse_wfd_class(&class.to_string()) == Ok(class)
+    }
+
+    #[quickcheck]
+    fn parse_wfd_class_lowercase_round_trip(class: WfdClass) -> bool {
+        parse_wfd_class(&class.to_string().to_lowercase()) == Ok(class)
+    }
 
     #[test]
     fn display_label_wfd_returns_exchange() {

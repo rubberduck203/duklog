@@ -18,6 +18,10 @@ pub enum ValidationError {
     EmptySection,
     #[error("transmitter count must be at least 1")]
     InvalidTxCount,
+    #[error("invalid Field Day class: {0} (must be A–F)")]
+    InvalidFdClass(String),
+    #[error("invalid WFD class: {0} (must be H, I, O, or M)")]
+    InvalidWfdClass(String),
 }
 
 static PARK_REF_RE: LazyLock<Regex> =
