@@ -85,6 +85,21 @@ The model now uses a `Log` enum (`General(GeneralLog)`, `Pota(PotaLog)`, future 
 - Section field (FD/WFD): permissive free-text, auto-uppercase; accepts any non-empty string (handles `DX`, unusual sections, and future additions without a hardcoded list)
 - Update `CreateLog` action to carry `LogConfig`
 
+#### 4.3.1 Log create form layout fixes (`feature/log-create-layout`)
+**Files**: `src/tui/screens/log_create.rs`, `src/tui/widgets/form.rs`
+
+Two rendering bugs observed during Phase 4.3 review:
+
+**Bug 1 — Form field height**: FD/WFD forms have 6 fields × 3 lines each = 18 lines required. The vertical layout allocates `Constraint::Min(9)` to the form area, so on terminals shorter than ~25 lines some fields render at 2 lines (top/bottom border only, content row squeezed out). The fix is to make the form area height dynamic: `Constraint::Length(fields.len() as u16 * 3)` so the outer layout always allocates exactly the right height, and the scroll/truncation decision is made explicitly rather than silently.
+
+- `draw_form` currently splits `form_area` with `Constraint::Ratio` — this must be changed to `Constraint::Length(3)` per field so each field always gets exactly 3 lines regardless of available space.
+- `draw_log_create` must allocate `Constraint::Length(state.form().fields().len() as u16 * 3)` for `form_area` instead of `Constraint::Min(9)`.
+- Render tests must assert at a height that is just sufficient for each form type (e.g., 20 lines for General/3 fields, 24 lines for FD/WFD/6 fields) so a regression causes an immediate test failure rather than a silent layout issue.
+
+**Bug 2 — Already fixed (commit 40e99b1)**: Form fields were rendering at full terminal width on wide displays. Fixed by centering with `Constraint::Max(60)`.
+
+**Bug 3 — Already fixed (commit 40e99b1)**: Typing while type selector was focused was silently ignored; now jumps immediately to Station Callsign.
+
 #### 4.4 Log select and status bar updates (`feature/log-type-ui`)
 **Files**: `src/tui/screens/log_select.rs`, `src/tui/widgets/status_bar.rs`
 
@@ -102,7 +117,7 @@ The model now uses a `Log` enum (`General(GeneralLog)`, `Pota(PotaLog)`, future 
 - Add a delete action on the QSO list screen (e.g., `d` key with a confirmation prompt)
 - Prevents accidental permanent removal of a QSO without confirmation
 
-> **Dependencies**: 4.1 → 4.1.5 → 4.1.6 → 4.2 → 4.3 (all complete); 4.4 depends on 4.1 and can be done alongside completed 4.2–4.3; 4.4.5 depends on 4.4.
+> **Dependencies**: 4.1 → 4.1.5 → 4.1.6 → 4.2 → 4.3 (all complete); **4.3.1 must be done before 4.4** (rendering correctness prerequisite); 4.4 depends on completed 4.1–4.3; 4.4.5 depends on 4.4.
 > 4.1 should be done after 3.12 is complete (avoids mid-polish data model churn).
 
 ---
@@ -112,7 +127,9 @@ The model now uses a `Log` enum (`General(GeneralLog)`, `Pota(PotaLog)`, future 
 ```
 [4.1 → 4.1.5 → 4.1.6 → 4.2 → 4.3 — all complete]
 
-4.4 (depends on completed 4.1–4.3)
+4.3.1 (log create form layout fixes)
+ ↓
+4.4 (depends on completed 4.1–4.3 and 4.3.1)
  ↓
 4.4.5
 ```
