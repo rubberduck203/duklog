@@ -8,6 +8,21 @@ use crate::model::validation::{
     ValidationError, validate_callsign, validate_grid_square, validate_section, validate_tx_count,
 };
 
+/// Parses a Field Day class from a string.
+///
+/// Accepts `"A"`–`"F"` (case-insensitive). Returns an error for any other value.
+pub fn parse_fd_class(s: &str) -> Result<FdClass, ValidationError> {
+    match s.to_uppercase().as_str() {
+        "A" => Ok(FdClass::A),
+        "B" => Ok(FdClass::B),
+        "C" => Ok(FdClass::C),
+        "D" => Ok(FdClass::D),
+        "E" => Ok(FdClass::E),
+        "F" => Ok(FdClass::F),
+        _ => Err(ValidationError::InvalidFdClass(s.to_string())),
+    }
+}
+
 /// ARRL Field Day operating class (sent as part of every QSO exchange).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum FdClass {
@@ -113,11 +128,77 @@ impl FieldDayLog {
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
+    use quickcheck_macros::quickcheck;
 
     use crate::model::band::Band;
     use crate::model::mode::Mode;
     use crate::model::qso::Qso;
     use crate::model::{FdClass, FdPowerCategory, FieldDayLog, Log, ValidationError};
+
+    use super::parse_fd_class;
+
+    impl quickcheck::Arbitrary for FdClass {
+        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            *g.choose(&[
+                FdClass::A,
+                FdClass::B,
+                FdClass::C,
+                FdClass::D,
+                FdClass::E,
+                FdClass::F,
+            ])
+            .unwrap()
+        }
+    }
+
+    // --- parse_fd_class ---
+
+    #[test]
+    fn parse_fd_class_valid_letters() {
+        assert_eq!(parse_fd_class("A"), Ok(FdClass::A));
+        assert_eq!(parse_fd_class("B"), Ok(FdClass::B));
+        assert_eq!(parse_fd_class("C"), Ok(FdClass::C));
+        assert_eq!(parse_fd_class("D"), Ok(FdClass::D));
+        assert_eq!(parse_fd_class("E"), Ok(FdClass::E));
+        assert_eq!(parse_fd_class("F"), Ok(FdClass::F));
+    }
+
+    #[test]
+    fn parse_fd_class_lowercase_accepted() {
+        assert_eq!(parse_fd_class("a"), Ok(FdClass::A));
+        assert_eq!(parse_fd_class("f"), Ok(FdClass::F));
+    }
+
+    #[test]
+    fn parse_fd_class_invalid_returns_err() {
+        assert_eq!(
+            parse_fd_class("G"),
+            Err(ValidationError::InvalidFdClass("G".to_string()))
+        );
+    }
+
+    #[quickcheck]
+    fn parse_fd_class_invalid_string_returns_err(s: String) -> bool {
+        if !s.is_ascii() {
+            return true;
+        }
+        let upper = s.to_uppercase();
+        let valid = matches!(upper.as_str(), "A" | "B" | "C" | "D" | "E" | "F");
+        if valid {
+            return true; // skip valid inputs
+        }
+        parse_fd_class(&s).is_err()
+    }
+
+    #[quickcheck]
+    fn parse_fd_class_round_trip(class: FdClass) -> bool {
+        parse_fd_class(&class.to_string()) == Ok(class)
+    }
+
+    #[quickcheck]
+    fn parse_fd_class_lowercase_round_trip(class: FdClass) -> bool {
+        parse_fd_class(&class.to_string().to_lowercase()) == Ok(class)
+    }
 
     #[test]
     fn display_label_field_day_returns_exchange() {

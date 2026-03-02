@@ -408,12 +408,12 @@ mod tests {
     }
 
     fn fill_create_form(app: &mut App) {
-        type_string(app, "W1AW");
+        // Tab moves from TypeSelector into Fields (focus = CALLSIGN)
         app.handle_key(press(KeyCode::Tab));
-        type_string(app, "W1AW");
-        app.handle_key(press(KeyCode::Tab));
-        app.handle_key(press(KeyCode::Tab));
-        type_string(app, "FN31");
+        type_string(app, "W1AW"); // CALLSIGN
+        app.handle_key(press(KeyCode::Tab)); // → OPERATOR (leave empty)
+        app.handle_key(press(KeyCode::Tab)); // → GENERAL_GRID
+        type_string(app, "FN31"); // GENERAL_GRID
     }
 
     mod construction {
@@ -672,8 +672,13 @@ mod tests {
             let (_dir, mut app) = make_app();
             app.handle_key(press(KeyCode::Char('n')));
             assert_eq!(app.log_create.form().focus(), 0);
+            // First Tab: TypeSelector → Fields (focus stays at 0)
+            app.handle_key(press(KeyCode::Tab));
+            assert_eq!(app.log_create.form().focus(), 0);
+            // Second Tab: advance within Fields
             app.handle_key(press(KeyCode::Tab));
             assert_eq!(app.log_create.form().focus(), 1);
+            // BackTab: retreat
             app.handle_key(shift_press(KeyCode::BackTab));
             assert_eq!(app.log_create.form().focus(), 0);
         }

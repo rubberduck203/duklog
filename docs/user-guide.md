@@ -19,7 +19,7 @@ cargo build --release
 
 1. Launch duklog from your terminal: `duklog`
 2. Press `n` to create a new log
-3. Enter your station callsign, optionally your operator callsign and park reference, and your grid square
+3. Use `←`/`→` to select a log type (General, POTA, Field Day, Winter FD), then `Tab` to move to the fields; fill in your callsign and grid square (plus any type-specific fields)
 4. Press `Enter` to create the log
 5. Enter your first contact's callsign, adjust RST if needed, and press `Enter` to log the QSO
 6. Use `Alt+b` / `Alt+m` to change band and mode as needed
@@ -42,23 +42,42 @@ The home screen. Shows all saved logs in a table with columns for Callsign, Date
 
 ### Log Create
 
-A form for creating a new log.
+A form for creating a new log. Start by selecting the log type with `←`/`→`, then press `Tab` to move to the fields.
 
-**Fields:**
+**Log Types:**
+
+| Type | Use for |
+|---|---|
+| General | General-purpose logging with no contest or activation context |
+| POTA | Parks on the Air activations; optional park reference field |
+| Field Day | ARRL Field Day contest |
+| Winter FD | Winter Field Day contest |
+
+**Common Fields (all types):**
 
 - **Station Callsign** (required) — your operating callsign
 - **Operator** (optional) — only needed if different from the station callsign
+- **Grid Square** (required) — Maidenhead locator (e.g. `FN31` or `FN31pr`); any case accepted, normalised to canonical form on submit
+
+**POTA-only Fields:**
+
 - **Park Ref** (optional) — POTA park reference (e.g. `K-0001`), auto-uppercased as you type
-- **Grid Square** (required) — Maidenhead locator (e.g. `FN31` or `FN31pr`); any case accepted, normalised to canonical form on submit (`fn31pr` → `FN31pr`)
+
+**Field Day / Winter FD Fields:**
+
+- **Tx Count** (required) — number of transmitters (1–255)
+- **FD Class** / **WFD Class** (required) — operating class; auto-uppercased (FD: A–F; WFD: H/I/O/M)
+- **Section** (required) — ARRL/RAC section (e.g. `EPA`, `DX`); auto-uppercased
 
 | Key | Action |
 |---|---|
-| `Tab` / `Shift+Tab` | Move between fields |
+| `←` / `→` | Switch log type (when Type Selector is focused) |
+| `Tab` / `Shift+Tab` | Move between type selector and form fields |
 | `Enter` | Validate and create the log |
 | `Esc` | Cancel and return to Log Select |
 | `F1` | Show help |
 
-Validation errors are shown inline when you submit. If a log already exists with the same station callsign, operator, park reference, and grid square on the same UTC day, creation is blocked with an inline error. Logs for different parks on the same day are always allowed.
+Validation errors are shown inline when you submit. If a log already exists with the same station callsign and type on the same UTC day, creation is blocked with an inline error.
 
 ### QSO Entry
 

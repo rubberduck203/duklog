@@ -477,6 +477,52 @@ mod tests {
     }
 
     #[test]
+    fn field_day_log_excludes_pota_sig_fields() {
+        let log = Log::FieldDay(
+            crate::model::FieldDayLog::new(
+                "W1AW".to_string(),
+                None,
+                1,
+                crate::model::FdClass::B,
+                "EPA".to_string(),
+                crate::model::FdPowerCategory::Low,
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        );
+        let record = format_qso(&log, &make_qso()).unwrap();
+        assert!(
+            !record.contains("MY_SIG"),
+            "field day log must not emit MY_SIG"
+        );
+        assert!(
+            !record.contains("SIG_INFO"),
+            "field day log must not emit SIG_INFO"
+        );
+    }
+
+    #[test]
+    fn wfd_log_excludes_pota_sig_fields() {
+        let log = Log::WinterFieldDay(
+            crate::model::WfdLog::new(
+                "W1AW".to_string(),
+                None,
+                1,
+                crate::model::WfdClass::H,
+                "EPA".to_string(),
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        );
+        let record = format_qso(&log, &make_qso()).unwrap();
+        assert!(!record.contains("MY_SIG"), "WFD log must not emit MY_SIG");
+        assert!(
+            !record.contains("SIG_INFO"),
+            "WFD log must not emit SIG_INFO"
+        );
+    }
+
+    #[test]
     fn adif_header_precedes_records() {
         let mut log = make_log();
         log.add_qso(make_qso());
