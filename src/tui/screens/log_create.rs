@@ -194,20 +194,25 @@ impl LogCreateState {
                 Action::None
             }
             KeyCode::Char(ch) => {
-                if self.focus_area == FocusArea::Fields {
-                    let focus = self.form.focus();
-                    let should_uppercase = focus == CALLSIGN
-                        || focus == OPERATOR
-                        || (self.log_type == LogType::Pota && focus == POTA_PARK_REF)
-                        || (matches!(self.log_type, LogType::FieldDay | LogType::WinterFieldDay)
-                            && (focus == CONTEST_CLASS || focus == CONTEST_SECTION));
-                    let ch = if should_uppercase {
-                        ch.to_ascii_uppercase()
-                    } else {
-                        ch
-                    };
-                    self.form.insert_char(ch);
+                // Typing while the type selector is focused jumps immediately to
+                // Station Callsign so the user can start entering their callsign
+                // without having to Tab first.
+                if self.focus_area == FocusArea::TypeSelector {
+                    self.focus_area = FocusArea::Fields;
+                    self.form.set_focus(0);
                 }
+                let focus = self.form.focus();
+                let should_uppercase = focus == CALLSIGN
+                    || focus == OPERATOR
+                    || (self.log_type == LogType::Pota && focus == POTA_PARK_REF)
+                    || (matches!(self.log_type, LogType::FieldDay | LogType::WinterFieldDay)
+                        && (focus == CONTEST_CLASS || focus == CONTEST_SECTION));
+                let ch = if should_uppercase {
+                    ch.to_ascii_uppercase()
+                } else {
+                    ch
+                };
+                self.form.insert_char(ch);
                 Action::None
             }
             KeyCode::Backspace => {
@@ -551,6 +556,15 @@ pub fn draw_log_create(state: &LogCreateState, frame: &mut Frame, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    // Centre the form at a fixed width — form fields are short and look bad
+    // spanning the full terminal width on wide displays.
+    let [_, centered, _] = Layout::horizontal([
+        Constraint::Fill(1),
+        Constraint::Max(60),
+        Constraint::Fill(1),
+    ])
+    .areas(inner);
+
     let [type_row, form_area, error_area, _spacer, footer_area] = Layout::vertical([
         Constraint::Length(3),
         Constraint::Min(9),
@@ -558,7 +572,7 @@ pub fn draw_log_create(state: &LogCreateState, frame: &mut Frame, area: Rect) {
         Constraint::Min(0),
         Constraint::Length(1),
     ])
-    .areas(inner);
+    .areas(centered);
 
     // Type selector
     let type_text = format!("< {} >", state.log_type.display_name());
@@ -887,11 +901,20 @@ mod tests {
         use super::*;
 
         #[test]
-        fn chars_ignored_in_type_selector_mode() {
+        fn typing_in_type_selector_jumps_to_callsign() {
             let mut state = LogCreateState::new();
+            assert_eq!(state.focus_area, FocusArea::TypeSelector);
             state.handle_key(press(KeyCode::Char('W')));
+            assert_eq!(
+                state.focus_area,
+                FocusArea::Fields,
+                "typing should jump to Fields"
+            );
+            assert_eq!(state.form().focus(), CALLSIGN);
+            assert_eq!(state.form().value(CALLSIGN), "W");
+            // Subsequent chars continue filling the callsign field
             state.handle_key(press(KeyCode::Char('1')));
-            assert_eq!(state.form().value(CALLSIGN), "");
+            assert_eq!(state.form().value(CALLSIGN), "W1");
         }
 
         #[test]
@@ -1448,9 +1471,43 @@ mod tests {
         fn renders_pota_fields_when_type_is_pota() {
             let mut state = LogCreateState::new();
             switch_to_pota(&mut state);
-            let output = render_log_create(&state, 60, 25);
+            let output = render_log_create(&state, 80, 24);
             assert!(output.contains("POTA"), "should show POTA in type selector");
             assert!(output.contains("Park Ref"), "should show park ref field");
+        }
+
+        #[test]
+        fn renders_fd_fields_at_standard_width() {
+            let mut state = LogCreateState::new();
+            switch_to_field_day(&mut state);
+            let output = render_log_create(&state, 80, 24);
+            assert!(output.contains("Field Day"), "should show Field Day type");
+            assert!(
+                output.contains("FD Class"),
+                "FD Class label must be visible"
+            );
+            assert!(
+                output.contains("Tx Count"),
+                "Tx Count label must be visible"
+            );
+            assert!(output.contains("Section"), "Section label must be visible");
+        }
+
+        #[test]
+        fn renders_wfd_fields_at_standard_width() {
+            let mut state = LogCreateState::new();
+            switch_to_wfd(&mut state);
+            let output = render_log_create(&state, 80, 24);
+            assert!(output.contains("Winter FD"), "should show Winter FD type");
+            assert!(
+                output.contains("WFD Class"),
+                "WFD Class label must be visible at 80 cols"
+            );
+            assert!(
+                output.contains("Tx Count"),
+                "Tx Count label must be visible"
+            );
+            assert!(output.contains("Section"), "Section label must be visible");
         }
     }
 

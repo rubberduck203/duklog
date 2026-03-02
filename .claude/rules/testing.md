@@ -45,6 +45,11 @@ Use a `buffer_to_string` helper (in `mod rendering` test submodules) to extract 
 
 Keep `#[mutants::skip]` on draw functions — mutation testing visual layout isn't productive.
 
+**Required coverage for screen draw functions:**
+- Every `draw_*` function in `src/tui/screens/` must have a `mod rendering` block with at least one render test **at 80×24** (standard terminal) asserting all field labels and UI elements are visible.
+- For screens with multiple variants (e.g. log types, states), add one render test per variant — the test renders at 80×24 and asserts the variant-specific label appears. This prevents truncation/overflow bugs that only appear at wide or narrow terminal widths.
+- Form-based screens must constrain form area width with `Constraint::Max(N)` centered via `Constraint::Fill(1)` on each side so fields don't span the full terminal width on wide displays. 60–80 chars is appropriate for short-label forms.
+
 ## Coverage Exclusions
 
 Use `#[cfg_attr(coverage_nightly, coverage(off))]` only for:
