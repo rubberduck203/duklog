@@ -33,15 +33,13 @@ const POTA_PARK_REF: usize = 2;
 /// Field index for grid square in the POTA log form.
 const POTA_GRID: usize = 3;
 
-// Contest (FD / WFD) log fields
-/// Field index for grid square in the contest log form.
-const CONTEST_GRID: usize = 2;
+// Contest (FD / WFD) log fields — no Grid Square; FD/WFD specs don't require it.
 /// Field index for transmitter count in the contest log form.
-const CONTEST_TX_COUNT: usize = 3;
+const CONTEST_TX_COUNT: usize = 2;
 /// Field index for operating class in the contest log form.
-const CONTEST_CLASS: usize = 4;
+const CONTEST_CLASS: usize = 3;
 /// Field index for ARRL section in the contest log form.
-const CONTEST_SECTION: usize = 5;
+const CONTEST_SECTION: usize = 4;
 
 // --- Local enums ---
 
@@ -264,7 +262,6 @@ impl LogCreateState {
                 self.grid_square_buf = self.form.value(POTA_GRID).to_string();
             }
             LogType::FieldDay | LogType::WinterFieldDay => {
-                self.grid_square_buf = self.form.value(CONTEST_GRID).to_string();
                 self.tx_count_buf = self.form.value(CONTEST_TX_COUNT).to_string();
                 self.class_buf = self.form.value(CONTEST_CLASS).to_string();
                 self.section_buf = self.form.value(CONTEST_SECTION).to_string();
@@ -289,7 +286,6 @@ impl LogCreateState {
             LogType::FieldDay => Form::new(vec![
                 FormField::new("Station Callsign", true),
                 FormField::new("Operator", false),
-                FormField::new("Grid Square (e.g. FN31)", true),
                 FormField::new("Tx Count", true),
                 FormField::new("FD Class (A–F)", true),
                 FormField::new("Section", true),
@@ -297,7 +293,6 @@ impl LogCreateState {
             LogType::WinterFieldDay => Form::new(vec![
                 FormField::new("Station Callsign", true),
                 FormField::new("Operator", false),
-                FormField::new("Grid Square (e.g. FN31)", true),
                 FormField::new("Tx Count", true),
                 FormField::new("WFD Class (H/I/O/M)", true),
                 FormField::new("Section", true),
@@ -316,7 +311,6 @@ impl LogCreateState {
                 form.set_value(POTA_GRID, &self.grid_square_buf);
             }
             LogType::FieldDay | LogType::WinterFieldDay => {
-                form.set_value(CONTEST_GRID, &self.grid_square_buf);
                 form.set_value(CONTEST_TX_COUNT, &self.tx_count_buf);
                 form.set_value(CONTEST_CLASS, &self.class_buf);
                 form.set_value(CONTEST_SECTION, &self.section_buf);
@@ -412,7 +406,6 @@ impl LogCreateState {
         let callsign = self.form.value(CALLSIGN).to_string();
         let operator_str = self.form.value(OPERATOR).to_string();
         let operator = (!operator_str.is_empty()).then_some(operator_str);
-        let grid_square = normalize_grid_square(self.form.value(CONTEST_GRID));
         let tx_count_str = self.form.value(CONTEST_TX_COUNT).to_string();
         // CONTEST_CLASS is auto-uppercased at input time
         let class_str = self.form.value(CONTEST_CLASS).to_string();
@@ -426,9 +419,6 @@ impl LogCreateState {
             && let Err(e) = validate_callsign(op)
         {
             self.form.set_error(OPERATOR, e.to_string());
-        }
-        if let Err(e) = validate_grid_square(&grid_square) {
-            self.form.set_error(CONTEST_GRID, e.to_string());
         }
         let tx_count = match tx_count_str.parse::<u8>() {
             Ok(n) => {
@@ -471,7 +461,7 @@ impl LogCreateState {
             class,
             section,
             power,
-            grid_square,
+            String::new(),
         ) {
             Ok(log) => Action::CreateLog(Log::FieldDay(log)),
             Err(e) => {
@@ -485,7 +475,6 @@ impl LogCreateState {
         let callsign = self.form.value(CALLSIGN).to_string();
         let operator_str = self.form.value(OPERATOR).to_string();
         let operator = (!operator_str.is_empty()).then_some(operator_str);
-        let grid_square = normalize_grid_square(self.form.value(CONTEST_GRID));
         let tx_count_str = self.form.value(CONTEST_TX_COUNT).to_string();
         // CONTEST_CLASS is auto-uppercased at input time
         let class_str = self.form.value(CONTEST_CLASS).to_string();
@@ -499,9 +488,6 @@ impl LogCreateState {
             && let Err(e) = validate_callsign(op)
         {
             self.form.set_error(OPERATOR, e.to_string());
-        }
-        if let Err(e) = validate_grid_square(&grid_square) {
-            self.form.set_error(CONTEST_GRID, e.to_string());
         }
         let tx_count = match tx_count_str.parse::<u8>() {
             Ok(n) => {
@@ -535,7 +521,7 @@ impl LogCreateState {
         let Ok(class) = class_result else {
             return Action::None; // unreachable: class error already set above
         };
-        match WfdLog::new(callsign, operator, tx_count, class, section, grid_square) {
+        match WfdLog::new(callsign, operator, tx_count, class, section, String::new()) {
             Ok(log) => Action::CreateLog(Log::WinterFieldDay(log)),
             Err(e) => {
                 self.form.set_error(CALLSIGN, e.to_string());
@@ -697,8 +683,6 @@ mod tests {
         enter_fields(state); // TypeSelector → CALLSIGN
         type_string(state, "W1AW");
         state.handle_key(press(KeyCode::Tab)); // → OPERATOR (leave empty)
-        state.handle_key(press(KeyCode::Tab)); // → CONTEST_GRID
-        type_string(state, "FN31");
         state.handle_key(press(KeyCode::Tab)); // → CONTEST_TX_COUNT
         type_string(state, "3");
         state.handle_key(press(KeyCode::Tab)); // → CONTEST_CLASS
@@ -713,8 +697,6 @@ mod tests {
         enter_fields(state); // TypeSelector → CALLSIGN
         type_string(state, "W1AW");
         state.handle_key(press(KeyCode::Tab)); // → OPERATOR (leave empty)
-        state.handle_key(press(KeyCode::Tab)); // → CONTEST_GRID
-        type_string(state, "FN31");
         state.handle_key(press(KeyCode::Tab)); // → CONTEST_TX_COUNT
         type_string(state, "1");
         state.handle_key(press(KeyCode::Tab)); // → CONTEST_CLASS
@@ -776,7 +758,7 @@ mod tests {
             switch_to_pota(&mut state);
             assert_eq!(state.form().fields().len(), 4); // POTA: 4 fields
             state.handle_key(press(KeyCode::Right)); // → FieldDay
-            assert_eq!(state.form().fields().len(), 6); // FD: 6 fields
+            assert_eq!(state.form().fields().len(), 5); // FD: 5 fields (no grid square)
         }
 
         #[test]
@@ -797,7 +779,7 @@ mod tests {
         }
 
         #[test]
-        fn type_switch_preserves_grid_square() {
+        fn type_switch_preserves_grid_square_for_pota() {
             let mut state = LogCreateState::new();
             enter_fields(&mut state); // → CALLSIGN
             state.handle_key(press(KeyCode::Tab)); // → OPERATOR
@@ -1003,7 +985,6 @@ mod tests {
             switch_to_field_day(&mut state);
             enter_fields(&mut state);
             state.handle_key(press(KeyCode::Tab)); // operator
-            state.handle_key(press(KeyCode::Tab)); // grid
             state.handle_key(press(KeyCode::Tab)); // tx count
             state.handle_key(press(KeyCode::Tab)); // class
             state.handle_key(press(KeyCode::Char('b')));
@@ -1016,7 +997,6 @@ mod tests {
             switch_to_field_day(&mut state);
             enter_fields(&mut state);
             state.handle_key(press(KeyCode::Tab)); // operator
-            state.handle_key(press(KeyCode::Tab)); // grid
             state.handle_key(press(KeyCode::Tab)); // tx count
             state.handle_key(press(KeyCode::Tab)); // class
             state.handle_key(press(KeyCode::Tab)); // section
@@ -1025,27 +1005,11 @@ mod tests {
         }
 
         #[test]
-        fn fd_grid_square_not_auto_uppercased() {
-            // Verify that grid square is NOT auto-uppercased even in FD mode —
-            // the condition is (FD type AND focus==class/section), not (FD type OR ...)
-            let mut state = LogCreateState::new();
-            switch_to_field_day(&mut state);
-            enter_fields(&mut state); // → CALLSIGN
-            state.handle_key(press(KeyCode::Tab)); // → OPERATOR
-            state.handle_key(press(KeyCode::Tab)); // → CONTEST_GRID
-            for ch in "fn31".chars() {
-                state.handle_key(press(KeyCode::Char(ch)));
-            }
-            assert_eq!(state.form().value(CONTEST_GRID), "fn31");
-        }
-
-        #[test]
         fn fd_tx_count_not_auto_uppercased() {
             let mut state = LogCreateState::new();
             switch_to_field_day(&mut state);
             enter_fields(&mut state);
             state.handle_key(press(KeyCode::Tab)); // operator
-            state.handle_key(press(KeyCode::Tab)); // grid
             state.handle_key(press(KeyCode::Tab)); // tx count
             type_string(&mut state, "3");
             assert_eq!(state.form().value(CONTEST_TX_COUNT), "3");
@@ -1218,7 +1182,7 @@ mod tests {
                     assert_eq!(log.class, crate::model::FdClass::B);
                     assert_eq!(log.section, "EPA");
                     assert_eq!(log.power, crate::model::FdPowerCategory::Low);
-                    assert_eq!(log.header.grid_square, "FN31");
+                    assert_eq!(log.header.grid_square, ""); // not collected for FD
                 }
                 other => panic!("expected CreateLog(FieldDay), got {other:?}"),
             }
@@ -1235,7 +1199,7 @@ mod tests {
                     assert_eq!(log.tx_count, 1);
                     assert_eq!(log.class, crate::model::WfdClass::H);
                     assert_eq!(log.section, "EPA");
-                    assert_eq!(log.header.grid_square, "FN31");
+                    assert_eq!(log.header.grid_square, ""); // not collected for WFD
                 }
                 other => panic!("expected CreateLog(WinterFieldDay), got {other:?}"),
             }
@@ -1278,7 +1242,6 @@ mod tests {
             assert!(state.form().has_errors());
             assert!(state.form().fields()[CALLSIGN].error.is_some());
             assert!(state.form().fields()[OPERATOR].error.is_none()); // optional
-            assert!(state.form().fields()[CONTEST_GRID].error.is_some());
             assert!(state.form().fields()[CONTEST_TX_COUNT].error.is_some()); // empty = parse error
             assert!(state.form().fields()[CONTEST_CLASS].error.is_some()); // empty = invalid class
             assert!(state.form().fields()[CONTEST_SECTION].error.is_some());
@@ -1293,7 +1256,6 @@ mod tests {
             assert!(state.form().has_errors());
             assert!(state.form().fields()[CALLSIGN].error.is_some());
             assert!(state.form().fields()[OPERATOR].error.is_none()); // optional
-            assert!(state.form().fields()[CONTEST_GRID].error.is_some());
             assert!(state.form().fields()[CONTEST_TX_COUNT].error.is_some());
             assert!(state.form().fields()[CONTEST_CLASS].error.is_some());
             assert!(state.form().fields()[CONTEST_SECTION].error.is_some());
@@ -1322,7 +1284,7 @@ mod tests {
         fn fd_invalid_class_shows_error() {
             let mut state = LogCreateState::new();
             fill_valid_fd_form(&mut state);
-            // Clear the class field and type an invalid value
+            // After fill_valid_fd_form, focus is on CONTEST_SECTION (last field)
             state.handle_key(shift_press(KeyCode::BackTab)); // section → class
             state.handle_key(press(KeyCode::Backspace)); // remove "B"
             type_string(&mut state, "Z");
@@ -1335,7 +1297,7 @@ mod tests {
         fn fd_invalid_tx_count_shows_error() {
             let mut state = LogCreateState::new();
             fill_valid_fd_form(&mut state);
-            // Navigate to tx_count field
+            // After fill_valid_fd_form, focus is on CONTEST_SECTION
             state.handle_key(shift_press(KeyCode::BackTab)); // section → class
             state.handle_key(shift_press(KeyCode::BackTab)); // class → tx_count
             state.handle_key(press(KeyCode::Backspace)); // remove "3"
@@ -1480,7 +1442,8 @@ mod tests {
         fn renders_fd_fields_at_standard_width() {
             let mut state = LogCreateState::new();
             switch_to_field_day(&mut state);
-            let output = render_log_create(&state, 80, 25);
+            // FD: 5 fields × 3 lines + 2 (border) + 3 (type row) + 1 (error) + 1 (footer) = 22
+            let output = render_log_create(&state, 80, 22);
             assert!(output.contains("Field Day"), "should show Field Day type");
             assert!(
                 output.contains("FD Class"),
@@ -1491,13 +1454,18 @@ mod tests {
                 "Tx Count label must be visible"
             );
             assert!(output.contains("Section"), "Section label must be visible");
+            assert!(
+                !output.contains("Grid Square"),
+                "FD should not show Grid Square"
+            );
         }
 
         #[test]
         fn renders_wfd_fields_at_standard_width() {
             let mut state = LogCreateState::new();
             switch_to_wfd(&mut state);
-            let output = render_log_create(&state, 80, 25);
+            // WFD: 5 fields × 3 lines + 2 (border) + 3 (type row) + 1 (error) + 1 (footer) = 22
+            let output = render_log_create(&state, 80, 22);
             assert!(output.contains("Winter FD"), "should show Winter FD type");
             assert!(
                 output.contains("WFD Class"),
@@ -1508,6 +1476,10 @@ mod tests {
                 "Tx Count label must be visible"
             );
             assert!(output.contains("Section"), "Section label must be visible");
+            assert!(
+                !output.contains("Grid Square"),
+                "WFD should not show Grid Square"
+            );
         }
     }
 

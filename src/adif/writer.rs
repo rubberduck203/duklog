@@ -170,11 +170,13 @@ pub fn format_qso(log: &Log, qso: &Qso) -> Result<String, AdifError> {
         &mut buf,
         field_tag("RST_RCVD", qso.rst_rcvd.as_str()),
     )?;
-    encode(
-        &mut encoder,
-        &mut buf,
-        field_tag("MY_GRIDSQUARE", log.header().grid_square.as_str()),
-    )?;
+    if !log.header().grid_square.is_empty() {
+        encode(
+            &mut encoder,
+            &mut buf,
+            field_tag("MY_GRIDSQUARE", log.header().grid_square.as_str()),
+        )?;
+    }
 
     encode_type_specific_fields(&mut encoder, &mut buf, log, qso)?;
 
