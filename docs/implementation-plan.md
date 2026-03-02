@@ -31,6 +31,7 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 - **4.1.5 Refactor: submodule extraction and function decomposition** (`feature/refactor-structure`) — Done
 - **4.1.6 Validation bug fixes** (`feature/validation-fixes`) — Done: added `normalize_park_ref`/`normalize_grid_square`; PARK_REF auto-uppercased in `log_create.rs`; grid square normalised at submit; defensive normalize in `qso_entry.rs`; lockup investigated, not reproducible
 - **4.2 Log type selection in log create flow** — Done: `LogType` enum (General/Pota/FieldDay/WinterFieldDay); type selector row above form with Left/Right cycling; `FocusArea` (TypeSelector/Fields); per-type form construction with buffer preservation across type switches; `submit_general`, `submit_pota`, `submit_field_day`, `submit_wfd` dispatch; `parse_fd_class`/`parse_wfd_class` added to model with quickcheck tests; `InvalidFdClass`/`InvalidWfdClass` `ValidationError` variants
+- **4.3 Field Day QSO entry + form layout redesign** — Done: `validate_fd_exchange`/`validate_wfd_exchange` with quickcheck tests; `InvalidFdExchange`/`InvalidWfdExchange` `ValidationError` variants; `QsoFormType` enum drives dynamic form construction in `QsoEntryState`; two-row horizontal form layout via `draw_qso_entry_form` using `draw_form_field`; form area reduced from 15 to 6 lines; type-aware submit validates exchange (FD/WFD) and frequency (WFD); ADIF writer updated: `CONTEST_ID`/`STX_STRING`/`SRX_STRING` for FD/WFD, `FREQ` for WFD, `SIG`/`SIG_INFO` gated on POTA log type (ADR-3)
 
 ---
 
@@ -84,34 +85,6 @@ The model now uses a `Log` enum (`General(GeneralLog)`, `Pota(PotaLog)`, future 
 - Section field (FD/WFD): permissive free-text, auto-uppercase; accepts any non-empty string (handles `DX`, unusual sections, and future additions without a hardcoded list)
 - Update `CreateLog` action to carry `LogConfig`
 
-#### 4.3 Field Day QSO entry + form layout redesign (`feature/field-day-qso`)
-**Files**: `src/tui/screens/qso_entry.rs`, `src/adif/writer.rs`
-
-- **Two-row form layout**: reorganise the QSO entry form from a single column into two rows to free vertical space for a larger recent-QSO list and a more prominent status bar:
-  - Row 1 (always): Their Callsign, RST Sent, RST Rcvd
-  - Row 2 (type-specific, left slot + Comments): see per-type breakdown below
-
-- **Per-log-type field sets** — different log types have different row-2 fields; the implementation must account for this explicitly. Two viable approaches:
-  - **Separate layout paths**: `draw_qso_entry` branches on log type and renders a different layout per type; field index constants are defined per-type or as a single enum; preferred if types diverge significantly in future
-  - **Dynamic form construction**: `QsoEntryState` is initialised with a log-type parameter and builds the `Form` with the appropriate fields at construction time; field indices are per-type constants or a shared enum
-
-  Whichever approach is chosen, document the decision in `docs/architecture.md`.
-
-- **Row 2 by log type**:
-  | Log type | Left slot | Right slot |
-  |----------|-----------|------------|
-  | General  | *(empty)* | Comments |
-  | POTA     | Their Park (optional) | Comments |
-  | Field Day | Their Exchange (**required**) | Comments |
-  | Winter Field Day | Their Exchange (**required**) | Comments |
-
-- Their Exchange field:
-  - Free-text input; stores received exchange verbatim (e.g., `3A CT`)
-  - Auto-uppercase
-  - Required on submit for FD/WFD log types
-- ADIF export: emit `CONTEST_ID`, `STX_STRING` (from log config), `SRX_STRING` (from QSO) for contest logs
-- Remove `MY_SIG`/`SIG` fields from non-POTA logs
-
 #### 4.4 Log select and status bar updates (`feature/log-type-ui`)
 **Files**: `src/tui/screens/log_select.rs`, `src/tui/widgets/status_bar.rs`
 
@@ -129,7 +102,7 @@ The model now uses a `Log` enum (`General(GeneralLog)`, `Pota(PotaLog)`, future 
 - Add a delete action on the QSO list screen (e.g., `d` key with a confirmation prompt)
 - Prevents accidental permanent removal of a QSO without confirmation
 
-> **Dependencies**: 4.1 → 4.1.5 → 4.1.6 → 4.2 → 4.3; 4.4 depends on 4.1 and can be done alongside 4.2–4.3; 4.4.5 depends on 4.4.
+> **Dependencies**: 4.1 → 4.1.5 → 4.1.6 → 4.2 → 4.3 (all complete); 4.4 depends on 4.1 and can be done alongside completed 4.2–4.3; 4.4.5 depends on 4.4.
 > 4.1 should be done after 3.12 is complete (avoids mid-polish data model churn).
 
 ---
@@ -137,16 +110,9 @@ The model now uses a `Log` enum (`General(GeneralLog)`, `Pota(PotaLog)`, future 
 ## Dependency Graph (remaining)
 
 ```
-4.1
- ↓
-4.1.5
- ↓
-4.1.6
- ↓
-4.2
- ↓
-4.3
-4.4 (parallel with 4.2–4.3, depends on 4.1)
+[4.1 → 4.1.5 → 4.1.6 → 4.2 → 4.3 — all complete]
+
+4.4 (depends on completed 4.1–4.3)
  ↓
 4.4.5
 ```

@@ -22,6 +22,10 @@ pub enum ValidationError {
     InvalidFdClass(String),
     #[error("invalid WFD class: {0} (must be H, I, O, or M)")]
     InvalidWfdClass(String),
+    #[error("invalid Field Day exchange: {0}")]
+    InvalidFdExchange(String),
+    #[error("invalid Winter Field Day exchange: {0}")]
+    InvalidWfdExchange(String),
 }
 
 static PARK_REF_RE: LazyLock<Regex> =

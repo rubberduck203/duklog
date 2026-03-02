@@ -9,11 +9,12 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Row, Table};
 
 use crate::model::{
-    Band, Log, Mode, Qso, normalize_park_ref, validate_callsign, validate_park_ref,
+    Band, Log, Mode, Qso, normalize_park_ref, validate_callsign, validate_fd_exchange,
+    validate_park_ref, validate_wfd_exchange,
 };
 use crate::tui::action::Action;
 use crate::tui::app::Screen;
-use crate::tui::widgets::form::{Form, FormField, draw_form};
+use crate::tui::widgets::form::{Form, FormField, draw_form_field};
 use crate::tui::widgets::{StatusBarContext, draw_status_bar};
 
 /// Field index for the other station's callsign.
@@ -22,15 +23,60 @@ const THEIR_CALL: usize = 0;
 const RST_SENT: usize = 1;
 /// Field index for RST received.
 const RST_RCVD: usize = 2;
-/// Field index for the other station's POTA park reference.
-const THEIR_PARK: usize = 3;
-/// Field index for free-text comments.
-const COMMENTS: usize = 4;
+// Index 3: type-specific field (Their Park for POTA; Their Exchange for FD/WFD; absent for General)
+// Index 4: Frequency (WFD only) or Comments (POTA/FD)
+// Comments is always at form_type.comments_idx()
+
+/// The form variant in use for the current log type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum QsoFormType {
+    #[default]
+    General,
+    Pota,
+    FieldDay,
+    WinterFieldDay,
+}
+
+impl QsoFormType {
+    /// Returns `true` when there is a type-specific field at index 3.
+    fn has_type_specific(self) -> bool {
+        !matches!(self, Self::General)
+    }
+
+    /// Display label for the type-specific field at index 3.
+    fn type_specific_label(self) -> &'static str {
+        match self {
+            Self::Pota => "Their Park",
+            Self::FieldDay | Self::WinterFieldDay => "Their Exchange",
+            Self::General => "",
+        }
+    }
+
+    /// Whether the type-specific field is required.
+    fn type_specific_required(self) -> bool {
+        matches!(self, Self::FieldDay | Self::WinterFieldDay)
+    }
+
+    /// Returns `true` for WFD (has Frequency at index 4).
+    fn has_frequency(self) -> bool {
+        matches!(self, Self::WinterFieldDay)
+    }
+
+    /// Index of the Comments field for this form type.
+    fn comments_idx(self) -> usize {
+        match self {
+            Self::General => 3,
+            Self::Pota | Self::FieldDay => 4,
+            Self::WinterFieldDay => 5,
+        }
+    }
+}
 
 /// State for the QSO entry screen.
 #[derive(Debug, Clone)]
 pub struct QsoEntryState {
     form: Form,
+    form_type: QsoFormType,
     band: Band,
     mode: Mode,
     recent_qsos: Vec<Qso>,
@@ -49,25 +95,42 @@ impl QsoEntryState {
     /// Creates a new QSO entry state with default band/mode and empty form.
     pub fn new() -> Self {
         let mode = Mode::default();
-        let rst = mode.default_rst();
-        let mut form = Form::new(vec![
-            FormField::new("Their Callsign", true),
-            FormField::new("RST Sent", true),
-            FormField::new("RST Rcvd", true),
-            FormField::new("Their Park", false),
-            FormField::new("Comments", false),
-        ]);
-        form.set_value(RST_SENT, rst);
-        form.set_value(RST_RCVD, rst);
-
+        let form_type = QsoFormType::default();
+        let form = Self::build_form_for_type(form_type, mode);
         Self {
             form,
+            form_type,
             band: Band::default(),
             mode,
             recent_qsos: Vec::new(),
             error: None,
             editing: None,
         }
+    }
+
+    /// Constructs a [`Form`] with the correct fields and RST defaults for the given type and mode.
+    fn build_form_for_type(form_type: QsoFormType, mode: Mode) -> Form {
+        let rst = mode.default_rst();
+        let mut fields = vec![
+            FormField::new("Their Callsign", true),
+            FormField::new("RST Sent", true),
+            FormField::new("RST Rcvd", true),
+        ];
+        if form_type.has_type_specific() {
+            fields.push(FormField::new(
+                form_type.type_specific_label(),
+                form_type.type_specific_required(),
+            ));
+        }
+        if form_type.has_frequency() {
+            fields.push(FormField::new("Frequency", true));
+        }
+        fields.push(FormField::new("Comments", false));
+
+        let mut form = Form::new(fields);
+        form.set_value(RST_SENT, rst);
+        form.set_value(RST_RCVD, rst);
+        form
     }
 
     /// Handles a key event, returning an [`Action`] for the app to apply.
@@ -164,9 +227,19 @@ impl QsoEntryState {
         self.error = Some(msg);
     }
 
-    /// Populates recent QSOs from a log (last 3, newest first).
+    /// Populates recent QSOs from a log (last 3, newest first) and rebuilds the form for the log type.
     pub fn set_log_context(&mut self, log: &Log) {
         self.recent_qsos = log.header().qsos.iter().rev().take(3).cloned().collect();
+        let new_type = match log {
+            Log::General(_) => QsoFormType::General,
+            Log::Pota(_) => QsoFormType::Pota,
+            Log::FieldDay(_) => QsoFormType::FieldDay,
+            Log::WinterFieldDay(_) => QsoFormType::WinterFieldDay,
+        };
+        if new_type != self.form_type {
+            self.form_type = new_type;
+            self.form = Self::build_form_for_type(new_type, self.mode);
+        }
     }
 
     /// Adds a QSO to the recent list, keeping only the last 3 (newest first).
@@ -190,9 +263,30 @@ impl QsoEntryState {
         self.form.set_value(THEIR_CALL, &qso.their_call);
         self.form.set_value(RST_SENT, &qso.rst_sent);
         self.form.set_value(RST_RCVD, &qso.rst_rcvd);
-        self.form
-            .set_value(THEIR_PARK, qso.their_park.as_deref().unwrap_or(""));
-        self.form.set_value(COMMENTS, &qso.comments);
+        match self.form_type {
+            QsoFormType::General => {}
+            QsoFormType::Pota => {
+                self.form
+                    .set_value(3, qso.their_park.as_deref().unwrap_or(""));
+            }
+            QsoFormType::FieldDay => {
+                self.form
+                    .set_value(3, qso.exchange_rcvd.as_deref().unwrap_or(""));
+            }
+            QsoFormType::WinterFieldDay => {
+                self.form
+                    .set_value(3, qso.exchange_rcvd.as_deref().unwrap_or(""));
+                self.form.set_value(
+                    4,
+                    qso.frequency
+                        .map(|f| f.to_string())
+                        .unwrap_or_default()
+                        .as_str(),
+                );
+            }
+        }
+        let comments_idx = self.form_type.comments_idx();
+        self.form.set_value(comments_idx, &qso.comments);
         self.band = qso.band;
         self.mode = qso.mode;
         self.form.clear_errors();
@@ -207,8 +301,13 @@ impl QsoEntryState {
         let rst = self.mode.default_rst();
         self.form.set_value(RST_SENT, rst);
         self.form.set_value(RST_RCVD, rst);
-        self.form.clear_value(THEIR_PARK);
-        self.form.clear_value(COMMENTS);
+        if self.form_type.has_type_specific() {
+            self.form.clear_value(3);
+        }
+        if self.form_type.has_frequency() {
+            self.form.clear_value(4);
+        }
+        self.form.clear_value(self.form_type.comments_idx());
         self.form.clear_errors();
         self.error = None;
         self.editing = None;
@@ -222,9 +321,11 @@ impl QsoEntryState {
 
     /// Handles a printable character: inserts into the focused field.
     ///
-    /// Callsign and park ref fields are auto-uppercased.
+    /// Callsign and type-specific fields (index 3) are auto-uppercased.
     fn handle_char(&mut self, ch: char) -> Action {
-        let should_uppercase = self.form.focus() == THEIR_CALL || self.form.focus() == THEIR_PARK;
+        let focus = self.form.focus();
+        let should_uppercase =
+            focus == THEIR_CALL || (self.form_type.has_type_specific() && focus == 3);
         let ch = if should_uppercase {
             ch.to_ascii_uppercase()
         } else {
@@ -264,11 +365,8 @@ impl QsoEntryState {
         let their_call = self.form.value(THEIR_CALL).to_string();
         let rst_sent = self.form.value(RST_SENT).to_string();
         let rst_rcvd = self.form.value(RST_RCVD).to_string();
-        // Normalize even though handle_char auto-uppercases at input: start_editing sets
-        // the form value directly (bypassing handle_char), so stored lowercase park refs
-        // loaded from pre-fix log files would reach submit without auto-uppercase.
-        let their_park_str = normalize_park_ref(self.form.value(THEIR_PARK));
-        let comments = self.form.value(COMMENTS).to_string();
+        let comments_idx = self.form_type.comments_idx();
+        let comments = self.form.value(comments_idx).to_string();
 
         if let Err(e) = validate_callsign(&their_call) {
             self.form.set_error(THEIR_CALL, e.to_string());
@@ -280,23 +378,69 @@ impl QsoEntryState {
             self.form
                 .set_error(RST_RCVD, "RST received is required".into());
         }
-        if !their_park_str.is_empty()
-            && let Err(e) = validate_park_ref(&their_park_str)
-        {
-            self.form.set_error(THEIR_PARK, e.to_string());
+
+        // Type-specific field at index 3
+        let mut their_park: Option<String> = None;
+        let mut exchange_rcvd: Option<String> = None;
+        let mut frequency: Option<u32> = None;
+
+        match self.form_type {
+            QsoFormType::General => {}
+            QsoFormType::Pota => {
+                // Normalize even though handle_char auto-uppercases at input: start_editing sets
+                // the form value directly (bypassing handle_char), so stored lowercase park refs
+                // loaded from pre-fix log files would reach submit without auto-uppercase.
+                let park_str = normalize_park_ref(self.form.value(3));
+                if !park_str.is_empty() {
+                    if let Err(e) = validate_park_ref(&park_str) {
+                        self.form.set_error(3, e.to_string());
+                    } else {
+                        their_park = Some(park_str);
+                    }
+                }
+            }
+            QsoFormType::FieldDay => {
+                let exch = self.form.value(3).to_string();
+                if let Err(e) = validate_fd_exchange(&exch) {
+                    self.form.set_error(3, e.to_string());
+                } else {
+                    exchange_rcvd = Some(exch);
+                }
+            }
+            QsoFormType::WinterFieldDay => {
+                let exch = self.form.value(3).to_string();
+                if let Err(e) = validate_wfd_exchange(&exch) {
+                    self.form.set_error(3, e.to_string());
+                } else {
+                    exchange_rcvd = Some(exch);
+                }
+                let freq_str = self.form.value(4).to_string();
+                match freq_str.parse::<u32>() {
+                    Ok(f) if f > 0 => frequency = Some(f),
+                    _ => self
+                        .form
+                        .set_error(4, "frequency must be a positive integer (kHz)".into()),
+                }
+            }
         }
 
         if self.form.has_errors() {
             return Action::None;
         }
 
-        let their_park = (!their_park_str.is_empty()).then_some(their_park_str);
-
         let timestamp = self.editing.map(|(_, ts)| ts).unwrap_or_else(Utc::now);
 
         match Qso::new(
-            their_call, rst_sent, rst_rcvd, self.band, self.mode, timestamp, comments, their_park,
-            None, None,
+            their_call,
+            rst_sent,
+            rst_rcvd,
+            self.band,
+            self.mode,
+            timestamp,
+            comments,
+            their_park,
+            exchange_rcvd,
+            frequency,
         ) {
             Ok(qso) => match self.editing {
                 Some((idx, _)) => Action::UpdateQso(idx, qso),
@@ -353,7 +497,7 @@ pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Fram
     ] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(2),
-        Constraint::Length(15),
+        Constraint::Length(6),
         Constraint::Min(3),
         Constraint::Length(1),
     ])
@@ -372,7 +516,7 @@ pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Fram
     draw_header(state, log, frame, header_area);
 
     // Form fields
-    draw_form(state.form(), frame, form_area);
+    draw_qso_entry_form(state, frame, form_area);
 
     // Error message
     if let Some(err) = state.error() {
@@ -398,6 +542,51 @@ pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Fram
     let footer =
         Paragraph::new(Line::from(footer_text)).style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, footer_area);
+}
+
+/// Renders the QSO entry form in a two-row horizontal layout.
+///
+/// Row 1: Their Callsign | RST Sent | RST Rcvd (always, all types)
+/// Row 2: varies by log type — see [`QsoFormType`]
+#[mutants::skip]
+fn draw_qso_entry_form(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
+    use ratatui::layout::Constraint::Ratio;
+    let form = state.form();
+    let form_type = state.form_type;
+
+    // Split into two rows of 3 lines each
+    let [row1_area, row2_area] =
+        Layout::vertical([Constraint::Length(3), Constraint::Length(3)]).areas(area);
+
+    // Row 1: always three equal columns
+    let [col0, col1, col2] =
+        Layout::horizontal([Ratio(1, 3), Ratio(1, 3), Ratio(1, 3)]).areas(row1_area);
+    draw_form_field(form, THEIR_CALL, frame, col0);
+    draw_form_field(form, RST_SENT, frame, col1);
+    draw_form_field(form, RST_RCVD, frame, col2);
+
+    // Row 2: layout depends on form type
+    match form_type {
+        QsoFormType::General => {
+            // Comments only on the right half; left half empty
+            let [_empty, comments_area] =
+                Layout::horizontal([Ratio(1, 2), Ratio(1, 2)]).areas(row2_area);
+            draw_form_field(form, 3, frame, comments_area);
+        }
+        QsoFormType::Pota | QsoFormType::FieldDay => {
+            let [type_area, comments_area] =
+                Layout::horizontal([Ratio(1, 2), Ratio(1, 2)]).areas(row2_area);
+            draw_form_field(form, 3, frame, type_area);
+            draw_form_field(form, 4, frame, comments_area);
+        }
+        QsoFormType::WinterFieldDay => {
+            let [exch_area, freq_area, comments_area] =
+                Layout::horizontal([Ratio(1, 3), Ratio(1, 3), Ratio(1, 3)]).areas(row2_area);
+            draw_form_field(form, 3, frame, exch_area);
+            draw_form_field(form, 4, frame, freq_area);
+            draw_form_field(form, 5, frame, comments_area);
+        }
+    }
 }
 
 /// Renders the station info, band/mode, and activation progress header.
@@ -558,6 +747,18 @@ mod tests {
         type_string(state, "KD9XYZ");
     }
 
+    fn make_pota_log() -> Log {
+        Log::Pota(
+            PotaLog::new(
+                "W1AW".to_string(),
+                None,
+                Some("K-0001".to_string()),
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        )
+    }
+
     mod construction {
         use super::*;
 
@@ -569,10 +770,24 @@ mod tests {
             assert_eq!(state.form().value(RST_SENT), "59");
             assert_eq!(state.form().value(RST_RCVD), "59");
             assert_eq!(state.form().value(THEIR_CALL), "");
-            assert_eq!(state.form().value(THEIR_PARK), "");
-            assert_eq!(state.form().value(COMMENTS), "");
+            // General form: no type-specific field; Comments at index 3
+            assert_eq!(state.form().value(3), "");
             assert!(state.recent_qsos().is_empty());
             assert_eq!(state.error(), None);
+        }
+
+        #[test]
+        fn pota_context_adds_their_park_field() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
+            // POTA form: Their Park at index 3, Comments at index 4
+            assert_eq!(state.form().value(3), "");
+            assert_eq!(state.form().value(4), "");
+            assert_eq!(
+                state.form().fields()[3].label,
+                "Their Park",
+                "index 3 should be Their Park"
+            );
         }
 
         #[test]
@@ -603,23 +818,24 @@ mod tests {
         #[test]
         fn park_ref_auto_uppercased() {
             let mut state = QsoEntryState::new();
-            // Tab to Their Park field
+            state.set_log_context(&make_pota_log());
+            // Tab to Their Park field (index 3 in POTA form)
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             type_string(&mut state, "k-0001");
-            assert_eq!(state.form().value(THEIR_PARK), "K-0001");
+            assert_eq!(state.form().value(3), "K-0001");
         }
 
         #[test]
         fn comments_not_uppercased() {
             let mut state = QsoEntryState::new();
-            // Tab to Comments field
-            for _ in 0..4 {
-                state.handle_key(press(KeyCode::Tab));
-            }
+            // General form: Comments at index 3; 3 tabs from THEIR_CALL
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
             type_string(&mut state, "hello");
-            assert_eq!(state.form().value(COMMENTS), "hello");
+            assert_eq!(state.form().value(3), "hello");
         }
 
         #[test]
@@ -631,7 +847,8 @@ mod tests {
         }
 
         #[test]
-        fn tab_cycles_focus() {
+        fn tab_cycles_focus_general() {
+            // General form has 4 fields: THEIR_CALL, RST_SENT, RST_RCVD, Comments(3)
             let mut state = QsoEntryState::new();
             assert_eq!(state.form().focus(), THEIR_CALL);
             state.handle_key(press(KeyCode::Tab));
@@ -639,18 +856,35 @@ mod tests {
             state.handle_key(press(KeyCode::Tab));
             assert_eq!(state.form().focus(), RST_RCVD);
             state.handle_key(press(KeyCode::Tab));
-            assert_eq!(state.form().focus(), THEIR_PARK);
+            assert_eq!(state.form().focus(), 3); // Comments in General form
             state.handle_key(press(KeyCode::Tab));
-            assert_eq!(state.form().focus(), COMMENTS);
+            assert_eq!(state.form().focus(), THEIR_CALL);
+        }
+
+        #[test]
+        fn tab_cycles_focus_pota() {
+            // POTA form: THEIR_CALL, RST_SENT, RST_RCVD, Their Park(3), Comments(4)
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
+            assert_eq!(state.form().focus(), THEIR_CALL);
+            state.handle_key(press(KeyCode::Tab));
+            assert_eq!(state.form().focus(), RST_SENT);
+            state.handle_key(press(KeyCode::Tab));
+            assert_eq!(state.form().focus(), RST_RCVD);
+            state.handle_key(press(KeyCode::Tab));
+            assert_eq!(state.form().focus(), 3); // Their Park
+            state.handle_key(press(KeyCode::Tab));
+            assert_eq!(state.form().focus(), 4); // Comments
             state.handle_key(press(KeyCode::Tab));
             assert_eq!(state.form().focus(), THEIR_CALL);
         }
 
         #[test]
         fn backtab_cycles_focus_backward() {
+            // General form: last field is index 3 (Comments)
             let mut state = QsoEntryState::new();
             state.handle_key(shift_press(KeyCode::BackTab));
-            assert_eq!(state.form().focus(), COMMENTS);
+            assert_eq!(state.form().focus(), 3);
         }
 
         #[test]
@@ -762,12 +996,13 @@ mod tests {
         #[test]
         fn m_types_in_park_ref() {
             let mut state = QsoEntryState::new();
-            // Tab to Their Park
+            state.set_log_context(&make_pota_log());
+            // Tab to Their Park (index 3 in POTA form)
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             type_string(&mut state, "mb-0001");
-            assert_eq!(state.form().value(THEIR_PARK), "MB-0001");
+            assert_eq!(state.form().value(3), "MB-0001");
             assert_eq!(state.mode(), Mode::Ssb);
         }
     }
@@ -849,8 +1084,9 @@ mod tests {
         #[test]
         fn valid_p2p_qso() {
             let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
             fill_valid_callsign(&mut state);
-            // Tab to Their Park
+            // Tab to Their Park (index 3 in POTA form)
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
@@ -902,15 +1138,16 @@ mod tests {
         #[test]
         fn invalid_park_ref_shows_error() {
             let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
             fill_valid_callsign(&mut state);
-            // Tab to Their Park
+            // Tab to Their Park (index 3 in POTA form)
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             type_string(&mut state, "BAD");
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
-            assert!(state.form().fields()[THEIR_PARK].error.is_some());
+            assert!(state.form().fields()[3].error.is_some());
         }
 
         #[test]
@@ -928,10 +1165,10 @@ mod tests {
         fn submit_with_comments() {
             let mut state = QsoEntryState::new();
             fill_valid_callsign(&mut state);
-            // Tab to Comments
-            for _ in 0..4 {
-                state.handle_key(press(KeyCode::Tab));
-            }
+            // General form: Comments at index 3; 3 tabs from THEIR_CALL
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
             type_string(&mut state, "nice signal");
             let action = state.handle_key(press(KeyCode::Enter));
             match action {
@@ -940,6 +1177,135 @@ mod tests {
                 }
                 other => panic!("expected AddQso, got {other:?}"),
             }
+        }
+
+        fn make_fd_log() -> Log {
+            use crate::model::{FdClass, FdPowerCategory, FieldDayLog};
+            Log::FieldDay(
+                FieldDayLog::new(
+                    "W1AW".to_string(),
+                    None,
+                    1,
+                    FdClass::B,
+                    "EPA".to_string(),
+                    FdPowerCategory::Low,
+                    "FN31".to_string(),
+                )
+                .unwrap(),
+            )
+        }
+
+        fn make_wfd_log() -> Log {
+            use crate::model::{WfdClass, WfdLog};
+            Log::WinterFieldDay(
+                WfdLog::new(
+                    "W1AW".to_string(),
+                    None,
+                    1,
+                    WfdClass::H,
+                    "EPA".to_string(),
+                    "FN31".to_string(),
+                )
+                .unwrap(),
+            )
+        }
+
+        #[test]
+        fn fd_valid_exchange_returns_add_qso() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            fill_valid_callsign(&mut state);
+            // Tab to Their Exchange (index 3)
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "3A CT");
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::AddQso(qso) => {
+                    assert_eq!(qso.exchange_rcvd, Some("3A CT".to_string()));
+                    assert_eq!(qso.their_park, None);
+                }
+                other => panic!("expected AddQso, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn fd_missing_exchange_shows_error() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            fill_valid_callsign(&mut state);
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert_eq!(action, Action::None);
+            assert!(state.form().fields()[3].error.is_some());
+        }
+
+        #[test]
+        fn fd_invalid_exchange_shows_error() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            fill_valid_callsign(&mut state);
+            // Tab to Their Exchange (index 3)
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "3Z CT"); // Z is not a valid FD class
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert_eq!(action, Action::None);
+            assert!(state.form().fields()[3].error.is_some());
+        }
+
+        #[test]
+        fn wfd_valid_exchange_and_frequency_returns_add_qso() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_wfd_log());
+            fill_valid_callsign(&mut state);
+            // Tab to Their Exchange (index 3)
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "2H EPA");
+            // Tab to Frequency (index 4)
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "14225");
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::AddQso(qso) => {
+                    assert_eq!(qso.exchange_rcvd, Some("2H EPA".to_string()));
+                    assert_eq!(qso.frequency, Some(14225));
+                }
+                other => panic!("expected AddQso, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn wfd_invalid_frequency_shows_error() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_wfd_log());
+            fill_valid_callsign(&mut state);
+            // Tab to Their Exchange (index 3)
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "2H EPA");
+            // Tab to Frequency (index 4) - leave empty or put invalid value
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "abc");
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert_eq!(action, Action::None);
+            assert!(state.form().fields()[4].error.is_some());
+        }
+
+        #[test]
+        fn wfd_exchange_uppercased() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_wfd_log());
+            // Tab to Their Exchange (index 3)
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "2h epa"); // lowercase
+            assert_eq!(state.form().value(3), "2H EPA");
         }
 
         #[test]
@@ -965,7 +1331,9 @@ mod tests {
         #[test]
         fn clears_callsign_park_comments() {
             let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
             fill_valid_callsign(&mut state);
+            // Tab to Their Park (index 3) in POTA form
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
@@ -975,8 +1343,8 @@ mod tests {
 
             state.clear_fast_fields();
             assert_eq!(state.form().value(THEIR_CALL), "");
-            assert_eq!(state.form().value(THEIR_PARK), "");
-            assert_eq!(state.form().value(COMMENTS), "");
+            assert_eq!(state.form().value(3), ""); // Their Park in POTA form
+            assert_eq!(state.form().value(4), ""); // Comments in POTA form
         }
 
         #[test]
@@ -1210,14 +1578,15 @@ mod tests {
         #[test]
         fn start_editing_populates_form() {
             let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
             let qso = make_test_qso();
             state.start_editing(2, &qso);
 
             assert_eq!(state.form().value(THEIR_CALL), "W3ABC");
             assert_eq!(state.form().value(RST_SENT), "57");
             assert_eq!(state.form().value(RST_RCVD), "55");
-            assert_eq!(state.form().value(THEIR_PARK), "K-5678");
-            assert_eq!(state.form().value(COMMENTS), "test comment");
+            assert_eq!(state.form().value(3), "K-5678"); // Their Park in POTA form
+            assert_eq!(state.form().value(4), "test comment"); // Comments in POTA form
             assert_eq!(state.band(), Band::M40);
             assert_eq!(state.mode(), Mode::Cw);
             assert_eq!(state.form().focus(), THEIR_CALL);
@@ -1226,14 +1595,16 @@ mod tests {
         #[test]
         fn start_editing_without_park() {
             let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
             let qso = make_qso("W3ABC", Band::M20, Mode::Ssb);
             state.start_editing(0, &qso);
-            assert_eq!(state.form().value(THEIR_PARK), "");
+            assert_eq!(state.form().value(3), ""); // Their Park empty in POTA form
         }
 
         #[test]
         fn is_editing_returns_correct_value() {
             let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
             assert!(!state.is_editing());
             state.start_editing(0, &make_test_qso());
             assert!(state.is_editing());
@@ -1242,6 +1613,7 @@ mod tests {
         #[test]
         fn submit_in_edit_mode_returns_update_qso() {
             let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
             let qso = make_test_qso();
             let original_ts = qso.timestamp;
             state.start_editing(2, &qso);
@@ -1260,6 +1632,7 @@ mod tests {
         #[test]
         fn esc_in_edit_mode_navigates_to_qso_list() {
             let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
             state.start_editing(0, &make_test_qso());
             let action = state.handle_key(press(KeyCode::Esc));
             assert_eq!(action, Action::Navigate(Screen::QsoList));
@@ -1269,6 +1642,7 @@ mod tests {
         #[test]
         fn reset_clears_editing_state() {
             let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
             state.start_editing(0, &make_test_qso());
             state.reset();
             assert!(!state.is_editing());
@@ -1277,6 +1651,7 @@ mod tests {
         #[test]
         fn clear_fast_fields_clears_editing_state() {
             let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
             state.start_editing(0, &make_test_qso());
             state.clear_fast_fields();
             assert!(!state.is_editing());
@@ -1285,6 +1660,7 @@ mod tests {
         #[test]
         fn start_editing_clears_errors() {
             let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
             state.handle_key(press(KeyCode::Enter)); // trigger validation errors
             assert!(state.form().has_errors());
             state.set_error("some error".into());
@@ -1303,6 +1679,7 @@ mod tests {
             base.their_park = Some("k-1234".to_string()); // bypass Qso::new validation
 
             let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
             state.start_editing(0, &base);
 
             let action = state.handle_key(press(KeyCode::Enter));
@@ -1504,6 +1881,121 @@ mod tests {
             assert!(
                 output.contains("W1AW @ -"),
                 "should show dash for missing park"
+            );
+        }
+
+        fn make_fd_log() -> Log {
+            use crate::model::{FdClass, FdPowerCategory, FieldDayLog};
+            Log::FieldDay(
+                FieldDayLog::new(
+                    "W1AW".to_string(),
+                    None,
+                    1,
+                    FdClass::B,
+                    "EPA".to_string(),
+                    FdPowerCategory::Low,
+                    "FN31".to_string(),
+                )
+                .unwrap(),
+            )
+        }
+
+        fn make_wfd_log() -> Log {
+            use crate::model::{WfdClass, WfdLog};
+            Log::WinterFieldDay(
+                WfdLog::new(
+                    "W1AW".to_string(),
+                    None,
+                    1,
+                    WfdClass::H,
+                    "EPA".to_string(),
+                    "FN31".to_string(),
+                )
+                .unwrap(),
+            )
+        }
+
+        fn make_general_log() -> Log {
+            use crate::model::GeneralLog;
+            Log::General(GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap())
+        }
+
+        fn render_with_log_type(log: &Log) -> String {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(log);
+            render_qso_entry(&state, Some(log), 80, 25)
+        }
+
+        #[test]
+        fn renders_field_labels_row1() {
+            let state = QsoEntryState::new();
+            let output = render_qso_entry(&state, None, 80, 25);
+            assert!(output.contains("Their Callsign"), "row1: callsign label");
+            assert!(output.contains("RST Sent"), "row1: RST sent label");
+            assert!(output.contains("RST Rcvd"), "row1: RST rcvd label");
+        }
+
+        #[test]
+        fn renders_general_log_form() {
+            let log = make_general_log();
+            let output = render_with_log_type(&log);
+            assert!(output.contains("Their Callsign"), "should show callsign");
+            assert!(!output.contains("Their Park"), "general has no Their Park");
+            assert!(
+                !output.contains("Their Exchange"),
+                "general has no Their Exchange"
+            );
+        }
+
+        #[test]
+        fn renders_pota_log_form() {
+            let log = make_log();
+            let output = render_with_log_type(&log);
+            assert!(output.contains("Their Park"), "POTA should show Their Park");
+            assert!(
+                !output.contains("Their Exchange"),
+                "POTA should not show Their Exchange"
+            );
+        }
+
+        #[test]
+        fn renders_fd_log_form() {
+            let log = make_fd_log();
+            let output = render_with_log_type(&log);
+            assert!(
+                output.contains("Their Exchange"),
+                "FD should show Their Exchange"
+            );
+            assert!(output.contains('*'), "required field should show asterisk");
+            assert!(
+                !output.contains("Their Park"),
+                "FD should not show Their Park"
+            );
+            assert!(
+                !output.contains("Frequency"),
+                "FD should not show Frequency"
+            );
+        }
+
+        #[test]
+        fn renders_wfd_log_form() {
+            let log = make_wfd_log();
+            let output = render_with_log_type(&log);
+            assert!(
+                output.contains("Their Exchange"),
+                "WFD should show Their Exchange"
+            );
+            assert!(output.contains("Frequency"), "WFD should show Frequency");
+        }
+
+        #[test]
+        fn renders_default_form_without_log_context() {
+            let state = QsoEntryState::new();
+            let output = render_qso_entry(&state, None, 80, 25);
+            assert!(!output.contains("Their Park"), "default has no Their Park");
+            assert!(
+                !output.contains("Their Exchange"),
+                "default has no Their Exchange"
             );
         }
     }

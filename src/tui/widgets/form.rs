@@ -147,6 +147,58 @@ impl Form {
     }
 }
 
+/// Renders a single form field at the given area.
+#[mutants::skip]
+pub fn draw_form_field(form: &Form, field_idx: usize, frame: &mut Frame, area: Rect) {
+    let Some(field) = form.fields.get(field_idx) else {
+        return;
+    };
+    let row_height = 3_u16;
+    let is_focused = field_idx == form.focus;
+
+    let border_color = if field.error.is_some() {
+        Color::Red
+    } else if is_focused {
+        Color::Yellow
+    } else {
+        Color::DarkGray
+    };
+
+    let label = if field.required {
+        format!("{} *", field.label)
+    } else {
+        field.label.clone()
+    };
+
+    let block = Block::default()
+        .title(label)
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color));
+
+    let mut spans = vec![Span::raw(&field.value)];
+    if is_focused {
+        spans.push(Span::styled(
+            "\u{2588}",
+            Style::default().add_modifier(Modifier::SLOW_BLINK),
+        ));
+    }
+
+    let paragraph = Paragraph::new(Line::from(spans)).block(block);
+    frame.render_widget(paragraph, area);
+
+    // Draw error below the field if there's space
+    if let Some(ref err) = field.error {
+        let error_line = Paragraph::new(Span::styled(err, Style::default().fg(Color::Red)));
+        let err_area = Rect {
+            x: area.x + 2,
+            y: area.y + row_height.saturating_sub(1),
+            width: area.width.saturating_sub(4),
+            height: 1,
+        };
+        frame.render_widget(error_line, err_area);
+    }
+}
+
 /// Renders a form within the given area.
 #[mutants::skip]
 pub fn draw_form(form: &Form, frame: &mut Frame, area: Rect) {
@@ -159,51 +211,8 @@ pub fn draw_form(form: &Form, frame: &mut Frame, area: Rect) {
 
     let rows = Layout::vertical(constraints).split(area);
 
-    for (i, field) in form.fields.iter().enumerate() {
-        let is_focused = i == form.focus;
-
-        let border_color = if field.error.is_some() {
-            Color::Red
-        } else if is_focused {
-            Color::Yellow
-        } else {
-            Color::DarkGray
-        };
-
-        let label = if field.required {
-            format!("{} *", field.label)
-        } else {
-            field.label.clone()
-        };
-
-        let block = Block::default()
-            .title(label)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(border_color));
-
-        let mut spans = vec![Span::raw(&field.value)];
-        if is_focused {
-            spans.push(Span::styled(
-                "\u{2588}",
-                Style::default().add_modifier(Modifier::SLOW_BLINK),
-            ));
-        }
-
-        let paragraph = Paragraph::new(Line::from(spans)).block(block);
-        frame.render_widget(paragraph, rows[i]);
-
-        // Draw error below the field if there's space
-        if let Some(ref err) = field.error {
-            let error_line = Paragraph::new(Span::styled(err, Style::default().fg(Color::Red)));
-            // Render error overlapping the bottom of the row area
-            let err_area = Rect {
-                x: rows[i].x + 2,
-                y: rows[i].y + row_height.saturating_sub(1),
-                width: rows[i].width.saturating_sub(4),
-                height: 1,
-            };
-            frame.render_widget(error_line, err_area);
-        }
+    for i in 0..form.fields.len() {
+        draw_form_field(form, i, frame, rows[i]);
     }
 }
 
@@ -477,6 +486,36 @@ mod tests {
                 !output.contains("Park Ref *"),
                 "optional field should not have asterisk"
             );
+        }
+
+        fn render_single_field(form: &Form, field_idx: usize, width: u16, height: u16) -> String {
+            let backend = TestBackend::new(width, height);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal
+                .draw(|frame| {
+                    draw_form_field(form, field_idx, frame, frame.area());
+                })
+                .unwrap();
+            buffer_to_string(terminal.backend().buffer())
+        }
+
+        #[test]
+        fn draw_form_field_renders_label() {
+            let form = make_form();
+            let output = render_single_field(&form, 0, 40, 3);
+            assert!(
+                output.contains("Callsign *"),
+                "single field render should show label"
+            );
+        }
+
+        #[test]
+        fn draw_form_field_out_of_bounds_is_noop() {
+            let form = make_form();
+            // Should not panic for out-of-bounds index
+            let output = render_single_field(&form, 99, 40, 3);
+            // Buffer should be blank (no label rendered)
+            assert!(!output.contains("Callsign"));
         }
 
         #[test]

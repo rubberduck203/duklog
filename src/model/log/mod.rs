@@ -8,11 +8,11 @@ mod header;
 mod pota;
 mod wfd;
 
-pub use field_day::{FdClass, FdPowerCategory, FieldDayLog, parse_fd_class};
+pub use field_day::{FdClass, FdPowerCategory, FieldDayLog, parse_fd_class, validate_fd_exchange};
 pub use general::GeneralLog;
 pub use header::LogHeader;
 pub use pota::PotaLog;
-pub use wfd::{WfdClass, WfdLog, parse_wfd_class};
+pub use wfd::{WfdClass, WfdLog, parse_wfd_class, validate_wfd_exchange};
 
 /// Minimum unique QSOs required for a valid POTA activation (per UTC day).
 const POTA_ACTIVATION_THRESHOLD: usize = 10;

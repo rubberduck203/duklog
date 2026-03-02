@@ -1,12 +1,28 @@
 use std::fmt;
+use std::sync::LazyLock;
 
 use chrono::Utc;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use super::LogHeader;
 use crate::model::validation::{
     ValidationError, validate_callsign, validate_grid_square, validate_section, validate_tx_count,
 };
+
+static WFD_EXCHANGE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\d+[HIOM] \S+$").expect("valid hardcoded regex"));
+
+/// Validates a Winter Field Day received exchange string (e.g. `"2H EPA"`, `"1O DX"`).
+///
+/// Format: one or more digits, a class letter H/I/O/M, a space, then a non-whitespace section.
+pub fn validate_wfd_exchange(s: &str) -> Result<(), ValidationError> {
+    if WFD_EXCHANGE_RE.is_match(s) {
+        Ok(())
+    } else {
+        Err(ValidationError::InvalidWfdExchange(s.to_string()))
+    }
+}
 
 /// Parses a Winter Field Day class from a string.
 ///
@@ -112,7 +128,7 @@ mod tests {
     use crate::model::qso::Qso;
     use crate::model::{Log, ValidationError, WfdClass, WfdLog};
 
-    use super::parse_wfd_class;
+    use super::{parse_wfd_class, validate_wfd_exchange};
 
     impl quickcheck::Arbitrary for WfdClass {
         fn arbitrary(g: &mut quickcheck::Gen) -> Self {
@@ -262,6 +278,83 @@ mod tests {
             "FN31".to_string(),
         );
         assert_eq!(result, Err(ValidationError::InvalidTxCount));
+    }
+
+    // --- validate_wfd_exchange ---
+
+    #[test]
+    fn wfd_exchange_valid_all_classes() {
+        for cls in &["H", "I", "O", "M"] {
+            let s = format!("2{cls} EPA");
+            assert_eq!(validate_wfd_exchange(&s), Ok(()), "should accept {s}");
+        }
+    }
+
+    #[test]
+    fn wfd_exchange_valid_multi_tx() {
+        assert_eq!(validate_wfd_exchange("10H CT"), Ok(()));
+    }
+
+    #[test]
+    fn wfd_exchange_valid_dx_section() {
+        assert_eq!(validate_wfd_exchange("1O DX"), Ok(()));
+    }
+
+    #[test]
+    fn wfd_exchange_empty_is_invalid() {
+        assert!(validate_wfd_exchange("").is_err());
+    }
+
+    #[test]
+    fn wfd_exchange_wrong_class_letter() {
+        assert_eq!(
+            validate_wfd_exchange("2A EPA"),
+            Err(ValidationError::InvalidWfdExchange("2A EPA".to_string()))
+        );
+    }
+
+    #[test]
+    fn wfd_exchange_no_space() {
+        assert!(validate_wfd_exchange("2HEPA").is_err());
+    }
+
+    #[test]
+    fn wfd_exchange_no_section() {
+        assert!(validate_wfd_exchange("2H ").is_err());
+    }
+
+    #[test]
+    fn wfd_exchange_no_count() {
+        assert!(validate_wfd_exchange("H EPA").is_err());
+    }
+
+    #[quickcheck]
+    fn wfd_exchange_valid_constructed_always_accepted(
+        count: u8,
+        cls_idx: u8,
+        section: String,
+    ) -> bool {
+        if !section.is_ascii() {
+            return true;
+        }
+        let section = section.trim();
+        if section.is_empty() || section.contains(char::is_whitespace) {
+            return true;
+        }
+        let count = (count % 127) + 1; // 1-127
+        let cls = ['H', 'I', 'O', 'M'][(cls_idx % 4) as usize];
+        let exchange = format!("{count}{cls} {section}");
+        validate_wfd_exchange(&exchange).is_ok()
+    }
+
+    #[quickcheck]
+    fn wfd_exchange_wrong_class_letter_rejected(s: String) -> bool {
+        if !s.is_ascii() {
+            return true;
+        }
+        // Build an exchange with a class letter outside H/I/O/M
+        let invalid = format!("1Z {s}");
+        validate_wfd_exchange(&invalid).is_err()
     }
 
     #[test]

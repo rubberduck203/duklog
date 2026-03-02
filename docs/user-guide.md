@@ -83,13 +83,33 @@ Validation errors are shown inline when you submit. If a log already exists with
 
 The main logging screen. A status bar at the top shows the active log context: park reference (if set), callsign, today's QSO count, and — once you reach 10 QSOs — `ACTIVATED` in green. The header below shows your station info, current band/mode, and detailed activation progress. The most recent QSOs are displayed below the form.
 
-**Fields:**
+The form uses a two-row layout that adapts to the active log type:
 
-- **Their Callsign** (required) — auto-uppercased as you type
-- **RST Sent** (required) — pre-filled with the mode default
-- **RST Rcvd** (required) — pre-filled with the mode default
-- **Their Park** (optional) — for park-to-park contacts, auto-uppercased
-- **Comments** (optional)
+**Row 1 (all types):**
+
+| Field | Notes |
+|---|---|
+| Their Callsign (required) | Auto-uppercased as you type |
+| RST Sent (required) | Pre-filled with the mode default |
+| RST Rcvd (required) | Pre-filled with the mode default |
+
+**Row 2 (type-specific):**
+
+| Log Type | Left | Right |
+|---|---|---|
+| General | *(empty)* | Comments |
+| POTA | Their Park (optional) | Comments |
+| Field Day | Their Exchange (required) | Comments |
+| Winter FD | Their Exchange (required), Frequency (required) | Comments |
+
+**Field notes:**
+
+- **Their Park** — POTA park reference (e.g. `K-0001`) for park-to-park contacts; auto-uppercased; optional
+- **Their Exchange** — received contest exchange verbatim; auto-uppercased; required for FD/WFD
+  - Field Day format: `<count><class> <section>` — e.g. `3A CT`, `1F DX` (class: A–F)
+  - Winter Field Day format: `<count><class> <section>` — e.g. `2H EPA`, `1O DX` (class: H/I/O/M)
+- **Frequency** — operating frequency in kHz (e.g. `14225`); required for WFD ADIF export
+- **Comments** — free-text; optional
 
 | Key | Action |
 |---|---|

@@ -1,12 +1,28 @@
 use std::fmt;
+use std::sync::LazyLock;
 
 use chrono::Utc;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use super::LogHeader;
 use crate::model::validation::{
     ValidationError, validate_callsign, validate_grid_square, validate_section, validate_tx_count,
 };
+
+static FD_EXCHANGE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\d+[A-F] \S+$").expect("valid hardcoded regex"));
+
+/// Validates a Field Day received exchange string (e.g. `"3A CT"`, `"1F DX"`).
+///
+/// Format: one or more digits, a class letter A–F, a space, then a non-whitespace section.
+pub fn validate_fd_exchange(s: &str) -> Result<(), ValidationError> {
+    if FD_EXCHANGE_RE.is_match(s) {
+        Ok(())
+    } else {
+        Err(ValidationError::InvalidFdExchange(s.to_string()))
+    }
+}
 
 /// Parses a Field Day class from a string.
 ///
@@ -135,7 +151,7 @@ mod tests {
     use crate::model::qso::Qso;
     use crate::model::{FdClass, FdPowerCategory, FieldDayLog, Log, ValidationError};
 
-    use super::parse_fd_class;
+    use super::{parse_fd_class, validate_fd_exchange};
 
     impl quickcheck::Arbitrary for FdClass {
         fn arbitrary(g: &mut quickcheck::Gen) -> Self {
@@ -299,6 +315,83 @@ mod tests {
             "FN31".to_string(),
         );
         assert_eq!(result, Err(ValidationError::InvalidTxCount));
+    }
+
+    // --- validate_fd_exchange ---
+
+    #[test]
+    fn fd_exchange_valid_all_classes() {
+        for cls in &["A", "B", "C", "D", "E", "F"] {
+            let s = format!("3{cls} CT");
+            assert_eq!(validate_fd_exchange(&s), Ok(()), "should accept {s}");
+        }
+    }
+
+    #[test]
+    fn fd_exchange_valid_multi_tx() {
+        assert_eq!(validate_fd_exchange("12A EPA"), Ok(()));
+    }
+
+    #[test]
+    fn fd_exchange_valid_dx_section() {
+        assert_eq!(validate_fd_exchange("1F DX"), Ok(()));
+    }
+
+    #[test]
+    fn fd_exchange_empty_is_invalid() {
+        assert!(validate_fd_exchange("").is_err());
+    }
+
+    #[test]
+    fn fd_exchange_wrong_class_letter() {
+        assert_eq!(
+            validate_fd_exchange("3Z CT"),
+            Err(ValidationError::InvalidFdExchange("3Z CT".to_string()))
+        );
+    }
+
+    #[test]
+    fn fd_exchange_no_space() {
+        assert!(validate_fd_exchange("3ACT").is_err());
+    }
+
+    #[test]
+    fn fd_exchange_no_section() {
+        assert!(validate_fd_exchange("3A ").is_err());
+    }
+
+    #[test]
+    fn fd_exchange_no_count() {
+        assert!(validate_fd_exchange("A CT").is_err());
+    }
+
+    #[quickcheck]
+    fn fd_exchange_valid_constructed_always_accepted(
+        count: u8,
+        cls_idx: u8,
+        section: String,
+    ) -> bool {
+        if !section.is_ascii() {
+            return true;
+        }
+        let section = section.trim();
+        if section.is_empty() || section.contains(char::is_whitespace) {
+            return true;
+        }
+        let count = (count % 127) + 1; // 1-127
+        let cls = ['A', 'B', 'C', 'D', 'E', 'F'][(cls_idx % 6) as usize];
+        let exchange = format!("{count}{cls} {section}");
+        validate_fd_exchange(&exchange).is_ok()
+    }
+
+    #[quickcheck]
+    fn fd_exchange_wrong_class_letter_rejected(s: String) -> bool {
+        if !s.is_ascii() {
+            return true;
+        }
+        // Build an exchange with a class letter outside A-F
+        let invalid = format!("1Z {s}");
+        validate_fd_exchange(&invalid).is_err()
     }
 
     #[test]

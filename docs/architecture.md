@@ -120,6 +120,14 @@ The QSO list screen dispatches `EditQso(index)` when the user presses Enter on a
 
 `widgets/form.rs` provides a reusable `Form` with `FormField` entries. It handles focus cycling, character insert/delete, per-field errors, and rendering. Screens like LogCreate wrap a `Form` and add validation logic on submit.
 
+`draw_form` renders fields vertically in a single column. `draw_form_field` renders a single field at a caller-supplied `Rect`, used by screens that need custom spatial layouts (e.g. multi-column rows).
+
+### QSO Entry Screen
+
+`screens/qso_entry.rs` holds `QsoEntryState`, which includes a `QsoFormType` field tracking the log type in use. `build_form_for_type(form_type, mode) -> Form` constructs a `Form` with the correct field set (3–6 fields depending on type). `set_log_context` derives the form type from the `Log` variant and rebuilds the form when the type changes.
+
+The screen uses `draw_qso_entry_form` (a private `#[mutants::skip]` function) to render the form in a two-row horizontal layout rather than calling `draw_form`. Row 1 always shows the three core fields in equal thirds. Row 2 varies by type: General puts Comments on the right half; POTA/FD put the type-specific field left and Comments right; WFD uses three equal thirds for exchange, frequency, and comments. This frees ~9 lines of vertical space compared to the previous single-column layout.
+
 ### Status Bar Widget
 
 `widgets/status_bar.rs` provides `StatusBarContext` (a plain data struct) and `draw_status_bar`. It renders a one-line context bar at the top of the QSO Entry, QSO List, and Export screens showing the active log's callsign, park reference, today's QSO count, and activation status. The widget is decoupled from `Log` — callers construct a `StatusBarContext` from whatever log type is active. This keeps Phase 4 multi-logbook changes confined to context construction rather than the widget itself.
@@ -152,6 +160,20 @@ The QSO list screen dispatches `EditQso(index)` when the user presses Enter on a
 - Serialization uses `#[serde(tag = "log_type")]`; existing JSONL files without `log_type` default to `Log::Pota` for backward compatibility.
 
 **Tradeoff accepted:** `Log` methods that delegate to `LogHeader` (e.g., `header()`, `header_mut()`, `add_qso()`) require one match arm per variant. This is mechanical boilerplate that grows linearly with log types — acceptable given the benefits.
+
+---
+
+### ADR-3: Dynamic form construction for QSO entry (Phase 4.3)
+
+**Decision:** `QsoEntryState` holds a `form_type: QsoFormType` field and rebuilds the `Form` from scratch (via `build_form_for_type`) when the log type changes. Field indices are numeric constants (`THEIR_CALL=0`, `RST_SENT=1`, `RST_RCVD=2`); type-specific fields occupy index 3 (and 4 for WFD). A private `draw_qso_entry_form` function renders the form in a two-row layout using `draw_form_field` for per-cell placement.
+
+**Rejected alternative:** Separate layout paths in `draw_qso_entry` branching purely on log type, with a fixed Form field set and conditional rendering.
+
+**Rationale:**
+- Follows the same pattern as `log_create.rs`, keeping both form-owning screens consistent.
+- The `Form` struct is the canonical state container (field values, focus, errors); rebuilding it when the type changes ensures the field set is always self-consistent rather than conditionally hiding/showing fixed fields.
+- `draw_form_field` — added specifically for this phase — makes it trivial to place individual fields in arbitrary `Rect`s without re-implementing the border/error rendering.
+- Type-specific rendering is isolated in `draw_qso_entry_form`, which is a small `#[mutants::skip]` function tested via `TestBackend` renders.
 
 ---
 

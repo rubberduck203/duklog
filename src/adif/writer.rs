@@ -24,29 +24,60 @@ fn buf_to_string(buf: BytesMut) -> Result<String, AdifError> {
 
 // The SIG/MY_SIG value for POTA contacts.
 const POTA_SIG: &str = "POTA";
+// CONTEST_ID values for contest logs.
+const FIELD_DAY_CONTEST_ID: &str = "ARRL-FIELD-DAY";
+const WFD_CONTEST_ID: &str = "WFD";
 
-/// Encodes log-type-specific ADIF fields (currently POTA).
+/// Encodes log-type-specific ADIF fields.
 ///
-/// Emits `MY_SIG`/`MY_SIG_INFO` when the log has a park reference, and
-/// `SIG`/`SIG_INFO` when the QSO has their park set.
+/// - POTA: emits `MY_SIG`/`MY_SIG_INFO` (when log has a park ref) and
+///   `SIG`/`SIG_INFO` (when QSO has their park set).
+/// - Field Day: emits `CONTEST_ID`, `STX_STRING`, and `SRX_STRING` (when present).
+/// - Winter Field Day: emits `CONTEST_ID`, `STX_STRING`, `SRX_STRING`, and `FREQ`.
 fn encode_type_specific_fields(
     encoder: &mut TagEncoder,
     buf: &mut BytesMut,
     log: &Log,
     qso: &Qso,
 ) -> Result<(), AdifError> {
-    if let Log::Pota(pota) = log
-        && let Some(ref park) = pota.park_ref
-    {
-        encode(encoder, buf, field_tag("MY_SIG", POTA_SIG))?;
-        encode(encoder, buf, field_tag("MY_SIG_INFO", park.as_str()))?;
+    match log {
+        Log::General(_) => {}
+        Log::Pota(pota) => {
+            if let Some(ref park) = pota.park_ref {
+                encode(encoder, buf, field_tag("MY_SIG", POTA_SIG))?;
+                encode(encoder, buf, field_tag("MY_SIG_INFO", park.as_str()))?;
+            }
+            if let Some(ref their_park) = qso.their_park {
+                encode(encoder, buf, field_tag("SIG", POTA_SIG))?;
+                encode(encoder, buf, field_tag("SIG_INFO", their_park.as_str()))?;
+            }
+        }
+        Log::FieldDay(fd) => {
+            encode(encoder, buf, field_tag("CONTEST_ID", FIELD_DAY_CONTEST_ID))?;
+            encode(
+                encoder,
+                buf,
+                field_tag("STX_STRING", fd.sent_exchange().as_str()),
+            )?;
+            if let Some(ref exch) = qso.exchange_rcvd {
+                encode(encoder, buf, field_tag("SRX_STRING", exch.as_str()))?;
+            }
+        }
+        Log::WinterFieldDay(wfd) => {
+            encode(encoder, buf, field_tag("CONTEST_ID", WFD_CONTEST_ID))?;
+            encode(
+                encoder,
+                buf,
+                field_tag("STX_STRING", wfd.sent_exchange().as_str()),
+            )?;
+            if let Some(ref exch) = qso.exchange_rcvd {
+                encode(encoder, buf, field_tag("SRX_STRING", exch.as_str()))?;
+            }
+            if let Some(freq) = qso.frequency {
+                encode(encoder, buf, field_tag("FREQ", freq.to_string().as_str()))?;
+            }
+        }
     }
-
-    if let Some(ref their_park) = qso.their_park {
-        encode(encoder, buf, field_tag("SIG", POTA_SIG))?;
-        encode(encoder, buf, field_tag("SIG_INFO", their_park.as_str()))?;
-    }
-
     Ok(())
 }
 
@@ -474,6 +505,179 @@ mod tests {
         let record = format_qso(&make_log_without_park(), &qso).unwrap();
         let expected = format!("<CALL:{}>{}", call.len(), call);
         record.contains(&expected)
+    }
+
+    fn make_fd_log() -> Log {
+        let mut log = crate::model::FieldDayLog::new(
+            "W1AW".to_string(),
+            None,
+            1,
+            crate::model::FdClass::B,
+            "EPA".to_string(),
+            crate::model::FdPowerCategory::Low,
+            "FN31".to_string(),
+        )
+        .unwrap();
+        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        Log::FieldDay(log)
+    }
+
+    fn make_wfd_log() -> Log {
+        let mut log = crate::model::WfdLog::new(
+            "W1AW".to_string(),
+            None,
+            1,
+            crate::model::WfdClass::H,
+            "EPA".to_string(),
+            "FN31".to_string(),
+        )
+        .unwrap();
+        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
+        Log::WinterFieldDay(log)
+    }
+
+    fn make_qso_with_exchange(exchange: &str) -> Qso {
+        Qso::new(
+            "KD9XYZ".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M20,
+            Mode::Ssb,
+            Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
+            String::new(),
+            None,
+            Some(exchange.to_string()),
+            None,
+        )
+        .unwrap()
+    }
+
+    fn make_qso_with_exchange_and_freq(exchange: &str, freq: u32) -> Qso {
+        Qso::new(
+            "KD9XYZ".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M20,
+            Mode::Ssb,
+            Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
+            String::new(),
+            None,
+            Some(exchange.to_string()),
+            Some(freq),
+        )
+        .unwrap()
+    }
+
+    // --- Field Day ADIF tests ---
+
+    #[test]
+    fn field_day_qso_contains_contest_id() {
+        let record = format_qso(&make_fd_log(), &make_qso()).unwrap();
+        // "ARRL-FIELD-DAY" is 14 characters
+        assert!(
+            record.contains("<CONTEST_ID:14>ARRL-FIELD-DAY"),
+            "FD record must contain CONTEST_ID"
+        );
+    }
+
+    #[test]
+    fn field_day_qso_contains_stx_string() {
+        let record = format_qso(&make_fd_log(), &make_qso()).unwrap();
+        // Log is "1B EPA" (1 tx, class B, section EPA)
+        assert!(
+            record.contains("STX_STRING"),
+            "FD record must contain STX_STRING"
+        );
+        assert!(
+            record.contains("1B EPA"),
+            "STX_STRING should match sent exchange"
+        );
+    }
+
+    #[test]
+    fn field_day_qso_with_exchange_contains_srx_string() {
+        let record = format_qso(&make_fd_log(), &make_qso_with_exchange("3A CT")).unwrap();
+        assert!(
+            record.contains("SRX_STRING"),
+            "FD record with exchange should contain SRX_STRING"
+        );
+        assert!(
+            record.contains("3A CT"),
+            "SRX_STRING should match received exchange"
+        );
+    }
+
+    #[test]
+    fn field_day_qso_without_exchange_omits_srx_string() {
+        let record = format_qso(&make_fd_log(), &make_qso()).unwrap();
+        assert!(
+            !record.contains("SRX_STRING"),
+            "FD record without exchange must not contain SRX_STRING"
+        );
+    }
+
+    // --- Winter Field Day ADIF tests ---
+
+    #[test]
+    fn wfd_qso_contains_contest_id() {
+        let record = format_qso(&make_wfd_log(), &make_qso()).unwrap();
+        assert!(
+            record.contains("<CONTEST_ID:3>WFD"),
+            "WFD record must contain CONTEST_ID"
+        );
+    }
+
+    #[test]
+    fn wfd_qso_contains_stx_and_srx() {
+        let record = format_qso(&make_wfd_log(), &make_qso_with_exchange("2H EPA")).unwrap();
+        assert!(record.contains("STX_STRING"), "WFD must contain STX_STRING");
+        assert!(record.contains("SRX_STRING"), "WFD must contain SRX_STRING");
+        assert!(
+            record.contains("2H EPA"),
+            "SRX_STRING should match exchange"
+        );
+    }
+
+    #[test]
+    fn wfd_qso_with_frequency_contains_freq_field() {
+        let record = format_qso(
+            &make_wfd_log(),
+            &make_qso_with_exchange_and_freq("2H EPA", 14225),
+        )
+        .unwrap();
+        assert!(
+            record.contains("FREQ"),
+            "WFD record with frequency must contain FREQ"
+        );
+        assert!(record.contains("14225"), "FREQ value should match");
+    }
+
+    #[test]
+    fn wfd_qso_without_frequency_omits_freq() {
+        let record = format_qso(&make_wfd_log(), &make_qso_with_exchange("2H EPA")).unwrap();
+        assert!(
+            !record.contains("<FREQ:"),
+            "WFD record without frequency must not emit FREQ"
+        );
+    }
+
+    #[test]
+    fn non_pota_qso_with_their_park_excludes_sig_info() {
+        // General log with a QSO that has their_park set — should not emit SIG/SIG_INFO
+        let log =
+            Log::General(GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap());
+        // Directly set their_park, bypassing Qso::new validation for this test
+        let mut qso = make_qso();
+        qso.their_park = Some("K-1234".to_string());
+        let record = format_qso(&log, &qso).unwrap();
+        assert!(
+            !record.contains("<SIG:"),
+            "general log must not emit SIG even when their_park is set"
+        );
+        assert!(
+            !record.contains("<SIG_INFO:"),
+            "general log must not emit SIG_INFO even when their_park is set"
+        );
     }
 
     #[test]
