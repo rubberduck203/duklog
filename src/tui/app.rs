@@ -599,6 +599,46 @@ mod tests {
         }
     }
 
+    mod log_select_after_create {
+        use super::*;
+
+        #[test]
+        fn n_q_and_esc_work_on_log_select_after_creating_first_log() {
+            let (_dir, mut app) = make_app();
+            assert_eq!(app.screen(), Screen::LogSelect);
+
+            // Create first log
+            app.handle_key(press(KeyCode::Char('n')));
+            fill_create_form(&mut app);
+            app.handle_key(press(KeyCode::Enter));
+            assert_eq!(app.screen(), Screen::QsoEntry);
+
+            // Return to LogSelect
+            app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.screen(), Screen::LogSelect);
+            assert_eq!(app.log_select.logs().len(), 1);
+
+            // 'n' must navigate to LogCreate
+            app.handle_key(press(KeyCode::Char('n')));
+            assert_eq!(
+                app.screen(),
+                Screen::LogCreate,
+                "'n' should navigate to LogCreate from LogSelect after first log created"
+            );
+
+            // Esc back to LogSelect
+            app.handle_key(press(KeyCode::Esc));
+            assert_eq!(app.screen(), Screen::LogSelect);
+
+            // 'q' must quit
+            app.handle_key(press(KeyCode::Char('q')));
+            assert!(
+                app.should_quit(),
+                "'q' should quit from LogSelect after first log created"
+            );
+        }
+    }
+
     mod log_create_integration {
         use super::*;
 

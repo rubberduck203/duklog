@@ -126,6 +126,18 @@ impl Log {
         self.header_mut().replace_qso(index, qso)
     }
 
+    /// Returns the short type name used in table columns and UI labels.
+    ///
+    /// Returns `"General"`, `"POTA"`, `"FD"`, or `"WFD"`.
+    pub fn log_type_name(&self) -> &'static str {
+        match self {
+            Self::General(_) => "General",
+            Self::Pota(_) => "POTA",
+            Self::FieldDay(_) => "FD",
+            Self::WinterFieldDay(_) => "WFD",
+        }
+    }
+
     /// Returns a short display label for this log.
     ///
     /// - POTA: park reference if present, otherwise station callsign.
@@ -559,6 +571,54 @@ mod tests {
         assert_eq!(log.find_duplicates_on(&candidate, Some(today)).len(), 1);
         // Some(yesterday) — should find only yesterday's QSO
         assert_eq!(log.find_duplicates_on(&candidate, Some(yesterday)).len(), 1);
+    }
+
+    // --- log_type_name ---
+
+    #[test]
+    fn log_type_name_general() {
+        let log =
+            Log::General(GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap());
+        assert_eq!(log.log_type_name(), "General");
+    }
+
+    #[test]
+    fn log_type_name_pota() {
+        let log = make_log(); // PotaLog
+        assert_eq!(log.log_type_name(), "POTA");
+    }
+
+    #[test]
+    fn log_type_name_field_day() {
+        let log = Log::FieldDay(
+            FieldDayLog::new(
+                "W1AW".to_string(),
+                None,
+                1,
+                FdClass::B,
+                "EPA".to_string(),
+                FdPowerCategory::Low,
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        );
+        assert_eq!(log.log_type_name(), "FD");
+    }
+
+    #[test]
+    fn log_type_name_wfd() {
+        let log = Log::WinterFieldDay(
+            WfdLog::new(
+                "W1AW".to_string(),
+                None,
+                1,
+                WfdClass::H,
+                "EPA".to_string(),
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        );
+        assert_eq!(log.log_type_name(), "WFD");
     }
 
     // --- replace_qso ---

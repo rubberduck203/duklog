@@ -32,6 +32,8 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 - **4.1.6 Validation bug fixes** (`feature/validation-fixes`) — Done: added `normalize_park_ref`/`normalize_grid_square`; PARK_REF auto-uppercased in `log_create.rs`; grid square normalised at submit; defensive normalize in `qso_entry.rs`; lockup investigated, not reproducible
 - **4.2 Log type selection in log create flow** — Done: `LogType` enum (General/Pota/FieldDay/WinterFieldDay); type selector row above form with Left/Right cycling; `FocusArea` (TypeSelector/Fields); per-type form construction with buffer preservation across type switches; `submit_general`, `submit_pota`, `submit_field_day`, `submit_wfd` dispatch; `parse_fd_class`/`parse_wfd_class` added to model with quickcheck tests; `InvalidFdClass`/`InvalidWfdClass` `ValidationError` variants
 - **4.3 Field Day QSO entry + form layout redesign** — Done: `validate_fd_exchange`/`validate_wfd_exchange` with quickcheck tests; `InvalidFdExchange`/`InvalidWfdExchange` `ValidationError` variants; `QsoFormType` enum drives dynamic form construction in `QsoEntryState`; two-row horizontal form layout via `draw_qso_entry_form` using `draw_form_field`; form area reduced from 15 to 6 lines; type-aware submit validates exchange (FD/WFD) and frequency (WFD); ADIF writer updated: `CONTEST_ID`/`STX_STRING`/`SRX_STRING` for FD/WFD, `FREQ` for WFD, `SIG`/`SIG_INFO` gated on POTA log type (ADR-3)
+- **4.3.1 Log create form layout fixes** — Done: `draw_log_create` changed from `Constraint::Min(9)` to `Constraint::Length(fields.len() * 3)` so each field always gets exactly 3 lines; render tests updated to just-sufficient terminal heights (General=16, POTA=19, FD/WFD=25)
+- **4.4 Log select and status bar updates** — Done: `Log::log_type_name()` added; `StatusBarContext` redesigned with `context_label`/`pota_mode` (replaces `callsign`/`park_ref`); `StatusBarContext::from_log` constructor; log select table shows "Type" column (General/POTA/FD/WFD) instead of park column; log select footer adds `F1: help`; status bar format unified to `[label]  N QSOs` / `[label]  N/10 QSOs` / `[label]  ACTIVATED`
 
 ---
 
@@ -100,6 +102,29 @@ Two rendering bugs observed during Phase 4.3 review:
 
 **Bug 3 — Already fixed (commit 40e99b1)**: Typing while type selector was focused was silently ignored; now jumps immediately to Station Callsign.
 
+#### 4.3.2 FD/WFD exchange-only forms (`feature/contest-exchange-only`)
+**Files**: `src/tui/screens/log_create.rs`, `src/tui/screens/qso_entry.rs`
+
+Cross-checking the reference docs reveals fields collected that are not part of either contest exchange:
+
+**Log Create — remove Grid Square (FD and WFD)**
+
+Neither FD nor WFD lists grid square as a log-level setup field. The spec requires only: callsign, operator, tx count, class, section (and power category for FD). Remove `CONTEST_GRID` constant, `grid_square_buf` sync for FD/WFD, and the grid square `FormField` from both arms of `build_form_for_type`. Update `submit_field_day` and `submit_wfd` accordingly. Update render tests for the new field counts (FD: 5 fields × 3 lines = 15; WFD: same).
+
+**QSO Entry — remove RST, split exchange into class + section (FD and WFD)**
+
+Neither contest exchange includes RST. Additionally, "Their Exchange" should be split into two fields — their class (e.g. `3A`) and their section (e.g. `CT`) — mirroring the separate class/section fields on the log create screen and enabling per-field validation via `parse_fd_class`/`parse_wfd_class` and `validate_section`. The `SRX_STRING` is then assembled as `"{class} {section}"` at submit time; `validate_fd_exchange`/`validate_wfd_exchange` are no longer needed at QSO entry. After removal and split the field layout becomes:
+
+| Index | FD | WFD |
+|-------|----|-----|
+| 0 | Their Callsign | Their Callsign |
+| 1 | Their Class (e.g. `3A`) | Their Class (e.g. `2M`) |
+| 2 | Their Section (e.g. `CT`) | Their Section (e.g. `EPA`) |
+| 3 | Comments | Frequency (kHz) |
+| 4 | — | Comments |
+
+Update index constants (or add per-type index helpers), `build_form_for_type`, submit logic, and render tests.
+
 #### 4.4 Log select and status bar updates (`feature/log-type-ui`)
 **Files**: `src/tui/screens/log_select.rs`, `src/tui/widgets/status_bar.rs`
 
@@ -117,7 +142,7 @@ Two rendering bugs observed during Phase 4.3 review:
 - Add a delete action on the QSO list screen (e.g., `d` key with a confirmation prompt)
 - Prevents accidental permanent removal of a QSO without confirmation
 
-> **Dependencies**: 4.1 → 4.1.5 → 4.1.6 → 4.2 → 4.3 (all complete); **4.3.1 must be done before 4.4** (rendering correctness prerequisite); 4.4 depends on completed 4.1–4.3; 4.4.5 depends on 4.4.
+> **Dependencies**: 4.1 → 4.1.5 → 4.1.6 → 4.2 → 4.3 → 4.3.1 (all complete); **4.3.2 must be done before 4.4** (exchange-only forms correctness); 4.4 depends on completed 4.1–4.3.2; 4.4.5 depends on 4.4.
 > 4.1 should be done after 3.12 is complete (avoids mid-polish data model churn).
 
 ---
@@ -125,11 +150,9 @@ Two rendering bugs observed during Phase 4.3 review:
 ## Dependency Graph (remaining)
 
 ```
-[4.1 → 4.1.5 → 4.1.6 → 4.2 → 4.3 — all complete]
+[4.1 → 4.1.5 → 4.1.6 → 4.2 → 4.3 → 4.3.1 → 4.4 — all complete]
 
-4.3.1 (log create form layout fixes)
- ↓
-4.4 (depends on completed 4.1–4.3 and 4.3.1)
+4.3.2 (FD/WFD exchange-only forms correction — independent, not yet done)
  ↓
 4.4.5
 ```

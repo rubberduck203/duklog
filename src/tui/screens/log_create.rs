@@ -567,7 +567,7 @@ pub fn draw_log_create(state: &LogCreateState, frame: &mut Frame, area: Rect) {
 
     let [type_row, form_area, error_area, _spacer, footer_area] = Layout::vertical([
         Constraint::Length(3),
-        Constraint::Min(9),
+        Constraint::Length(state.form().fields().len() as u16 * 3),
         Constraint::Length(1),
         Constraint::Min(0),
         Constraint::Length(1),
@@ -1413,7 +1413,7 @@ mod tests {
         #[test]
         fn renders_title_and_fields() {
             let state = LogCreateState::new();
-            let output = render_log_create(&state, 60, 22);
+            let output = render_log_create(&state, 60, 16);
             assert!(output.contains("Create New Log"), "should show title");
             assert!(
                 output.contains("Station Callsign"),
@@ -1428,7 +1428,7 @@ mod tests {
         #[test]
         fn renders_type_selector() {
             let state = LogCreateState::new();
-            let output = render_log_create(&state, 60, 22);
+            let output = render_log_create(&state, 60, 16);
             assert!(
                 output.contains("Log Type"),
                 "should show type selector label"
@@ -1439,7 +1439,7 @@ mod tests {
         #[test]
         fn renders_footer() {
             let state = LogCreateState::new();
-            let output = render_log_create(&state, 80, 22);
+            let output = render_log_create(&state, 80, 16);
             assert!(
                 output.contains("Enter: create"),
                 "should show footer keybindings"
@@ -1451,7 +1451,7 @@ mod tests {
         fn renders_field_values() {
             let mut state = LogCreateState::new();
             fill_valid_general_form(&mut state);
-            let output = render_log_create(&state, 60, 22);
+            let output = render_log_create(&state, 60, 16);
             assert!(output.contains("W1AW"), "should show typed callsign");
             assert!(output.contains("FN31"), "should show typed grid square");
         }
@@ -1460,7 +1460,7 @@ mod tests {
         fn renders_general_error() {
             let mut state = LogCreateState::new();
             state.set_error("A log already exists for W1AW on 2026-02-19 UTC".into());
-            let output = render_log_create(&state, 70, 25);
+            let output = render_log_create(&state, 70, 16);
             assert!(
                 output.contains("A log already exists"),
                 "should render general error"
@@ -1471,7 +1471,7 @@ mod tests {
         fn renders_pota_fields_when_type_is_pota() {
             let mut state = LogCreateState::new();
             switch_to_pota(&mut state);
-            let output = render_log_create(&state, 80, 24);
+            let output = render_log_create(&state, 80, 19);
             assert!(output.contains("POTA"), "should show POTA in type selector");
             assert!(output.contains("Park Ref"), "should show park ref field");
         }
@@ -1480,7 +1480,7 @@ mod tests {
         fn renders_fd_fields_at_standard_width() {
             let mut state = LogCreateState::new();
             switch_to_field_day(&mut state);
-            let output = render_log_create(&state, 80, 24);
+            let output = render_log_create(&state, 80, 25);
             assert!(output.contains("Field Day"), "should show Field Day type");
             assert!(
                 output.contains("FD Class"),
@@ -1497,7 +1497,7 @@ mod tests {
         fn renders_wfd_fields_at_standard_width() {
             let mut state = LogCreateState::new();
             switch_to_wfd(&mut state);
-            let output = render_log_create(&state, 80, 24);
+            let output = render_log_create(&state, 80, 25);
             assert!(output.contains("Winter FD"), "should show Winter FD type");
             assert!(
                 output.contains("WFD Class"),
