@@ -43,22 +43,26 @@ Each exported file contains a header followed by QSO records:
 | `RST_SENT` | Signal report sent | Yes |
 | `RST_RCVD` | Signal report received | Yes |
 | `MY_GRIDSQUARE` | Activator's Maidenhead grid square | Yes |
-| `MY_SIG` | `POTA` (only when log has a park ref) | No |
+| `MY_SIG` | `POTA` (POTA logs only, when park ref is set) | No |
 | `MY_SIG_INFO` | Activator's park reference | No (with `MY_SIG`) |
-| `SIG` | `POTA` (only for P2P contacts) | No |
+| `SIG` | `POTA` (POTA logs only, P2P contacts) | No |
 | `SIG_INFO` | Other station's park ref (P2P) | No (with `SIG`) |
+| `CONTEST_ID` | `ARRL-FIELD-DAY` (FD) or `WFD` (WFD) | No (contest logs) |
+| `STX_STRING` | Sent exchange: `<tx_count><class> <section>` | No (contest logs) |
+| `SRX_STRING` | Received exchange (verbatim from QSO entry) | No (contest logs, when present) |
+| `FREQ` | Operating frequency in **MHz** (e.g. `14.225`) | No (WFD logs only) |
 | `COMMENT` | QSO comments/notes | No (when non-empty) |
 
 ## Log Type Support
 
 | Log Type | Export Supported | Notes |
 |---|---|---|
-| POTA | Yes | Includes `MY_SIG`/`MY_SIG_INFO` when park ref is set |
-| General | Yes | No POTA-specific fields |
-| Field Day | Planned (Phase 4.3) | Will include `CONTEST_ID`, `STX_STRING`, `SRX_STRING` |
-| Winter Field Day | Planned (Phase 4.3) | Will include `CONTEST_ID`, `STX_STRING`, `SRX_STRING`, `FREQ` |
+| General | Yes | No contest or activation fields |
+| POTA | Yes | `MY_SIG`/`MY_SIG_INFO` when park ref is set; `SIG`/`SIG_INFO` for P2P |
+| Field Day | Yes | `CONTEST_ID=ARRL-FIELD-DAY`, `STX_STRING`, `SRX_STRING` |
+| Winter Field Day | Yes | `CONTEST_ID=WFD`, `STX_STRING`, `SRX_STRING`, `FREQ` (MHz) |
 
-The `Qso` struct carries `exchange_rcvd: Option<String>` (received contest exchange) and `frequency: Option<u32>` (kHz) for use by Field Day and WFD export in Phase 4.3. These fields are not written to ADIF by the current POTA/General exporter.
+The `Qso` struct carries `exchange_rcvd: Option<String>` (received contest exchange verbatim) and `frequency: Option<u32>` (kHz internally, converted to MHz on export). POTA-specific fields (`SIG`/`SIG_INFO`) are gated strictly on the POTA log type and are never emitted for other log types.
 
 ## POTA Submission
 

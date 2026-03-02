@@ -683,7 +683,7 @@ mod tests {
     use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers};
 
     use super::*;
-    use crate::model::PotaLog;
+    use crate::model::{FdClass, FdPowerCategory, FieldDayLog, PotaLog, WfdClass, WfdLog};
 
     fn press(code: KeyCode) -> KeyEvent {
         KeyEvent {
@@ -759,6 +759,35 @@ mod tests {
         )
     }
 
+    fn make_fd_log() -> Log {
+        Log::FieldDay(
+            FieldDayLog::new(
+                "W1AW".to_string(),
+                None,
+                1,
+                FdClass::B,
+                "EPA".to_string(),
+                FdPowerCategory::Low,
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        )
+    }
+
+    fn make_wfd_log() -> Log {
+        Log::WinterFieldDay(
+            WfdLog::new(
+                "W1AW".to_string(),
+                None,
+                1,
+                WfdClass::I,
+                "EPA".to_string(),
+                "FN31".to_string(),
+            )
+            .unwrap(),
+        )
+    }
+
     mod construction {
         use super::*;
 
@@ -787,6 +816,36 @@ mod tests {
                 state.form().fields()[3].label,
                 "Their Park",
                 "index 3 should be Their Park"
+            );
+        }
+
+        #[test]
+        fn fd_type_specific_field_is_required() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            assert!(
+                state.form().fields()[3].required,
+                "Their Exchange must be required for Field Day"
+            );
+        }
+
+        #[test]
+        fn wfd_type_specific_field_is_required() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_wfd_log());
+            assert!(
+                state.form().fields()[3].required,
+                "Their Exchange must be required for Winter Field Day"
+            );
+        }
+
+        #[test]
+        fn pota_type_specific_field_is_optional() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
+            assert!(
+                !state.form().fields()[3].required,
+                "Their Park must be optional for POTA"
             );
         }
 
@@ -1294,6 +1353,27 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(state.form().fields()[4].error.is_some());
+        }
+
+        #[test]
+        fn wfd_zero_frequency_shows_error() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_wfd_log());
+            fill_valid_callsign(&mut state);
+            // Tab to Their Exchange (index 3)
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "2H EPA");
+            // Tab to Frequency (index 4) - enter 0 which is not a valid frequency
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "0");
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert_eq!(action, Action::None, "zero frequency should be rejected");
+            assert!(
+                state.form().fields()[4].error.is_some(),
+                "frequency field must show an error for 0"
+            );
         }
 
         #[test]

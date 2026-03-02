@@ -74,7 +74,8 @@ fn encode_type_specific_fields(
                 encode(encoder, buf, field_tag("SRX_STRING", exch.as_str()))?;
             }
             if let Some(freq) = qso.frequency {
-                encode(encoder, buf, field_tag("FREQ", freq.to_string().as_str()))?;
+                let mhz = format!("{:.3}", f64::from(freq) / 1000.0);
+                encode(encoder, buf, field_tag("FREQ", mhz.as_str()))?;
             }
         }
     }
@@ -646,10 +647,14 @@ mod tests {
         )
         .unwrap();
         assert!(
-            record.contains("FREQ"),
+            record.contains("<FREQ:"),
             "WFD record with frequency must contain FREQ"
         );
-        assert!(record.contains("14225"), "FREQ value should match");
+        // frequency stored as kHz; ADIF FREQ is in MHz
+        assert!(
+            record.contains("14.225"),
+            "FREQ must be emitted in MHz (not kHz)"
+        );
     }
 
     #[test]
