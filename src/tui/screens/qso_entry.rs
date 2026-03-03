@@ -58,11 +58,6 @@ impl QsoFormType {
         matches!(self, Self::FieldDay | Self::WinterFieldDay)
     }
 
-    /// Returns `true` for WFD (has Frequency at index 3).
-    fn has_frequency(self) -> bool {
-        matches!(self, Self::WinterFieldDay)
-    }
-
     /// Index of the Comments field for this form type.
     fn comments_idx(self) -> usize {
         match self {
@@ -329,7 +324,8 @@ impl QsoEntryState {
     /// Clears fast-moving fields and repopulates RST defaults for the current mode.
     ///
     /// For General/POTA: resets Their Callsign, RST fields, type-specific field, and Comments.
-    /// For FD/WFD: resets Their Callsign, Their Class, Their Section, Frequency (WFD), and Comments.
+    /// For FD: resets Their Callsign, Their Class, Their Section, and Comments.
+    /// For WFD: same as FD, plus Frequency.
     pub fn clear_fast_fields(&mut self) {
         self.form.clear_value(THEIR_CALL);
         if self.form_type.has_rst() {
@@ -342,7 +338,7 @@ impl QsoEntryState {
         } else {
             self.form.clear_value(CONTEST_THEIR_CLASS);
             self.form.clear_value(CONTEST_THEIR_SECTION);
-            if self.form_type.has_frequency() {
+            if self.form_type == QsoFormType::WinterFieldDay {
                 self.form.clear_value(CONTEST_FREQUENCY);
             }
         }
@@ -981,6 +977,23 @@ mod tests {
         }
 
         #[test]
+        fn general_rst_sent_not_auto_uppercased() {
+            // RST fields are at indices 1 and 2 on General/POTA forms. They must NOT be
+            // auto-uppercased. If has_contest_exchange() were mutated to return true, it would
+            // cause these fields (matching contest indices 1/2) to be uppercased incorrectly.
+            let mut state = QsoEntryState::new();
+            state.handle_key(press(KeyCode::Tab)); // focus RST Sent (index 1)
+            state.handle_key(press(KeyCode::Backspace));
+            state.handle_key(press(KeyCode::Backspace));
+            type_string(&mut state, "r5");
+            assert_eq!(
+                state.form().value(RST_SENT),
+                "r5",
+                "RST sent should not be auto-uppercased on General form"
+            );
+        }
+
+        #[test]
         fn backspace_deletes_char() {
             let mut state = QsoEntryState::new();
             type_string(&mut state, "W1AW");
@@ -1418,6 +1431,50 @@ mod tests {
             assert!(
                 state.form().fields()[CONTEST_THEIR_SECTION].error.is_some(),
                 "empty section should show error at section field"
+            );
+        }
+
+        #[test]
+        fn fd_valid_class_empty_section_no_class_error() {
+            // When class is valid but section is empty, only the section field gets an error.
+            // If the &&→|| mutation were present, the class field would also receive a spurious
+            // exchange validation error after the code assembled "<class> " and validated it.
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            fill_valid_callsign(&mut state);
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "3A"); // valid class
+            // Leave section empty
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert_eq!(action, Action::None);
+            assert!(
+                state.form().fields()[CONTEST_THEIR_SECTION].error.is_some(),
+                "empty section should show error at section field"
+            );
+            assert!(
+                state.form().fields()[CONTEST_THEIR_CLASS].error.is_none(),
+                "class field must not have an error when class is valid"
+            );
+        }
+
+        #[test]
+        fn wfd_valid_class_empty_section_no_class_error() {
+            // Same invariant as fd_valid_class_empty_section_no_class_error, for WFD.
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_wfd_log());
+            fill_valid_callsign(&mut state);
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "2H"); // valid WFD class
+            // Leave section and frequency empty (we're only testing section validation)
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert_eq!(action, Action::None);
+            assert!(
+                state.form().fields()[CONTEST_THEIR_SECTION].error.is_some(),
+                "empty section should show error at section field"
+            );
+            assert!(
+                state.form().fields()[CONTEST_THEIR_CLASS].error.is_none(),
+                "class field must not have an error when class is valid"
             );
         }
 
