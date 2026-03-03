@@ -130,7 +130,16 @@ The screen uses `draw_qso_entry_form` (a private `#[mutants::skip]` function) to
 
 ### Status Bar Widget
 
-`widgets/status_bar.rs` provides `StatusBarContext` (a plain data struct) and `draw_status_bar`. It renders a one-line context bar at the top of the QSO Entry, QSO List, and Export screens showing the active log's callsign, park reference, today's QSO count, and activation status. The widget is decoupled from `Log` — callers construct a `StatusBarContext` from whatever log type is active. This keeps Phase 4 multi-logbook changes confined to context construction rather than the widget itself.
+`widgets/status_bar.rs` provides `StatusBarContext` and `draw_status_bar`. The context holds:
+
+- `context_label: String` — what goes in brackets: park ref for POTA, sent exchange (`"1B EPA"`) for FD/WFD, callsign for General
+- `qso_count: usize` — today's QSO count for POTA; total count for all other types
+- `pota_mode: bool` — if `true`, format as `N/10 QSOs`; otherwise `N QSOs`
+- `is_activated: bool` — POTA only: show `ACTIVATED` instead of the count
+
+`StatusBarContext::from_log(log: &Log)` constructs the correct context for any log type. Callers at the three display sites (QSO Entry, QSO List, Export) call `.map(StatusBarContext::from_log).unwrap_or_default()` on the optional current log.
+
+Display format: `[context_label]  N/10 QSOs` (POTA) / `[context_label]  ACTIVATED` (POTA activated) / `[context_label]  N QSOs` (all other types).
 
 ## Design Decisions
 

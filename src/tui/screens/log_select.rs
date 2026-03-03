@@ -178,7 +178,7 @@ pub fn draw_log_select(state: &LogSelectState, frame: &mut Frame, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let header = Row::new(vec!["Callsign", "Date", "Park", "Grid", "QSOs"])
+    let header = Row::new(vec!["Callsign", "Date", "Type", "Grid", "QSOs"])
         .style(Style::default().add_modifier(Modifier::BOLD))
         .bottom_margin(1);
 
@@ -195,7 +195,7 @@ pub fn draw_log_select(state: &LogSelectState, frame: &mut Frame, area: Rect) {
             Row::new(vec![
                 log.header().station_callsign.clone(),
                 log.header().created_at.format("%Y-%m-%d").to_string(),
-                log.park_ref().unwrap_or("-").to_string(),
+                log.log_type_name().to_string(),
                 log.header().grid_square.clone(),
                 log.header().qsos.len().to_string(),
             ])
@@ -218,7 +218,7 @@ pub fn draw_log_select(state: &LogSelectState, frame: &mut Frame, area: Rect) {
 
     frame.render_widget(table, table_area);
 
-    let footer = Paragraph::new("n: new  Enter: open  d: delete  q: quit")
+    let footer = Paragraph::new("n: new  Enter: open  d: delete  q: quit  F1: help")
         .style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, footer_area);
 
@@ -540,21 +540,22 @@ mod tests {
         fn renders_log_table() {
             let state = make_populated_state();
             let output = render_log_select(&state, 70, 12);
-            assert!(output.contains("K-0001"), "should show park ref");
+            assert!(output.contains("POTA"), "should show log type");
             assert!(output.contains("W1AW"), "should show callsign");
             assert!(output.contains("N0CALL"), "should show second callsign");
             assert!(output.contains("FN31"), "should show grid square");
             assert!(output.contains("Callsign"), "should show Callsign header");
-            assert!(output.contains("Park"), "should show Park header");
+            assert!(output.contains("Type"), "should show Type header");
             assert!(output.contains("Grid"), "should show Grid header");
         }
 
         #[test]
         fn renders_footer() {
             let state = make_populated_state();
-            let output = render_log_select(&state, 60, 12);
+            let output = render_log_select(&state, 80, 12);
             assert!(output.contains("n: new"), "should show n: new hint");
             assert!(output.contains("d: delete"), "should show d: delete hint");
+            assert!(output.contains("F1: help"), "should show F1: help hint");
         }
 
         #[test]

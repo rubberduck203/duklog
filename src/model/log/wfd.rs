@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::LogHeader;
 use crate::model::validation::{
-    ValidationError, validate_callsign, validate_grid_square, validate_section, validate_tx_count,
+    ValidationError, validate_callsign, validate_section, validate_tx_count,
 };
 
 static WFD_EXCHANGE_RE: LazyLock<Regex> =
@@ -92,7 +92,6 @@ impl WfdLog {
         }
         validate_tx_count(tx_count)?;
         validate_section(&section)?;
-        validate_grid_square(&grid_square)?;
 
         let now = Utc::now();
         let log_id = format!("WFD-{}-{}", station_callsign, now.format("%Y%m%d-%H%M%S"));

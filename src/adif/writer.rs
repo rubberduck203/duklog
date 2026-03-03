@@ -62,6 +62,10 @@ fn encode_type_specific_fields(
             if let Some(ref exch) = qso.exchange_rcvd {
                 encode(encoder, buf, field_tag("SRX_STRING", exch.as_str()))?;
             }
+            if let Some(freq) = qso.frequency {
+                let mhz = format!("{:.3}", f64::from(freq) / 1000.0);
+                encode(encoder, buf, field_tag("FREQ", mhz.as_str()))?;
+            }
         }
         Log::WinterFieldDay(wfd) => {
             encode(encoder, buf, field_tag("CONTEST_ID", WFD_CONTEST_ID))?;
@@ -170,11 +174,13 @@ pub fn format_qso(log: &Log, qso: &Qso) -> Result<String, AdifError> {
         &mut buf,
         field_tag("RST_RCVD", qso.rst_rcvd.as_str()),
     )?;
-    encode(
-        &mut encoder,
-        &mut buf,
-        field_tag("MY_GRIDSQUARE", log.header().grid_square.as_str()),
-    )?;
+    if !log.header().grid_square.is_empty() {
+        encode(
+            &mut encoder,
+            &mut buf,
+            field_tag("MY_GRIDSQUARE", log.header().grid_square.as_str()),
+        )?;
+    }
 
     encode_type_specific_fields(&mut encoder, &mut buf, log, qso)?;
 
@@ -636,6 +642,32 @@ mod tests {
         assert!(
             record.contains("2H EPA"),
             "SRX_STRING should match exchange"
+        );
+    }
+
+    #[test]
+    fn fd_qso_with_frequency_contains_freq_field() {
+        let record = format_qso(
+            &make_fd_log(),
+            &make_qso_with_exchange_and_freq("3A CT", 14225),
+        )
+        .unwrap();
+        assert!(
+            record.contains("<FREQ:"),
+            "FD record with frequency must contain FREQ"
+        );
+        assert!(
+            record.contains("14.225"),
+            "FREQ must be emitted in MHz (not kHz)"
+        );
+    }
+
+    #[test]
+    fn fd_qso_without_frequency_omits_freq() {
+        let record = format_qso(&make_fd_log(), &make_qso_with_exchange("3A CT")).unwrap();
+        assert!(
+            !record.contains("<FREQ:"),
+            "FD record without frequency must not emit FREQ"
         );
     }
 

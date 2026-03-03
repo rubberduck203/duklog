@@ -115,14 +115,7 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
     let [status_area, content_area] =
         Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
 
-    let ctx = log
-        .map(|l| StatusBarContext {
-            callsign: l.header().station_callsign.clone(),
-            park_ref: l.park_ref().map(|s| s.to_string()),
-            qso_count: l.qso_count_today(),
-            is_activated: l.is_activated(),
-        })
-        .unwrap_or_default();
+    let ctx = log.map(StatusBarContext::from_log).unwrap_or_default();
     draw_status_bar(&ctx, frame, status_area);
 
     let block = Block::default()
