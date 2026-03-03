@@ -1014,6 +1014,23 @@ mod tests {
             type_string(&mut state, "3");
             assert_eq!(state.form().value(CONTEST_TX_COUNT), "3");
         }
+
+        #[test]
+        fn fd_tx_count_letter_not_auto_uppercased() {
+            // A lowercase letter typed into Tx Count (a non-uppercase field) must stay lowercase.
+            // This catches the mutation &&→|| in the uppercase guard condition.
+            let mut state = LogCreateState::new();
+            switch_to_field_day(&mut state);
+            enter_fields(&mut state);
+            state.handle_key(press(KeyCode::Tab)); // operator
+            state.handle_key(press(KeyCode::Tab)); // tx count
+            type_string(&mut state, "a"); // letter, not uppercased in this field
+            assert_eq!(
+                state.form().value(CONTEST_TX_COUNT),
+                "a",
+                "tx count field should not uppercase input"
+            );
+        }
     }
 
     mod navigation {

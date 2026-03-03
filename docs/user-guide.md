@@ -57,6 +57,9 @@ A form for creating a new log. Start by selecting the log type with `←`/`→`,
 
 - **Station Callsign** (required) — your operating callsign
 - **Operator** (optional) — only needed if different from the station callsign
+
+**General / POTA Fields:**
+
 - **Grid Square** (required) — Maidenhead locator (e.g. `FN31` or `FN31pr`); any case accepted, normalised to canonical form on submit
 
 **POTA-only Fields:**
@@ -68,6 +71,7 @@ A form for creating a new log. Start by selecting the log type with `←`/`→`,
 - **Tx Count** (required) — number of transmitters (1–255)
 - **FD Class** / **WFD Class** (required) — operating class; auto-uppercased (FD: A–F; WFD: H/I/O/M)
 - **Section** (required) — ARRL/RAC section (e.g. `EPA`, `DX`); auto-uppercased
+- Grid Square is not collected for FD/WFD logs (not required by either contest)
 
 | Key | Action |
 |---|---|
@@ -85,13 +89,15 @@ The main logging screen. A status bar at the top shows the active log context: p
 
 The form uses a two-row layout that adapts to the active log type:
 
-**Row 1 (all types):**
+**Row 1:**
 
-| Field | Notes |
-|---|---|
-| Their Callsign (required) | Auto-uppercased as you type |
-| RST Sent (required) | Pre-filled with the mode default |
-| RST Rcvd (required) | Pre-filled with the mode default |
+| Field | General / POTA | Field Day / Winter FD |
+|---|---|---|
+| Col 1 | Their Callsign (required) | Their Callsign (required) |
+| Col 2 | RST Sent (required) | Their Class (required) |
+| Col 3 | RST Rcvd (required) | Their Section (required) |
+
+FD and WFD do not exchange RST. Row 1 Col 2/3 capture the contest class (e.g. `3A`) and section (e.g. `CT`) instead.
 
 **Row 2 (type-specific):**
 
@@ -99,15 +105,16 @@ The form uses a two-row layout that adapts to the active log type:
 |---|---|---|
 | General | *(empty)* | Comments |
 | POTA | Their Park (optional) | Comments |
-| Field Day | Their Exchange (required) | Comments |
-| Winter FD | Their Exchange (required), Frequency (required) | Comments |
+| Field Day | *(empty)* | Comments |
+| Winter FD | Frequency (required, kHz) | Comments |
 
 **Field notes:**
 
 - **Their Park** — POTA park reference (e.g. `K-0001`) for park-to-park contacts; auto-uppercased; optional
-- **Their Exchange** — received contest exchange verbatim; auto-uppercased; required for FD/WFD
-  - Field Day format: `<count><class> <section>` — e.g. `3A CT`, `1F DX` (class: A–F)
-  - Winter Field Day format: `<count><class> <section>` — e.g. `2H EPA`, `1O DX` (class: H/I/O/M)
+- **Their Class** — received contest class including transmitter count; auto-uppercased; required for FD/WFD
+  - Field Day: `<count><class>` — e.g. `3A`, `1F` (class: A–F)
+  - Winter Field Day: `<count><class>` — e.g. `2H`, `1O` (class: H/I/O/M)
+- **Their Section** — received ARRL/RAC section (e.g. `CT`, `EPA`, `DX`); auto-uppercased; required for FD/WFD
 - **Frequency** — operating frequency in kHz (e.g. `14225`); required for WFD ADIF export
 - **Comments** — free-text; optional
 

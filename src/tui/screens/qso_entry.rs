@@ -31,6 +31,8 @@ const RST_RCVD: usize = 2;
 const CONTEST_THEIR_CLASS: usize = 1;
 /// Field index for the other station's contest section (FD and WFD).
 const CONTEST_THEIR_SECTION: usize = 2;
+/// Field index for frequency in kHz (WFD only; FD has Comments at index 3).
+const CONTEST_FREQUENCY: usize = 3;
 // FD: Comments at index 3
 // WFD: Frequency at index 3, Comments at index 4
 // Comments is always at form_type.comments_idx()
@@ -305,7 +307,7 @@ impl QsoEntryState {
                 }
                 if self.form_type == QsoFormType::WinterFieldDay {
                     self.form.set_value(
-                        3,
+                        CONTEST_FREQUENCY,
                         qso.frequency
                             .map(|f| f.to_string())
                             .unwrap_or_default()
@@ -341,7 +343,7 @@ impl QsoEntryState {
             self.form.clear_value(CONTEST_THEIR_CLASS);
             self.form.clear_value(CONTEST_THEIR_SECTION);
             if self.form_type.has_frequency() {
-                self.form.clear_value(3); // Frequency for WFD
+                self.form.clear_value(CONTEST_FREQUENCY);
             }
         }
         self.form.clear_value(self.form_type.comments_idx());
@@ -493,12 +495,13 @@ impl QsoEntryState {
                         Err(e) => self.form.set_error(CONTEST_THEIR_CLASS, e.to_string()),
                     }
                 }
-                let freq_str = self.form.value(3).to_string();
+                let freq_str = self.form.value(CONTEST_FREQUENCY).to_string();
                 match freq_str.parse::<u32>() {
                     Ok(f) if f > 0 => frequency = Some(f),
-                    _ => self
-                        .form
-                        .set_error(3, "frequency must be a positive integer (kHz)".into()),
+                    _ => self.form.set_error(
+                        CONTEST_FREQUENCY,
+                        "frequency must be a positive integer (kHz)".into(),
+                    ),
                 }
             }
         }
@@ -1403,6 +1406,22 @@ mod tests {
         }
 
         #[test]
+        fn fd_missing_section_shows_error() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            fill_valid_callsign(&mut state);
+            // Fill class but leave section empty
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "3A");
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert_eq!(action, Action::None);
+            assert!(
+                state.form().fields()[CONTEST_THEIR_SECTION].error.is_some(),
+                "empty section should show error at section field"
+            );
+        }
+
+        #[test]
         fn wfd_valid_exchange_and_frequency_returns_add_qso() {
             let mut state = QsoEntryState::new();
             state.set_log_context(&make_wfd_log());
@@ -1586,6 +1605,58 @@ mod tests {
             assert_eq!(state.form().focus(), RST_RCVD);
             state.clear_fast_fields();
             assert_eq!(state.form().focus(), THEIR_CALL);
+        }
+
+        #[test]
+        fn fd_clears_class_and_section() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            fill_valid_callsign(&mut state);
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "3A");
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "CT");
+
+            state.clear_fast_fields();
+            assert_eq!(state.form().value(THEIR_CALL), "");
+            assert_eq!(state.form().value(CONTEST_THEIR_CLASS), "");
+            assert_eq!(state.form().value(CONTEST_THEIR_SECTION), "");
+        }
+
+        #[test]
+        fn wfd_clears_class_section_and_frequency() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_wfd_log());
+            fill_valid_callsign(&mut state);
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "2H");
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "EPA");
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "14225");
+
+            state.clear_fast_fields();
+            assert_eq!(state.form().value(THEIR_CALL), "");
+            assert_eq!(state.form().value(CONTEST_THEIR_CLASS), "");
+            assert_eq!(state.form().value(CONTEST_THEIR_SECTION), "");
+            assert_eq!(state.form().value(CONTEST_FREQUENCY), "");
+        }
+
+        #[test]
+        fn fd_does_not_uppercase_comments_field() {
+            // Comments is at index 3 in FD form; it should NOT be auto-uppercased.
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            // Tab past callsign, class, section to comments (index 3)
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "nice signal");
+            assert_eq!(
+                state.form().value(3),
+                "nice signal",
+                "FD comments should not be uppercased"
+            );
         }
     }
 
@@ -1844,6 +1915,66 @@ mod tests {
             state.start_editing(0, &make_test_qso());
             assert!(!state.form().has_errors());
             assert_eq!(state.error(), None);
+        }
+
+        #[test]
+        fn start_editing_fd_populates_class_and_section() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            let qso = Qso::new(
+                "W3ABC".to_string(),
+                "59".to_string(),
+                "59".to_string(),
+                Band::M20,
+                Mode::Ssb,
+                Utc.with_ymd_and_hms(2026, 1, 10, 12, 0, 0).unwrap(),
+                String::new(),
+                None,
+                Some("3A CT".to_string()),
+                None,
+            )
+            .unwrap();
+            state.start_editing(0, &qso);
+
+            assert_eq!(state.form().value(CONTEST_THEIR_CLASS), "3A");
+            assert_eq!(state.form().value(CONTEST_THEIR_SECTION), "CT");
+        }
+
+        #[test]
+        fn start_editing_wfd_populates_class_section_and_frequency() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_wfd_log());
+            let qso = Qso::new(
+                "W3ABC".to_string(),
+                "59".to_string(),
+                "59".to_string(),
+                Band::M20,
+                Mode::Ssb,
+                Utc.with_ymd_and_hms(2026, 1, 10, 12, 0, 0).unwrap(),
+                String::new(),
+                None,
+                Some("2H EPA".to_string()),
+                Some(14225),
+            )
+            .unwrap();
+            state.start_editing(0, &qso);
+
+            assert_eq!(state.form().value(CONTEST_THEIR_CLASS), "2H");
+            assert_eq!(state.form().value(CONTEST_THEIR_SECTION), "EPA");
+            assert_eq!(state.form().value(CONTEST_FREQUENCY), "14225");
+        }
+
+        #[test]
+        fn start_editing_fd_exchange_without_space_puts_all_in_class() {
+            // Handles corrupt/legacy data that has no space in exchange_rcvd.
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            let mut qso = make_qso("W3ABC", Band::M20, Mode::Ssb);
+            qso.exchange_rcvd = Some("3A".to_string()); // no space — malformed
+            state.start_editing(0, &qso);
+
+            assert_eq!(state.form().value(CONTEST_THEIR_CLASS), "3A");
+            assert_eq!(state.form().value(CONTEST_THEIR_SECTION), "");
         }
 
         #[test]

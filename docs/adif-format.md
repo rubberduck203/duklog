@@ -16,6 +16,8 @@ Each exported file contains a header followed by QSO records:
 <eoh>
 
 <STATION_CALLSIGN:4>W1AW<OPERATOR:4>W1AW<CALL:6>KD9XYZ<QSO_DATE:8>20260216<TIME_ON:6>143000<BAND:3>20M<MODE:3>SSB<RST_SENT:2>59<RST_RCVD:2>59<MY_GRIDSQUARE:4>FN31<MY_SIG:4>POTA<MY_SIG_INFO:6>K-0001<eor>
+
+(MY_GRIDSQUARE is omitted when the log has no grid square set, e.g. FD/WFD logs.)
 ```
 
 ## Fields Written
@@ -42,7 +44,7 @@ Each exported file contains a header followed by QSO records:
 | `MODE` | Operating mode | Yes |
 | `RST_SENT` | Signal report sent | Yes |
 | `RST_RCVD` | Signal report received | Yes |
-| `MY_GRIDSQUARE` | Activator's Maidenhead grid square | Yes |
+| `MY_GRIDSQUARE` | Activator's Maidenhead grid square | No (omitted when grid square not set; FD/WFD logs never set it) |
 | `MY_SIG` | `POTA` (POTA logs only, when park ref is set) | No |
 | `MY_SIG_INFO` | Activator's park reference | No (with `MY_SIG`) |
 | `SIG` | `POTA` (POTA logs only, P2P contacts) | No |
