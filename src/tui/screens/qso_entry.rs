@@ -31,9 +31,9 @@ const RST_RCVD: usize = 2;
 const CONTEST_THEIR_CLASS: usize = 1;
 /// Field index for the other station's contest section (FD and WFD).
 const CONTEST_THEIR_SECTION: usize = 2;
-/// Field index for frequency in kHz (WFD only; FD has Comments at index 3).
+/// Field index for frequency in kHz (FD and WFD; index 3 in contest forms).
 const CONTEST_FREQUENCY: usize = 3;
-// FD: Comments at index 3
+// FD: Frequency at index 3, Comments at index 4
 // WFD: Frequency at index 3, Comments at index 4
 // Comments is always at form_type.comments_idx()
 
@@ -61,8 +61,8 @@ impl QsoFormType {
     /// Index of the Comments field for this form type.
     fn comments_idx(self) -> usize {
         match self {
-            Self::General | Self::FieldDay => 3,
-            Self::Pota | Self::WinterFieldDay => 4,
+            Self::General => 3,
+            Self::Pota | Self::FieldDay | Self::WinterFieldDay => 4,
         }
     }
 }
@@ -105,9 +105,9 @@ impl QsoEntryState {
 
     /// Constructs a [`Form`] with the correct fields for the given type and mode.
     ///
-    /// - General / POTA: Their Callsign | RST Sent | RST Rcvd | [Their Park (POTA)] | Comments
-    /// - FD: Their Callsign | Their Class | Their Section | Comments  (no RST)
-    /// - WFD: Their Callsign | Their Class | Their Section | Frequency | Comments  (no RST)
+    /// - General: Their Callsign | RST Sent | RST Rcvd | Comments
+    /// - POTA: Their Callsign | RST Sent | RST Rcvd | Their Park | Comments
+    /// - FD / WFD: Their Callsign | Their Class | Their Section | Frequency | Comments  (no RST)
     fn build_form_for_type(form_type: QsoFormType, mode: Mode) -> Form {
         match form_type {
             QsoFormType::General => {
@@ -135,13 +135,7 @@ impl QsoEntryState {
                 form.set_value(RST_RCVD, rst);
                 form
             }
-            QsoFormType::FieldDay => Form::new(vec![
-                FormField::new("Their Callsign", true),
-                FormField::new("Their Class", true),
-                FormField::new("Their Section", true),
-                FormField::new("Comments", false),
-            ]),
-            QsoFormType::WinterFieldDay => Form::new(vec![
+            QsoFormType::FieldDay | QsoFormType::WinterFieldDay => Form::new(vec![
                 FormField::new("Their Callsign", true),
                 FormField::new("Their Class", true),
                 FormField::new("Their Section", true),
@@ -300,15 +294,13 @@ impl QsoEntryState {
                     self.form.set_value(CONTEST_THEIR_CLASS, exchange);
                     self.form.set_value(CONTEST_THEIR_SECTION, "");
                 }
-                if self.form_type == QsoFormType::WinterFieldDay {
-                    self.form.set_value(
-                        CONTEST_FREQUENCY,
-                        qso.frequency
-                            .map(|f| f.to_string())
-                            .unwrap_or_default()
-                            .as_str(),
-                    );
-                }
+                self.form.set_value(
+                    CONTEST_FREQUENCY,
+                    qso.frequency
+                        .map(|f| f.to_string())
+                        .unwrap_or_default()
+                        .as_str(),
+                );
             }
         }
         let comments_idx = self.form_type.comments_idx();
@@ -324,8 +316,7 @@ impl QsoEntryState {
     /// Clears fast-moving fields and repopulates RST defaults for the current mode.
     ///
     /// For General/POTA: resets Their Callsign, RST fields, type-specific field, and Comments.
-    /// For FD: resets Their Callsign, Their Class, Their Section, and Comments.
-    /// For WFD: same as FD, plus Frequency.
+    /// For FD/WFD: resets Their Callsign, Their Class, Their Section, Frequency, and Comments.
     pub fn clear_fast_fields(&mut self) {
         self.form.clear_value(THEIR_CALL);
         if self.form_type.has_rst() {
@@ -338,9 +329,7 @@ impl QsoEntryState {
         } else {
             self.form.clear_value(CONTEST_THEIR_CLASS);
             self.form.clear_value(CONTEST_THEIR_SECTION);
-            if self.form_type == QsoFormType::WinterFieldDay {
-                self.form.clear_value(CONTEST_FREQUENCY);
-            }
+            self.form.clear_value(CONTEST_FREQUENCY);
         }
         self.form.clear_value(self.form_type.comments_idx());
         self.form.clear_errors();
@@ -469,6 +458,14 @@ impl QsoEntryState {
                         Ok(()) => exchange_rcvd = Some(assembled),
                         Err(e) => self.form.set_error(CONTEST_THEIR_CLASS, e.to_string()),
                     }
+                }
+                let freq_str = self.form.value(CONTEST_FREQUENCY).to_string();
+                match freq_str.parse::<u32>() {
+                    Ok(f) if f > 0 => frequency = Some(f),
+                    _ => self.form.set_error(
+                        CONTEST_FREQUENCY,
+                        "frequency must be a positive integer (kHz)".into(),
+                    ),
                 }
             }
             QsoFormType::WinterFieldDay => {
@@ -644,13 +641,13 @@ fn draw_qso_entry_form(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
 
     // Row 2: layout depends on form type
     match form_type {
-        QsoFormType::General | QsoFormType::FieldDay => {
+        QsoFormType::General => {
             // Comments only on the right half; left half empty
             let [_empty, comments_area] =
                 Layout::horizontal([Ratio(1, 2), Ratio(1, 2)]).areas(row2_area);
             draw_form_field(form, 3, frame, comments_area);
         }
-        QsoFormType::Pota | QsoFormType::WinterFieldDay => {
+        QsoFormType::Pota | QsoFormType::FieldDay | QsoFormType::WinterFieldDay => {
             // Index 3 on left (Their Park / Frequency), Comments on right
             let [left_area, comments_area] =
                 Layout::horizontal([Ratio(1, 2), Ratio(1, 2)]).areas(row2_area);
@@ -1376,10 +1373,14 @@ mod tests {
             // Tab to Their Section (index 2)
             state.handle_key(press(KeyCode::Tab));
             type_string(&mut state, "CT");
+            // Tab to Frequency (index 3)
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "14225");
             let action = state.handle_key(press(KeyCode::Enter));
             match action {
                 Action::AddQso(qso) => {
                     assert_eq!(qso.exchange_rcvd, Some("3A CT".to_string()));
+                    assert_eq!(qso.frequency, Some(14225));
                     assert_eq!(qso.their_park, None);
                 }
                 other => panic!("expected AddQso, got {other:?}"),
@@ -1500,6 +1501,44 @@ mod tests {
                 }
                 other => panic!("expected AddQso, got {other:?}"),
             }
+        }
+
+        #[test]
+        fn fd_invalid_frequency_shows_error() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            fill_valid_callsign(&mut state);
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "3A");
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "CT");
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "abc");
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert_eq!(action, Action::None);
+            assert!(
+                state.form().fields()[CONTEST_FREQUENCY].error.is_some(),
+                "invalid frequency should show error at frequency field"
+            );
+        }
+
+        #[test]
+        fn fd_zero_frequency_shows_error() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            fill_valid_callsign(&mut state);
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "3A");
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "CT");
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "0");
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert_eq!(action, Action::None, "zero frequency should be rejected");
+            assert!(
+                state.form().fields()[CONTEST_FREQUENCY].error.is_some(),
+                "frequency field must show an error for 0"
+            );
         }
 
         #[test]
@@ -1665,7 +1704,7 @@ mod tests {
         }
 
         #[test]
-        fn fd_clears_class_and_section() {
+        fn fd_clears_class_section_and_frequency() {
             let mut state = QsoEntryState::new();
             state.set_log_context(&make_fd_log());
             fill_valid_callsign(&mut state);
@@ -1673,11 +1712,14 @@ mod tests {
             type_string(&mut state, "3A");
             state.handle_key(press(KeyCode::Tab));
             type_string(&mut state, "CT");
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "14225");
 
             state.clear_fast_fields();
             assert_eq!(state.form().value(THEIR_CALL), "");
             assert_eq!(state.form().value(CONTEST_THEIR_CLASS), "");
             assert_eq!(state.form().value(CONTEST_THEIR_SECTION), "");
+            assert_eq!(state.form().value(CONTEST_FREQUENCY), "");
         }
 
         #[test]
@@ -1701,16 +1743,17 @@ mod tests {
 
         #[test]
         fn fd_does_not_uppercase_comments_field() {
-            // Comments is at index 3 in FD form; it should NOT be auto-uppercased.
+            // Comments is at index 4 in FD form; it should NOT be auto-uppercased.
             let mut state = QsoEntryState::new();
             state.set_log_context(&make_fd_log());
-            // Tab past callsign, class, section to comments (index 3)
+            // Tab past callsign, class, section, frequency to comments (index 4)
+            state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             type_string(&mut state, "nice signal");
             assert_eq!(
-                state.form().value(3),
+                state.form().value(4),
                 "nice signal",
                 "FD comments should not be uppercased"
             );
@@ -1975,7 +2018,7 @@ mod tests {
         }
 
         #[test]
-        fn start_editing_fd_populates_class_and_section() {
+        fn start_editing_fd_populates_class_section_and_frequency() {
             let mut state = QsoEntryState::new();
             state.set_log_context(&make_fd_log());
             let qso = Qso::new(
@@ -1988,13 +2031,14 @@ mod tests {
                 String::new(),
                 None,
                 Some("3A CT".to_string()),
-                None,
+                Some(14225),
             )
             .unwrap();
             state.start_editing(0, &qso);
 
             assert_eq!(state.form().value(CONTEST_THEIR_CLASS), "3A");
             assert_eq!(state.form().value(CONTEST_THEIR_SECTION), "CT");
+            assert_eq!(state.form().value(CONTEST_FREQUENCY), "14225");
         }
 
         #[test]
@@ -2339,10 +2383,7 @@ mod tests {
                 !output.contains("Their Park"),
                 "FD should not show Their Park"
             );
-            assert!(
-                !output.contains("Frequency"),
-                "FD should not show Frequency"
-            );
+            assert!(output.contains("Frequency"), "FD should show Frequency");
             assert!(!output.contains("RST"), "FD should not show RST fields");
         }
 

@@ -105,7 +105,7 @@ FD and WFD do not exchange RST. Row 1 Col 2/3 capture the contest class (e.g. `3
 |---|---|---|
 | General | *(empty)* | Comments |
 | POTA | Their Park (optional) | Comments |
-| Field Day | *(empty)* | Comments |
+| Field Day | Frequency (required, kHz) | Comments |
 | Winter FD | Frequency (required, kHz) | Comments |
 
 **Field notes:**
