@@ -35,6 +35,7 @@ Standards and reference material are maintained in `CLAUDE.md`, `.claude/rules/`
 - **4.3.1 Log create form layout fixes** — Done: `draw_log_create` changed from `Constraint::Min(9)` to `Constraint::Length(fields.len() * 3)` so each field always gets exactly 3 lines; render tests updated to just-sufficient terminal heights (General=16, POTA=19, FD/WFD=25)
 - **4.4 Log select and status bar updates** — Done: `Log::log_type_name()` added; `StatusBarContext` redesigned with `context_label`/`pota_mode` (replaces `callsign`/`park_ref`); `StatusBarContext::from_log` constructor; log select table shows "Type" column (General/POTA/FD/WFD) instead of park column; log select footer adds `F1: help`; status bar format unified to `[label]  N QSOs` / `[label]  N/10 QSOs` / `[label]  ACTIVATED`
 - **4.3.2 FD/WFD exchange-only forms** — Done: grid square removed from FD/WFD log-create forms; `FieldDayLog`/`WfdLog` no longer call `validate_grid_square`; `MY_GRIDSQUARE` ADIF emission guarded on non-empty grid; QSO entry "Their Exchange" split into "Their Class" (e.g. `3A`) + "Their Section" (e.g. `CT`) fields; RST removed from FD/WFD QSO entry (default "59" stored in Qso model); class+section assembled and validated with `validate_fd/wfd_exchange` at submit; per-field errors shown on class field for invalid exchange format
+- **4.4.5 QSO deletion** (`feature/qso-deletion`) — Done: `d` key on QSO list triggers y/n confirmation prompt; `Action::DeleteQso(idx)` dispatches to `apply_delete_qso`; `LogHeader::remove_qso` / `Log::remove_qso` added; `QsoListState` gains `pending_delete`, `error`, and `clamp_selection`; `reset()` clears transient state; storage errors surfaced in QSO list footer
 
 ---
 
@@ -137,23 +138,12 @@ Update index constants (or add per-type index helpers), `build_form_for_type`, s
   - General: `[W1AW] 5 QSOs`
 - Add `F1: Help` to the bottom menu bar; audit current keymap for overlap with standard F1 conventions
 
-#### 4.4.5 QSO deletion (`feature/qso-delete`)
-**Files**: `src/tui/screens/qso_list.rs`, `src/tui/app.rs`, `src/storage/manager.rs`
-
-- Add a delete action on the QSO list screen (e.g., `d` key with a confirmation prompt)
-- Prevents accidental permanent removal of a QSO without confirmation
-
-> **Dependencies**: 4.1 → 4.1.5 → 4.1.6 → 4.2 → 4.3 → 4.3.1 → 4.3.2 → 4.4 (all complete); 4.4.5 depends on 4.4.
-> 4.1 should be done after 3.12 is complete (avoids mid-polish data model churn).
-
 ---
 
 ## Dependency Graph (remaining)
 
 ```
-[4.1 → 4.1.5 → 4.1.6 → 4.2 → 4.3 → 4.3.1 → 4.3.2 → 4.4 — all complete]
-
-4.4.5
+[4.1 → 4.1.5 → 4.1.6 → 4.2 → 4.3 → 4.3.1 → 4.3.2 → 4.4 → 4.4.5 — all complete]
 ```
 
 ---

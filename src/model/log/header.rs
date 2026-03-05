@@ -70,4 +70,72 @@ impl LogHeader {
     pub(crate) fn add_qso(&mut self, qso: Qso) {
         self.qsos.push(qso);
     }
+
+    /// Removes and returns the QSO at `index`.
+    ///
+    /// Returns `None` if `index` is out of bounds.
+    pub(crate) fn remove_qso(&mut self, index: usize) -> Option<Qso> {
+        (index < self.qsos.len()).then(|| self.qsos.remove(index))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use quickcheck_macros::quickcheck;
+
+    use super::*;
+    use crate::model::mode::Mode;
+
+    fn make_header_with_n_qsos(n: usize) -> LogHeader {
+        let mut header = LogHeader {
+            station_callsign: "W1AW".into(),
+            operator: None,
+            grid_square: "FN31".into(),
+            qsos: vec![],
+            created_at: Utc::now(),
+            log_id: "test".into(),
+        };
+        for i in 0..n {
+            let qso = Qso::new(
+                format!("W{i}AW"),
+                "59".into(),
+                "59".into(),
+                Band::M20,
+                Mode::Ssb,
+                Utc::now(),
+                String::new(),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+            header.add_qso(qso);
+        }
+        header
+    }
+
+    #[quickcheck]
+    fn remove_qso_valid_index_returns_correct_qso(n: u8) -> bool {
+        let n = (n as usize).max(1);
+        let mut header = make_header_with_n_qsos(n);
+        // First QSO was inserted with call "W0AW"
+        let removed = header.remove_qso(0);
+        removed.is_some_and(|q| q.their_call == "W0AW")
+    }
+
+    #[quickcheck]
+    fn remove_qso_out_of_bounds_returns_none(n: u8) -> bool {
+        let n = n as usize;
+        let mut header = make_header_with_n_qsos(n);
+        header.remove_qso(n).is_none()
+    }
+
+    #[quickcheck]
+    fn remove_qso_decrements_length(n: u8) -> bool {
+        let n = (n as usize).max(1);
+        let mut header = make_header_with_n_qsos(n);
+        header.remove_qso(0);
+        header.qsos.len() == n - 1
+    }
 }

@@ -148,10 +148,13 @@ A scrollable table of all QSOs in the current log. Columns: Time, Date, Call, Ba
 | `Up` / `Down` | Navigate rows |
 | `Home` / `End` | Jump to first / last row |
 | `Enter` | Edit the selected QSO |
+| `d` | Delete the selected QSO (prompts y/n) |
 | `q` / `Esc` | Back to QSO Entry |
 | `F1` | Show help |
 
 Pressing `Enter` opens the selected QSO in the entry form for editing. Save with `Enter` or cancel with `Esc`.
+
+Pressing `d` shows a confirmation prompt in the footer. Press `y` to permanently remove the QSO, or `n` / `Esc` to cancel.
 
 ### Export
 

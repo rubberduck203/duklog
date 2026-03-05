@@ -154,6 +154,7 @@ impl App {
             Action::EditQso(index) => self.apply_edit_qso(index),
             Action::UpdateQso(index, qso) => self.apply_update_qso(index, qso),
             Action::DeleteLog(log_id) => self.apply_delete_log(log_id),
+            Action::DeleteQso(index) => self.apply_delete_qso(index),
             Action::AddQso(qso) => self.apply_add_qso(qso),
         }
     }
@@ -255,6 +256,19 @@ impl App {
         if let Err(e) = self.log_select.load(&self.manager) {
             self.log_select
                 .set_error(format!("Failed to load logs: {e}"));
+        }
+    }
+
+    /// Removes the QSO at `index` from the active log and persists the change.
+    fn apply_delete_qso(&mut self, index: usize) {
+        if let Some(log) = self.current_log.as_mut()
+            && log.remove_qso(index).is_some()
+        {
+            let new_count = log.header().qsos.len();
+            self.qso_list.clamp_selection(new_count);
+            if let Err(e) = self.manager.save_log(log) {
+                self.qso_list.set_error(format!("Failed to save log: {e}"));
+            }
         }
     }
 
@@ -1627,6 +1641,115 @@ mod tests {
             app.handle_key(press(KeyCode::Enter));
             // Should stay on QsoList since no QSOs
             assert_eq!(app.screen(), Screen::QsoList);
+        }
+    }
+
+    mod delete_qso_integration {
+        use super::*;
+
+        fn alt_press(code: KeyCode) -> KeyEvent {
+            KeyEvent {
+                code,
+                modifiers: KeyModifiers::ALT,
+                kind: KeyEventKind::Press,
+                state: KeyEventState::NONE,
+            }
+        }
+
+        fn make_app_with_qsos(n: usize) -> (tempfile::TempDir, App) {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            save_test_log(&manager, "test-log");
+            let mut app = App::new(manager).unwrap();
+            app.handle_key(press(KeyCode::Enter));
+            for i in 0..n {
+                type_string(&mut app, &format!("W{i}AW"));
+                app.handle_key(press(KeyCode::Enter));
+            }
+            app.handle_key(alt_press(KeyCode::Char('e')));
+            assert_eq!(app.screen(), Screen::QsoList);
+            (dir, app)
+        }
+
+        #[test]
+        fn d_then_y_removes_qso() {
+            let (_dir, mut app) = make_app_with_qsos(3);
+            assert_eq!(app.current_log().unwrap().header().qsos.len(), 3);
+
+            app.handle_key(press(KeyCode::Char('d')));
+            app.handle_key(press(KeyCode::Char('y')));
+
+            assert_eq!(app.current_log().unwrap().header().qsos.len(), 2);
+        }
+
+        #[test]
+        fn d_then_n_preserves_qso() {
+            let (_dir, mut app) = make_app_with_qsos(3);
+            app.handle_key(press(KeyCode::Char('d')));
+            app.handle_key(press(KeyCode::Char('n')));
+            assert_eq!(app.current_log().unwrap().header().qsos.len(), 3);
+        }
+
+        #[test]
+        fn delete_qso_persists_to_storage() {
+            let (_dir, mut app) = make_app_with_qsos(2);
+            app.handle_key(press(KeyCode::Char('d')));
+            app.handle_key(press(KeyCode::Char('y')));
+
+            let loaded = app.manager().load_log("test-log").unwrap();
+            assert_eq!(loaded.header().qsos.len(), 1);
+        }
+
+        #[test]
+        fn delete_last_qso_clamps_selection_to_zero() {
+            let (_dir, mut app) = make_app_with_qsos(1);
+            app.handle_key(press(KeyCode::Char('d')));
+            app.handle_key(press(KeyCode::Char('y')));
+            assert_eq!(app.qso_list.selected(), 0);
+        }
+
+        #[test]
+        fn delete_qso_at_last_index_clamps_selection() {
+            let (_dir, mut app) = make_app_with_qsos(3);
+            // Move to last QSO (index 2)
+            app.handle_key(press(KeyCode::End));
+            assert_eq!(app.qso_list.selected(), 2);
+
+            app.handle_key(press(KeyCode::Char('d')));
+            app.handle_key(press(KeyCode::Char('y')));
+
+            // After deleting index 2, only indices 0 and 1 remain; selected must be ≤ 1
+            assert!(app.qso_list.selected() <= 1);
+        }
+
+        #[test]
+        fn apply_delete_qso_without_active_log_is_noop() {
+            let (_dir, mut app) = make_app();
+            app.screen = Screen::QsoList;
+            app.apply_action(Action::DeleteQso(0));
+            // No panic, nothing changes
+            assert!(app.current_log().is_none());
+        }
+
+        #[test]
+        fn delete_qso_storage_error_shows_error_on_qso_list() {
+            let dir = tempfile::tempdir().unwrap();
+            let manager = LogManager::with_path(dir.path()).unwrap();
+            save_test_log(&manager, "test-log");
+            let mut app = App::new(manager).unwrap();
+            app.handle_key(press(KeyCode::Enter));
+
+            type_string(&mut app, "KD9XYZ");
+            app.handle_key(press(KeyCode::Enter));
+
+            // Remove storage to cause a save error
+            std::fs::remove_dir_all(dir.path()).unwrap();
+
+            app.apply_action(Action::DeleteQso(0));
+            assert!(
+                app.qso_list.error().is_some(),
+                "should surface save error on qso list"
+            );
         }
     }
 }
