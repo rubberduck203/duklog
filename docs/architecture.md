@@ -92,6 +92,7 @@ Action::EditQso(idx)      — load QSO at index into entry form for editing
 Action::UpdateQso(idx, q) — replace QSO at index with updated version
 Action::ExportLog         — trigger ADIF export of the current log
 Action::DeleteLog(log_id) — delete the log with the given ID from storage; clears current_log if it matches
+Action::DeleteQso(idx)    — remove QSO at index from the active log and persist; clamps qso_list selection
 Action::Quit              — exit the application
 ```
 

@@ -126,6 +126,13 @@ impl Log {
         self.header_mut().replace_qso(index, qso)
     }
 
+    /// Removes and returns the QSO at `index`.
+    ///
+    /// Returns `None` if `index` is out of bounds.
+    pub fn remove_qso(&mut self, index: usize) -> Option<Qso> {
+        self.header_mut().remove_qso(index)
+    }
+
     /// Returns the short type name used in table columns and UI labels.
     ///
     /// Returns `"General"`, `"POTA"`, `"FD"`, or `"WFD"`.

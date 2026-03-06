@@ -17,6 +17,10 @@ use crate::tui::widgets::{StatusBarContext, draw_status_bar};
 pub struct QsoListState {
     /// Index of the currently highlighted row (0-based).
     selected: usize,
+    /// When `Some`, a delete confirmation is pending for the stored QSO index.
+    pending_delete: Option<usize>,
+    /// Error message from the last failed operation.
+    error: Option<String>,
 }
 
 impl Default for QsoListState {
@@ -28,40 +32,82 @@ impl Default for QsoListState {
 impl QsoListState {
     /// Creates a new state with the cursor at the first row.
     pub fn new() -> Self {
-        Self { selected: 0 }
+        Self {
+            selected: 0,
+            pending_delete: None,
+            error: None,
+        }
     }
 
     /// Handles a key event, returning an [`Action`] for the app to apply.
     pub fn handle_key(&mut self, key: KeyEvent, qso_count: usize) -> Action {
-        match key.code {
-            KeyCode::Up => {
-                self.selected = self.selected.saturating_sub(1);
-                Action::None
-            }
-            KeyCode::Down => {
-                if qso_count > 0 {
-                    self.selected = (self.selected + 1).min(qso_count - 1);
-                }
-                Action::None
-            }
-            KeyCode::Home => {
-                self.selected = 0;
-                Action::None
-            }
-            KeyCode::End => {
-                self.selected = qso_count.saturating_sub(1);
-                Action::None
-            }
-            KeyCode::Enter => {
-                if qso_count > 0 {
-                    Action::EditQso(self.selected)
-                } else {
+        match self.pending_delete.take() {
+            Some(index) => match key.code {
+                KeyCode::Char('y') => Action::DeleteQso(index),
+                KeyCode::Char('n') | KeyCode::Esc => Action::None,
+                _ => {
+                    self.pending_delete = Some(index);
                     Action::None
                 }
-            }
-            KeyCode::Esc | KeyCode::Char('q') => Action::Navigate(Screen::QsoEntry),
-            _ => Action::None,
+            },
+            None => match key.code {
+                KeyCode::Up => {
+                    self.selected = self.selected.saturating_sub(1);
+                    Action::None
+                }
+                KeyCode::Down => {
+                    if qso_count > 0 {
+                        self.selected = (self.selected + 1).min(qso_count - 1);
+                    }
+                    Action::None
+                }
+                KeyCode::Home => {
+                    self.selected = 0;
+                    Action::None
+                }
+                KeyCode::End => {
+                    self.selected = qso_count.saturating_sub(1);
+                    Action::None
+                }
+                KeyCode::Enter => {
+                    if qso_count > 0 {
+                        Action::EditQso(self.selected)
+                    } else {
+                        Action::None
+                    }
+                }
+                KeyCode::Char('d') => {
+                    if qso_count > 0 {
+                        self.pending_delete = Some(self.selected);
+                    }
+                    Action::None
+                }
+                KeyCode::Esc | KeyCode::Char('q') => Action::Navigate(Screen::QsoEntry),
+                _ => Action::None,
+            },
         }
+    }
+
+    /// Clamps `selected` to the last valid index in a list of `count` items.
+    ///
+    /// If `count` is 0, `selected` is set to 0.
+    pub fn clamp_selection(&mut self, count: usize) {
+        self.selected = self.selected.min(count.saturating_sub(1));
+    }
+
+    /// Returns whether a delete confirmation is pending.
+    pub fn pending_delete(&self) -> Option<usize> {
+        self.pending_delete
+    }
+
+    /// Returns the current error message, if any.
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
+    /// Sets an error message to display on this screen.
+    pub fn set_error(&mut self, msg: String) {
+        self.error = Some(msg);
     }
 
     /// Returns the currently selected row index.
@@ -74,9 +120,11 @@ impl QsoListState {
         self.selected = idx;
     }
 
-    /// Resets the cursor to the first row.
+    /// Resets the cursor to the first row and clears transient state.
     pub fn reset(&mut self) {
         self.selected = 0;
+        self.pending_delete = None;
+        self.error = None;
     }
 }
 
@@ -162,9 +210,22 @@ pub fn draw_qso_list(state: &QsoListState, log: Option<&Log>, frame: &mut Frame,
     }
 
     // Footer
-    let footer = Paragraph::new("↑↓: navigate  Home/End: jump  Enter: edit  q: back")
-        .style(Style::default().fg(Color::DarkGray));
-    frame.render_widget(footer, footer_area);
+    if state.pending_delete().is_some() {
+        let prompt = Paragraph::new("Delete QSO? y/n")
+            .style(Style::default().fg(Color::Yellow))
+            .alignment(Alignment::Center);
+        frame.render_widget(prompt, footer_area);
+    } else if let Some(err) = state.error() {
+        let err_line = Paragraph::new(err)
+            .style(Style::default().fg(Color::Red))
+            .alignment(Alignment::Center);
+        frame.render_widget(err_line, footer_area);
+    } else {
+        let footer =
+            Paragraph::new("↑↓: navigate  Home/End: jump  Enter: edit  d: delete  q: back")
+                .style(Style::default().fg(Color::DarkGray));
+        frame.render_widget(footer, footer_area);
+    }
 }
 
 #[cfg(test)]
@@ -361,6 +422,92 @@ mod tests {
         }
     }
 
+    mod delete {
+        use super::*;
+
+        #[test]
+        fn d_on_empty_list_is_noop() {
+            let mut state = QsoListState::new();
+            let action = state.handle_key(press(KeyCode::Char('d')), 0);
+            assert_eq!(action, Action::None);
+            assert_eq!(state.pending_delete(), None);
+        }
+
+        #[test]
+        fn d_on_populated_list_sets_pending() {
+            let mut state = QsoListState::new();
+            state.set_selected(2);
+            let action = state.handle_key(press(KeyCode::Char('d')), 5);
+            assert_eq!(action, Action::None);
+            assert_eq!(state.pending_delete(), Some(2));
+        }
+
+        #[test]
+        fn y_while_pending_returns_delete_qso() {
+            let mut state = QsoListState::new();
+            state.set_selected(1);
+            state.handle_key(press(KeyCode::Char('d')), 3);
+            let action = state.handle_key(press(KeyCode::Char('y')), 3);
+            assert_eq!(action, Action::DeleteQso(1));
+            assert_eq!(state.pending_delete(), None);
+        }
+
+        #[test]
+        fn n_while_pending_cancels() {
+            let mut state = QsoListState::new();
+            state.handle_key(press(KeyCode::Char('d')), 3);
+            let action = state.handle_key(press(KeyCode::Char('n')), 3);
+            assert_eq!(action, Action::None);
+            assert_eq!(state.pending_delete(), None);
+        }
+
+        #[test]
+        fn esc_while_pending_cancels() {
+            let mut state = QsoListState::new();
+            state.handle_key(press(KeyCode::Char('d')), 3);
+            let action = state.handle_key(press(KeyCode::Esc), 3);
+            assert_eq!(action, Action::None);
+            assert_eq!(state.pending_delete(), None);
+        }
+
+        #[test]
+        fn other_key_while_pending_restores_pending() {
+            let mut state = QsoListState::new();
+            state.handle_key(press(KeyCode::Char('d')), 3);
+            let action = state.handle_key(press(KeyCode::Char('x')), 3);
+            assert_eq!(action, Action::None);
+            assert_eq!(state.pending_delete(), Some(0));
+        }
+    }
+
+    mod clamp_selection {
+        use super::*;
+
+        #[test]
+        fn clamp_with_nonempty_list() {
+            let mut state = QsoListState::new();
+            state.set_selected(4);
+            state.clamp_selection(3);
+            assert_eq!(state.selected(), 2);
+        }
+
+        #[test]
+        fn clamp_with_empty_list_sets_zero() {
+            let mut state = QsoListState::new();
+            state.set_selected(5);
+            state.clamp_selection(0);
+            assert_eq!(state.selected(), 0);
+        }
+
+        #[test]
+        fn clamp_when_within_bounds_is_noop() {
+            let mut state = QsoListState::new();
+            state.set_selected(2);
+            state.clamp_selection(5);
+            assert_eq!(state.selected(), 2);
+        }
+    }
+
     mod setters {
         use super::*;
 
@@ -377,6 +524,23 @@ mod tests {
             state.set_selected(10);
             state.reset();
             assert_eq!(state.selected(), 0);
+        }
+
+        #[test]
+        fn reset_clears_pending_delete() {
+            let mut state = QsoListState::new();
+            state.handle_key(press(KeyCode::Char('d')), 3);
+            assert!(state.pending_delete().is_some());
+            state.reset();
+            assert_eq!(state.pending_delete(), None);
+        }
+
+        #[test]
+        fn reset_clears_error() {
+            let mut state = QsoListState::new();
+            state.set_error("oops".into());
+            state.reset();
+            assert_eq!(state.error(), None);
         }
     }
 
@@ -540,6 +704,33 @@ mod tests {
             assert!(
                 output.contains("QSO List (0 QSOs)"),
                 "should show zero count"
+            );
+        }
+
+        #[test]
+        fn renders_delete_hint_in_normal_footer() {
+            let state = QsoListState::new();
+            let output = render_qso_list(&state, None, 80, 20);
+            assert!(output.contains("d: delete"), "should show delete hint");
+        }
+
+        #[test]
+        fn pending_delete_shows_confirmation_prompt() {
+            let mut state = QsoListState::new();
+            let log = make_log_with_qsos(3);
+            state.handle_key(
+                KeyEvent {
+                    code: KeyCode::Char('d'),
+                    modifiers: crossterm::event::KeyModifiers::NONE,
+                    kind: crossterm::event::KeyEventKind::Press,
+                    state: crossterm::event::KeyEventState::NONE,
+                },
+                3,
+            );
+            let output = render_qso_list(&state, Some(&log), 80, 20);
+            assert!(
+                output.contains("Delete QSO? y/n"),
+                "should show confirmation prompt: {output}"
             );
         }
     }

@@ -28,6 +28,8 @@ pub enum Action {
     ExportLog,
     /// Delete the log with the given ID from storage.
     DeleteLog(String),
+    /// Delete the QSO at the given index from the active log.
+    DeleteQso(usize),
     /// Quit the application.
     Quit,
 }

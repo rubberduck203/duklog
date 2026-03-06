@@ -43,6 +43,7 @@ static QSO_LIST_KEYS: &[(&str, &str)] = &[
     ("↑/↓", "navigate"),
     ("Home / End", "first / last"),
     ("Enter", "edit QSO"),
+    ("d", "delete QSO (y/n to confirm)"),
     ("q / Esc", "back"),
     ("F1", "help"),
 ];
