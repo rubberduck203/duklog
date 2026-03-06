@@ -166,6 +166,8 @@ Existing data: logs without a `log_type` field should default to `Pota` during d
 Domain and framework research has been saved to `docs/reference/`:
 
 - `docs/reference/adif-spec-notes.md` — ADIF v3.1.6 file format, field syntax, band/mode values, header format
+- `docs/reference/adif-band-frequencies.md` — ADIF v3.1.4 band enumeration: frequency ranges (MHz and kHz) for all 13 bands in `Band` enum, plus full ADIF band table for reference
+- `docs/reference/fcc-us-band-privileges.md` — US FCC Part 97 band privileges by license class; includes General class sub-ranges, gap segments reserved for Extra/Advanced, mode restrictions, and implementation notes for a future privilege-check feature
 - `docs/reference/pota-rules-notes.md` — POTA activation rules, required/recommended ADIF fields, park reference format, P2P contacts
 - `docs/reference/arrl-field-day-notes.md` — Field Day exchange format, classes, sections, scoring, ADIF mapping
 - `docs/reference/winter-field-day-notes.md` — WFD exchange format, classes, scoring, ADIF mapping, differences from Field Day
@@ -199,3 +201,4 @@ These are distilled from the official docs and should be consulted during implem
 - **Field Day bonus points tracker**: Screen or sidebar to track claimed bonus points toward the FD summary sheet
 - **WFD objectives tracker**: Track completed WFD objectives for the multiplier
 - **Auto-determine band from frequency**: When a frequency is entered in the QSO form, automatically select the matching `Band` value (e.g., 14.225 MHz → 20M) so the operator doesn't have to set both
+- **US license privilege checker**: Warn the operator when a logged frequency falls outside their license class privileges. Configurable license class (Technician/General/Advanced/Extra) stored in user preferences. General class requires per-band sub-range checks (80m, 40m, 20m, 15m each have disjoint General segments with gaps reserved for Extra/Advanced; 60m is channelized). Reference: `docs/reference/fcc-us-band-privileges.md`. US-only for now; could be extended to other ITU regions.

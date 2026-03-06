@@ -61,6 +61,29 @@ impl Band {
     pub fn all() -> &'static [Band] {
         ALL_BANDS
     }
+
+    /// Returns the band that contains `freq_khz`, or `None` if the frequency
+    /// does not fall within any amateur allocation supported by this enum.
+    ///
+    /// Ranges are the ADIF v3.1.6 standard band edges.
+    pub fn from_frequency_khz(freq_khz: u32) -> Option<Band> {
+        match freq_khz {
+            1_800..=2_000 => Some(Band::M160),
+            3_500..=4_000 => Some(Band::M80),
+            5_060..=5_450 => Some(Band::M60),
+            7_000..=7_300 => Some(Band::M40),
+            10_100..=10_150 => Some(Band::M30),
+            14_000..=14_350 => Some(Band::M20),
+            18_068..=18_168 => Some(Band::M17),
+            21_000..=21_450 => Some(Band::M15),
+            24_890..=24_990 => Some(Band::M12),
+            28_000..=29_700 => Some(Band::M10),
+            50_000..=54_000 => Some(Band::M6),
+            144_000..=148_000 => Some(Band::M2),
+            420_000..=450_000 => Some(Band::Cm70),
+            _ => None,
+        }
+    }
 }
 
 #[mutants::skip]
@@ -72,7 +95,63 @@ impl fmt::Display for Band {
 
 #[cfg(test)]
 mod tests {
+    use quickcheck::quickcheck;
+
     use super::*;
+
+    quickcheck! {
+        fn from_frequency_khz_returns_valid_band_or_none(freq: u32) -> bool {
+            match Band::from_frequency_khz(freq) {
+                Some(band) => Band::all().contains(&band),
+                None => true,
+            }
+        }
+    }
+
+    #[test]
+    fn from_frequency_khz_known_frequencies() {
+        assert_eq!(Band::from_frequency_khz(1_800), Some(Band::M160));
+        assert_eq!(Band::from_frequency_khz(1_900), Some(Band::M160));
+        assert_eq!(Band::from_frequency_khz(2_000), Some(Band::M160));
+        assert_eq!(Band::from_frequency_khz(3_500), Some(Band::M80));
+        assert_eq!(Band::from_frequency_khz(3_750), Some(Band::M80));
+        assert_eq!(Band::from_frequency_khz(4_000), Some(Band::M80));
+        assert_eq!(Band::from_frequency_khz(5_060), Some(Band::M60));
+        assert_eq!(Band::from_frequency_khz(5_450), Some(Band::M60));
+        assert_eq!(Band::from_frequency_khz(7_000), Some(Band::M40));
+        assert_eq!(Band::from_frequency_khz(7_200), Some(Band::M40));
+        assert_eq!(Band::from_frequency_khz(7_300), Some(Band::M40));
+        assert_eq!(Band::from_frequency_khz(10_100), Some(Band::M30));
+        assert_eq!(Band::from_frequency_khz(10_150), Some(Band::M30));
+        assert_eq!(Band::from_frequency_khz(14_000), Some(Band::M20));
+        assert_eq!(Band::from_frequency_khz(14_225), Some(Band::M20));
+        assert_eq!(Band::from_frequency_khz(14_350), Some(Band::M20));
+        assert_eq!(Band::from_frequency_khz(18_068), Some(Band::M17));
+        assert_eq!(Band::from_frequency_khz(18_168), Some(Band::M17));
+        assert_eq!(Band::from_frequency_khz(21_000), Some(Band::M15));
+        assert_eq!(Band::from_frequency_khz(21_450), Some(Band::M15));
+        assert_eq!(Band::from_frequency_khz(24_890), Some(Band::M12));
+        assert_eq!(Band::from_frequency_khz(24_990), Some(Band::M12));
+        assert_eq!(Band::from_frequency_khz(28_000), Some(Band::M10));
+        assert_eq!(Band::from_frequency_khz(29_700), Some(Band::M10));
+        assert_eq!(Band::from_frequency_khz(50_000), Some(Band::M6));
+        assert_eq!(Band::from_frequency_khz(54_000), Some(Band::M6));
+        assert_eq!(Band::from_frequency_khz(144_000), Some(Band::M2));
+        assert_eq!(Band::from_frequency_khz(148_000), Some(Band::M2));
+        assert_eq!(Band::from_frequency_khz(420_000), Some(Band::Cm70));
+        assert_eq!(Band::from_frequency_khz(450_000), Some(Band::Cm70));
+    }
+
+    #[test]
+    fn from_frequency_khz_gaps_return_none() {
+        assert_eq!(Band::from_frequency_khz(0), None);
+        assert_eq!(Band::from_frequency_khz(1_799), None);
+        assert_eq!(Band::from_frequency_khz(2_001), None);
+        assert_eq!(Band::from_frequency_khz(5_059), None);
+        assert_eq!(Band::from_frequency_khz(5_451), None);
+        assert_eq!(Band::from_frequency_khz(10_151), None);
+        assert_eq!(Band::from_frequency_khz(10_099), None);
+    }
 
     #[test]
     fn adif_str_all_bands() {
