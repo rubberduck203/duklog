@@ -135,9 +135,16 @@ impl QsoEntryState {
                 form.set_value(RST_RCVD, rst);
                 form
             }
-            QsoFormType::FieldDay | QsoFormType::WinterFieldDay => Form::new(vec![
+            QsoFormType::FieldDay => Form::new(vec![
                 FormField::new("Their Callsign", true),
-                FormField::new("Their Class", true),
+                FormField::new("Their Class (e.g. 3A)", true),
+                FormField::new("Their Section", true),
+                FormField::new("Frequency (kHz)", true),
+                FormField::new("Comments", false),
+            ]),
+            QsoFormType::WinterFieldDay => Form::new(vec![
+                FormField::new("Their Callsign", true),
+                FormField::new("Their Class (e.g. 2H)", true),
                 FormField::new("Their Section", true),
                 FormField::new("Frequency (kHz)", true),
                 FormField::new("Comments", false),
