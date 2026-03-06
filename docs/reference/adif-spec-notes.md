@@ -87,7 +87,8 @@ Note: `SPAR-WINTER-FD` is the deprecated identifier for WFD 2016 and earlier; du
 
 ## ADIF Band Values
 
-These are the string values used in the `BAND` field:
+These are the string values used in the `BAND` field.
+For frequency ranges (MHz and kHz) for each band, see `adif-band-frequencies.md`.
 
 | Band | ADIF Value |
 |---|---|

@@ -127,6 +127,8 @@ The QSO list screen dispatches `EditQso(index)` when the user presses Enter on a
 
 `screens/qso_entry.rs` holds `QsoEntryState`, which includes a `QsoFormType` field tracking the log type in use. `build_form_for_type(form_type, mode) -> Form` constructs a `Form` with the correct field set (3–6 fields depending on type). `set_log_context` derives the form type from the `Log` variant and rebuilds the form when the type changes.
 
+`try_auto_set_band_from_frequency` parses the frequency field and calls `Band::from_frequency_khz` to auto-select the band. It fires when Tab or BackTab leaves the frequency field (FD/WFD forms only) and again during submit. Out-of-band or non-parseable values are silently ignored — the operator's manual band selection is preserved.
+
 The screen uses `draw_qso_entry_form` (a private `#[mutants::skip]` function) to render the form in a two-row horizontal layout rather than calling `draw_form`. Row 1 always shows the three core fields in equal thirds. Row 2 varies by type: General puts Comments on the right half; POTA/FD put the type-specific field left and Comments right; WFD uses three equal thirds for exchange, frequency, and comments. This frees ~9 lines of vertical space compared to the previous single-column layout.
 
 ### Status Bar Widget

@@ -135,9 +135,16 @@ impl QsoEntryState {
                 form.set_value(RST_RCVD, rst);
                 form
             }
-            QsoFormType::FieldDay | QsoFormType::WinterFieldDay => Form::new(vec![
+            QsoFormType::FieldDay => Form::new(vec![
                 FormField::new("Their Callsign", true),
-                FormField::new("Their Class", true),
+                FormField::new("Their Class (e.g. 3A)", true),
+                FormField::new("Their Section", true),
+                FormField::new("Frequency (kHz)", true),
+                FormField::new("Comments", false),
+            ]),
+            QsoFormType::WinterFieldDay => Form::new(vec![
+                FormField::new("Their Callsign", true),
+                FormField::new("Their Class (e.g. 2H)", true),
                 FormField::new("Their Section", true),
                 FormField::new("Frequency (kHz)", true),
                 FormField::new("Comments", false),
@@ -184,10 +191,16 @@ impl QsoEntryState {
 
         match key.code {
             KeyCode::Tab => {
+                if self.form_type.has_contest_exchange() && self.form.focus() == CONTEST_FREQUENCY {
+                    self.try_auto_set_band_from_frequency();
+                }
                 self.form.focus_next();
                 Action::None
             }
             KeyCode::BackTab => {
+                if self.form_type.has_contest_exchange() && self.form.focus() == CONTEST_FREQUENCY {
+                    self.try_auto_set_band_from_frequency();
+                }
                 self.form.focus_prev();
                 Action::None
             }
@@ -366,6 +379,16 @@ impl QsoEntryState {
         self.band = cycle(Band::all(), self.band, forward);
     }
 
+    /// If the frequency field contains a parseable kHz value that maps to a known band,
+    /// auto-selects that band. Called when leaving the frequency field.
+    fn try_auto_set_band_from_frequency(&mut self) {
+        if let Ok(freq) = self.form.value(CONTEST_FREQUENCY).parse::<u32>()
+            && let Some(band) = Band::from_frequency_khz(freq)
+        {
+            self.band = band;
+        }
+    }
+
     /// Cycles the mode forward or backward, wrapping around.
     ///
     /// When the mode changes, RST fields are updated to the new mode's default
@@ -461,7 +484,11 @@ impl QsoEntryState {
                 }
                 let freq_str = self.form.value(CONTEST_FREQUENCY).to_string();
                 match freq_str.parse::<u32>() {
-                    Ok(f) if f > 0 => frequency = Some(f),
+                    Ok(f) if f > 0 => {
+                        // Auto-select band; no-op if frequency is between amateur allocations
+                        self.try_auto_set_band_from_frequency();
+                        frequency = Some(f);
+                    }
                     _ => self.form.set_error(
                         CONTEST_FREQUENCY,
                         "frequency must be a positive integer (kHz)".into(),
@@ -490,7 +517,11 @@ impl QsoEntryState {
                 }
                 let freq_str = self.form.value(CONTEST_FREQUENCY).to_string();
                 match freq_str.parse::<u32>() {
-                    Ok(f) if f > 0 => frequency = Some(f),
+                    Ok(f) if f > 0 => {
+                        // Auto-select band; no-op if frequency is between amateur allocations
+                        self.try_auto_set_band_from_frequency();
+                        frequency = Some(f);
+                    }
                     _ => self.form.set_error(
                         CONTEST_FREQUENCY,
                         "frequency must be a positive integer (kHz)".into(),
@@ -751,7 +782,7 @@ mod tests {
     use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers};
 
     use super::*;
-    use crate::model::{FdClass, FdPowerCategory, FieldDayLog, PotaLog, WfdClass, WfdLog};
+    use crate::model::{Band, FdClass, FdPowerCategory, FieldDayLog, PotaLog, WfdClass, WfdLog};
 
     fn press(code: KeyCode) -> KeyEvent {
         KeyEvent {
@@ -1362,6 +1393,11 @@ mod tests {
             )
         }
 
+        fn make_general_log() -> Log {
+            use crate::model::GeneralLog;
+            Log::General(GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap())
+        }
+
         #[test]
         fn fd_valid_exchange_returns_add_qso() {
             let mut state = QsoEntryState::new();
@@ -1501,6 +1537,180 @@ mod tests {
                 }
                 other => panic!("expected AddQso, got {other:?}"),
             }
+        }
+
+        #[test]
+        fn fd_frequency_auto_sets_band_on_submit() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            fill_valid_callsign(&mut state);
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "3A");
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "CT");
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "7200"); // 40M
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::AddQso(qso) => assert_eq!(qso.band, Band::M40),
+                other => panic!("expected AddQso, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn wfd_frequency_auto_sets_band_on_submit() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_wfd_log());
+            fill_valid_callsign(&mut state);
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "2H");
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "EPA");
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "21200"); // 15M
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::AddQso(qso) => assert_eq!(qso.band, Band::M15),
+                other => panic!("expected AddQso, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn fd_frequency_auto_sets_band_on_tab() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            // Navigate to frequency field (index 3)
+            state.handle_key(press(KeyCode::Tab)); // callsign → class
+            state.handle_key(press(KeyCode::Tab)); // class → section
+            state.handle_key(press(KeyCode::Tab)); // section → frequency
+            type_string(&mut state, "7200"); // 40M (not the default 20M)
+            assert_eq!(
+                state.band(),
+                Band::M20,
+                "band should not change before tabbing away"
+            );
+            state.handle_key(press(KeyCode::Tab)); // frequency → comments (triggers auto-band)
+            assert_eq!(state.band(), Band::M40, "band should auto-select to 40M");
+        }
+
+        #[test]
+        fn fd_frequency_auto_sets_band_on_backtab() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            // Navigate to frequency field (index 3)
+            state.handle_key(press(KeyCode::Tab)); // callsign → class
+            state.handle_key(press(KeyCode::Tab)); // class → section
+            state.handle_key(press(KeyCode::Tab)); // section → frequency
+            type_string(&mut state, "3750"); // 80M (not the default 20M)
+            assert_eq!(
+                state.band(),
+                Band::M20,
+                "band should not change before tabbing away"
+            );
+            state.handle_key(press(KeyCode::BackTab)); // frequency → section (triggers auto-band)
+            assert_eq!(state.band(), Band::M80, "band should auto-select to 80M");
+        }
+
+        #[test]
+        fn general_form_tab_does_not_trigger_auto_band() {
+            // Guard: has_contest_exchange() is false for General; auto-band must not fire
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_general_log());
+            // Tab through all general fields (callsign → rst_sent → rst_rcvd → comments → wrap)
+            for _ in 0..4 {
+                state.handle_key(press(KeyCode::Tab));
+            }
+            // Band stays at default — no frequency field, no auto-band
+            assert_eq!(state.band(), Band::M20);
+        }
+
+        #[test]
+        fn fd_tab_from_non_frequency_field_does_not_trigger_auto_band() {
+            // Guard: focus != CONTEST_FREQUENCY; tabbing off the class field must not fire
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            // Focus is on callsign (index 0); tab to class (index 1)
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "3A");
+            // Tab from class (index 1) to section (index 2) — must not trigger auto-band
+            state.handle_key(press(KeyCode::Tab));
+            assert_eq!(state.band(), Band::M20);
+        }
+
+        #[test]
+        fn fd_tab_off_non_frequency_does_not_override_manual_band() {
+            // Kills the &&→|| mutant on the Tab guard:
+            // auto-band fires correctly on Tab-off-frequency; a subsequent Tab off a
+            // different field must NOT overwrite a manual band change.
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            state.handle_key(press(KeyCode::Tab)); // → class (1)
+            state.handle_key(press(KeyCode::Tab)); // → section (2)
+            state.handle_key(press(KeyCode::Tab)); // → frequency (3)
+            type_string(&mut state, "7200"); // 40M
+            state.handle_key(press(KeyCode::Tab)); // → comments (4): auto-band → M40
+            assert_eq!(state.band(), Band::M40);
+            // Manually step one band forward: M40 → M30
+            state.handle_key(alt_press(KeyCode::Char('b')));
+            assert_eq!(state.band(), Band::M30);
+            // Tab from comments (4) to callsign (0) wrapping: must NOT fire auto-band
+            state.handle_key(press(KeyCode::Tab));
+            assert_eq!(
+                state.band(),
+                Band::M30,
+                "manual band selection must not be overwritten"
+            );
+        }
+
+        #[test]
+        fn fd_backtab_off_non_frequency_does_not_override_manual_band() {
+            // Kills the &&→|| mutant on the BackTab guard.
+            // After auto-band via BackTab-off-frequency, a subsequent BackTab from a
+            // different field must NOT overwrite a manual band change.
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            state.handle_key(press(KeyCode::Tab)); // → class (1)
+            state.handle_key(press(KeyCode::Tab)); // → section (2)
+            state.handle_key(press(KeyCode::Tab)); // → frequency (3)
+            type_string(&mut state, "7200"); // 40M
+            // BackTab off frequency → section (2): auto-band → M40
+            state.handle_key(press(KeyCode::BackTab));
+            assert_eq!(state.band(), Band::M40);
+            // Manually step one band forward: M40 → M30
+            state.handle_key(alt_press(KeyCode::Char('b')));
+            assert_eq!(state.band(), Band::M30);
+            // BackTab from section (2) to class (1): must NOT fire auto-band
+            state.handle_key(press(KeyCode::BackTab));
+            assert_eq!(
+                state.band(),
+                Band::M30,
+                "manual band selection must not be overwritten"
+            );
+        }
+
+        #[test]
+        fn fd_out_of_band_frequency_does_not_change_band() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "9999"); // not a ham band
+            state.handle_key(press(KeyCode::Tab));
+            // Band stays at default (20M) since 9999 kHz maps to nothing
+            assert_eq!(state.band(), Band::M20);
+        }
+
+        #[test]
+        fn fd_invalid_frequency_text_does_not_change_band() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "abc"); // not parseable
+            state.handle_key(press(KeyCode::Tab));
+            assert_eq!(state.band(), Band::M20);
         }
 
         #[test]

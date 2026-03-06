@@ -115,7 +115,7 @@ FD and WFD do not exchange RST. Row 1 Col 2/3 capture the contest class (e.g. `3
   - Field Day: `<count><class>` — e.g. `3A`, `1F` (class: A–F)
   - Winter Field Day: `<count><class>` — e.g. `2H`, `1O` (class: H/I/O/M)
 - **Their Section** — received ARRL/RAC section (e.g. `CT`, `EPA`, `DX`); auto-uppercased; required for FD/WFD
-- **Frequency** — operating frequency in kHz (e.g. `14225`); required for WFD ADIF export
+- **Frequency** — operating frequency in kHz (e.g. `14225`); required for FD/WFD ADIF export; tabbing away (or submitting) auto-selects the matching band if the frequency falls within a known amateur allocation
 - **Comments** — free-text; optional
 
 | Key | Action |
