@@ -478,9 +478,8 @@ impl QsoEntryState {
                 let freq_str = self.form.value(CONTEST_FREQUENCY).to_string();
                 match freq_str.parse::<u32>() {
                     Ok(f) if f > 0 => {
-                        if let Some(band) = Band::from_frequency_khz(f) {
-                            self.band = band;
-                        }
+                        // Auto-select band; no-op if frequency is between amateur allocations
+                        self.try_auto_set_band_from_frequency();
                         frequency = Some(f);
                     }
                     _ => self.form.set_error(
@@ -512,9 +511,8 @@ impl QsoEntryState {
                 let freq_str = self.form.value(CONTEST_FREQUENCY).to_string();
                 match freq_str.parse::<u32>() {
                     Ok(f) if f > 0 => {
-                        if let Some(band) = Band::from_frequency_khz(f) {
-                            self.band = band;
-                        }
+                        // Auto-select band; no-op if frequency is between amateur allocations
+                        self.try_auto_set_band_from_frequency();
                         frequency = Some(f);
                     }
                     _ => self.form.set_error(
@@ -1388,6 +1386,11 @@ mod tests {
             )
         }
 
+        fn make_general_log() -> Log {
+            use crate::model::GeneralLog;
+            Log::General(GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap())
+        }
+
         #[test]
         fn fd_valid_exchange_returns_add_qso() {
             let mut state = QsoEntryState::new();
@@ -1573,10 +1576,109 @@ mod tests {
             state.handle_key(press(KeyCode::Tab)); // callsign → class
             state.handle_key(press(KeyCode::Tab)); // class → section
             state.handle_key(press(KeyCode::Tab)); // section → frequency
-            type_string(&mut state, "14225"); // 20M
-            assert_eq!(state.band(), Band::M20); // still default before tabbing away
+            type_string(&mut state, "7200"); // 40M (not the default 20M)
+            assert_eq!(
+                state.band(),
+                Band::M20,
+                "band should not change before tabbing away"
+            );
             state.handle_key(press(KeyCode::Tab)); // frequency → comments (triggers auto-band)
+            assert_eq!(state.band(), Band::M40, "band should auto-select to 40M");
+        }
+
+        #[test]
+        fn fd_frequency_auto_sets_band_on_backtab() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            // Navigate to frequency field (index 3)
+            state.handle_key(press(KeyCode::Tab)); // callsign → class
+            state.handle_key(press(KeyCode::Tab)); // class → section
+            state.handle_key(press(KeyCode::Tab)); // section → frequency
+            type_string(&mut state, "3750"); // 80M (not the default 20M)
+            assert_eq!(
+                state.band(),
+                Band::M20,
+                "band should not change before tabbing away"
+            );
+            state.handle_key(press(KeyCode::BackTab)); // frequency → section (triggers auto-band)
+            assert_eq!(state.band(), Band::M80, "band should auto-select to 80M");
+        }
+
+        #[test]
+        fn general_form_tab_does_not_trigger_auto_band() {
+            // Guard: has_contest_exchange() is false for General; auto-band must not fire
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_general_log());
+            // Tab through all general fields (callsign → rst_sent → rst_rcvd → comments → wrap)
+            for _ in 0..4 {
+                state.handle_key(press(KeyCode::Tab));
+            }
+            // Band stays at default — no frequency field, no auto-band
             assert_eq!(state.band(), Band::M20);
+        }
+
+        #[test]
+        fn fd_tab_from_non_frequency_field_does_not_trigger_auto_band() {
+            // Guard: focus != CONTEST_FREQUENCY; tabbing off the class field must not fire
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            // Focus is on callsign (index 0); tab to class (index 1)
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "3A");
+            // Tab from class (index 1) to section (index 2) — must not trigger auto-band
+            state.handle_key(press(KeyCode::Tab));
+            assert_eq!(state.band(), Band::M20);
+        }
+
+        #[test]
+        fn fd_tab_off_non_frequency_does_not_override_manual_band() {
+            // Kills the &&→|| mutant on the Tab guard:
+            // auto-band fires correctly on Tab-off-frequency; a subsequent Tab off a
+            // different field must NOT overwrite a manual band change.
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            state.handle_key(press(KeyCode::Tab)); // → class (1)
+            state.handle_key(press(KeyCode::Tab)); // → section (2)
+            state.handle_key(press(KeyCode::Tab)); // → frequency (3)
+            type_string(&mut state, "7200"); // 40M
+            state.handle_key(press(KeyCode::Tab)); // → comments (4): auto-band → M40
+            assert_eq!(state.band(), Band::M40);
+            // Manually step one band forward: M40 → M30
+            state.handle_key(alt_press(KeyCode::Char('b')));
+            assert_eq!(state.band(), Band::M30);
+            // Tab from comments (4) to callsign (0) wrapping: must NOT fire auto-band
+            state.handle_key(press(KeyCode::Tab));
+            assert_eq!(
+                state.band(),
+                Band::M30,
+                "manual band selection must not be overwritten"
+            );
+        }
+
+        #[test]
+        fn fd_backtab_off_non_frequency_does_not_override_manual_band() {
+            // Kills the &&→|| mutant on the BackTab guard.
+            // After auto-band via BackTab-off-frequency, a subsequent BackTab from a
+            // different field must NOT overwrite a manual band change.
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_fd_log());
+            state.handle_key(press(KeyCode::Tab)); // → class (1)
+            state.handle_key(press(KeyCode::Tab)); // → section (2)
+            state.handle_key(press(KeyCode::Tab)); // → frequency (3)
+            type_string(&mut state, "7200"); // 40M
+            // BackTab off frequency → section (2): auto-band → M40
+            state.handle_key(press(KeyCode::BackTab));
+            assert_eq!(state.band(), Band::M40);
+            // Manually step one band forward: M40 → M30
+            state.handle_key(alt_press(KeyCode::Char('b')));
+            assert_eq!(state.band(), Band::M30);
+            // BackTab from section (2) to class (1): must NOT fire auto-band
+            state.handle_key(press(KeyCode::BackTab));
+            assert_eq!(
+                state.band(),
+                Band::M30,
+                "manual band selection must not be overwritten"
+            );
         }
 
         #[test]

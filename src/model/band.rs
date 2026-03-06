@@ -65,7 +65,7 @@ impl Band {
     /// Returns the band that contains `freq_khz`, or `None` if the frequency
     /// does not fall within any amateur allocation supported by this enum.
     ///
-    /// Ranges are the ADIF v3.1.6 standard band edges.
+    /// Ranges are the ADIF v3.1.4 standard band edges.
     pub fn from_frequency_khz(freq_khz: u32) -> Option<Band> {
         match freq_khz {
             1_800..=2_000 => Some(Band::M160),
@@ -147,10 +147,21 @@ mod tests {
         assert_eq!(Band::from_frequency_khz(0), None);
         assert_eq!(Band::from_frequency_khz(1_799), None);
         assert_eq!(Band::from_frequency_khz(2_001), None);
+        assert_eq!(Band::from_frequency_khz(3_499), None);
+        assert_eq!(Band::from_frequency_khz(4_001), None);
         assert_eq!(Band::from_frequency_khz(5_059), None);
         assert_eq!(Band::from_frequency_khz(5_451), None);
-        assert_eq!(Band::from_frequency_khz(10_151), None);
+        assert_eq!(Band::from_frequency_khz(6_999), None);
+        assert_eq!(Band::from_frequency_khz(7_301), None);
         assert_eq!(Band::from_frequency_khz(10_099), None);
+        assert_eq!(Band::from_frequency_khz(10_151), None);
+        assert_eq!(Band::from_frequency_khz(13_999), None);
+        assert_eq!(Band::from_frequency_khz(14_351), None);
+        assert_eq!(Band::from_frequency_khz(29_701), None);
+        assert_eq!(Band::from_frequency_khz(54_001), None);
+        assert_eq!(Band::from_frequency_khz(419_999), None);
+        assert_eq!(Band::from_frequency_khz(450_001), None);
+        assert_eq!(Band::from_frequency_khz(u32::MAX), None);
     }
 
     #[test]
