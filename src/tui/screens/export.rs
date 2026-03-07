@@ -225,15 +225,38 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
     lines.push(Line::from(""));
     let mut path_spans = vec![Span::raw("Path: ")];
     if matches!(state.status(), ExportStatus::Ready) {
-        let (before, after) = state.path().split_at(state.cursor());
+        let path = state.path();
+        let cur = state.cursor();
+        let before = &path[..cur];
+        let rest = &path[cur..];
+        // Find the end of the character at the cursor (if any).
+        let char_end = rest
+            .char_indices()
+            .nth(1)
+            .map(|(i, _)| cur + i)
+            .unwrap_or(path.len());
         path_spans.push(Span::styled(before, Style::default().fg(Color::Yellow)));
-        path_spans.push(Span::styled(
-            "\u{2588}",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::SLOW_BLINK),
-        ));
-        path_spans.push(Span::styled(after, Style::default().fg(Color::Yellow)));
+        if cur < path.len() {
+            // Overlay the character under the cursor with reversed video.
+            path_spans.push(Span::styled(
+                &path[cur..char_end],
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::REVERSED),
+            ));
+            path_spans.push(Span::styled(
+                &path[char_end..],
+                Style::default().fg(Color::Yellow),
+            ));
+        } else {
+            // Cursor is past the end of the text — show the block.
+            path_spans.push(Span::styled(
+                "\u{2588}",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::SLOW_BLINK),
+            ));
+        }
     } else {
         path_spans.push(Span::styled(
             state.path(),
