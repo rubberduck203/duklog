@@ -3,9 +3,10 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use tui_textarea::TextArea;
 
 use crate::model::Log;
 use crate::storage::default_export_path;
@@ -27,9 +28,7 @@ pub enum ExportStatus {
 /// State for the export confirmation screen.
 #[derive(Debug, Clone)]
 pub struct ExportState {
-    path: String,
-    /// Byte offset of the cursor within `path`.
-    cursor: usize,
+    textarea: TextArea<'static>,
     status: ExportStatus,
     qso_count: usize,
 }
@@ -44,8 +43,7 @@ impl ExportState {
     /// Creates a new export state with empty defaults.
     pub fn new() -> Self {
         Self {
-            path: String::new(),
-            cursor: 0,
+            textarea: TextArea::default(),
             status: ExportStatus::Ready,
             qso_count: 0,
         }
@@ -59,15 +57,14 @@ impl ExportState {
         match log {
             Some(log) => {
                 self.qso_count = log.header().qsos.len();
-                self.path = default_export_path(log)
+                let path = default_export_path(log)
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|e| format!("<error: {e}>"));
-                self.cursor = self.path.len();
+                self.set_path(path);
             }
             None => {
                 self.qso_count = 0;
-                self.path = String::new();
-                self.cursor = 0;
+                self.textarea = TextArea::default();
             }
         }
     }
@@ -86,58 +83,13 @@ impl ExportState {
             ExportStatus::Ready => match key.code {
                 KeyCode::Enter => Action::ExportLog,
                 KeyCode::Esc => Action::Navigate(Screen::QsoEntry),
-                KeyCode::Backspace => {
-                    if self.cursor > 0 {
-                        let prev = self.prev_char_boundary();
-                        self.path.remove(prev);
-                        self.cursor = prev;
-                    }
+                _ => {
+                    self.textarea.input(key);
                     Action::None
                 }
-                KeyCode::Delete => {
-                    if self.cursor < self.path.len() {
-                        self.path.remove(self.cursor);
-                    }
-                    Action::None
-                }
-                KeyCode::Left => {
-                    if self.cursor > 0 {
-                        self.cursor = self.prev_char_boundary();
-                    }
-                    Action::None
-                }
-                KeyCode::Right => {
-                    if let Some(c) = self.path[self.cursor..].chars().next() {
-                        self.cursor += c.len_utf8();
-                    }
-                    Action::None
-                }
-                KeyCode::Home => {
-                    self.cursor = 0;
-                    Action::None
-                }
-                KeyCode::End => {
-                    self.cursor = self.path.len();
-                    Action::None
-                }
-                KeyCode::Char(c) => {
-                    self.path.insert(self.cursor, c);
-                    self.cursor += c.len_utf8();
-                    Action::None
-                }
-                _ => Action::None,
             },
             ExportStatus::Success | ExportStatus::Error(_) => Action::Navigate(Screen::QsoEntry),
         }
-    }
-
-    /// Returns the byte offset of the character boundary before the cursor.
-    fn prev_char_boundary(&self) -> usize {
-        self.path[..self.cursor]
-            .char_indices()
-            .next_back()
-            .map(|(i, _)| i)
-            .unwrap_or(0)
     }
 
     /// Marks the export as successful.
@@ -152,18 +104,19 @@ impl ExportState {
 
     /// Returns the export file path.
     pub fn path(&self) -> &str {
-        &self.path
+        self.textarea.lines().first().map_or("", String::as_str)
     }
 
     /// Sets the export file path and moves the cursor to the end.
     pub fn set_path(&mut self, path: String) {
-        self.cursor = path.len();
-        self.path = path;
+        use tui_textarea::CursorMove;
+        self.textarea = TextArea::new(vec![path]);
+        self.textarea.move_cursor(CursorMove::End);
     }
 
-    /// Returns the cursor position as a byte offset within the path.
+    /// Returns the cursor column position within the path (character-based).
     pub fn cursor(&self) -> usize {
-        self.cursor
+        self.textarea.cursor().1
     }
 
     /// Returns the current export status.
@@ -194,16 +147,16 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
     let inner = block.inner(content_area);
     frame.render_widget(block, content_area);
 
-    let [info_area, export_status_area, footer_area] = Layout::vertical([
-        Constraint::Min(5),
+    let [info_area, path_area, export_status_area, footer_area] = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Length(1),
         Constraint::Length(2),
         Constraint::Length(1),
     ])
     .areas(inner);
 
-    // Station info and export details
+    // Station info and QSO count
     let mut lines = Vec::new();
-
     if let Some(log) = log {
         let callsign = &log.header().station_callsign;
         let park = log
@@ -215,56 +168,34 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
             Style::default().fg(Color::White),
         )));
     }
-
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         format!("QSOs: {}", state.qso_count()),
         Style::default().fg(Color::White),
     )));
-    lines.push(Line::from(""));
-    let mut path_spans = vec![Span::raw("Path: ")];
-    if matches!(state.status(), ExportStatus::Ready) {
-        let path = state.path();
-        let cur = state.cursor();
-        let before = &path[..cur];
-        let rest = &path[cur..];
-        // Find the end of the character at the cursor (if any).
-        let char_end = rest
-            .char_indices()
-            .nth(1)
-            .map(|(i, _)| cur + i)
-            .unwrap_or(path.len());
-        path_spans.push(Span::styled(before, Style::default().fg(Color::Yellow)));
-        if cur < path.len() {
-            // Overlay the character under the cursor with reversed video.
-            path_spans.push(Span::styled(
-                &path[cur..char_end],
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::REVERSED),
-            ));
-            path_spans.push(Span::styled(
-                &path[char_end..],
-                Style::default().fg(Color::Yellow),
-            ));
-        } else {
-            // Cursor is past the end of the text — show the block.
-            path_spans.push(Span::styled(
-                "\u{2588}",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::SLOW_BLINK),
-            ));
-        }
-    } else {
-        path_spans.push(Span::styled(
-            state.path(),
-            Style::default().fg(Color::Yellow),
-        ));
-    }
-    lines.push(Line::from(path_spans));
-
     frame.render_widget(Paragraph::new(lines), info_area);
+
+    // Path row: "Path: " label + editable textarea (or plain text after export)
+    let [label_area, edit_area] =
+        Layout::horizontal([Constraint::Length(6), Constraint::Min(0)]).areas(path_area);
+    frame.render_widget(
+        Paragraph::new(Line::from("Path: ")).style(Style::default().fg(Color::White)),
+        label_area,
+    );
+    if matches!(state.status(), ExportStatus::Ready) {
+        let mut ta = state.textarea.clone();
+        ta.set_style(Style::default().fg(Color::Yellow));
+        ta.set_cursor_line_style(Style::default().fg(Color::Yellow));
+        frame.render_widget(&ta, edit_area);
+    } else {
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                state.path(),
+                Style::default().fg(Color::Yellow),
+            ))),
+            edit_area,
+        );
+    }
 
     // Status message
     let (status_text, status_color) = match state.status() {
@@ -309,7 +240,7 @@ mod tests {
         let mut log = PotaLog::new(
             "W1AW".to_string(),
             None,
-            Some("K-0001".to_string()),
+            "K-0001".to_string(),
             "FN31".to_string(),
         )
         .unwrap();
@@ -386,18 +317,6 @@ mod tests {
             state.prepare(None);
             assert_eq!(state.path(), "");
             assert_eq!(state.qso_count(), 0);
-        }
-
-        #[test]
-        fn path_without_park_uses_callsign() {
-            let mut state = ExportState::new();
-            let mut log = make_log();
-            if let Log::Pota(ref mut p) = log {
-                p.park_ref = None;
-            }
-
-            state.prepare(Some(&log));
-            assert!(state.path().contains("W1AW-"));
         }
     }
 
@@ -703,19 +622,6 @@ mod tests {
             let output = render_export(&state, None, 80, 15);
             assert!(output.contains("Export ADIF"), "should still show title");
             assert!(output.contains("QSOs: 0"), "should show zero count");
-        }
-
-        #[test]
-        fn renders_without_park_ref() {
-            let mut state = ExportState::new();
-            let mut log = make_log();
-            if let Log::Pota(ref mut p) = log {
-                p.park_ref = None;
-            }
-            state.prepare(Some(&log));
-            let output = render_export(&state, Some(&log), 80, 15);
-            assert!(output.contains("W1AW"), "should show callsign");
-            assert!(!output.contains("Park:"), "should not show park label");
         }
     }
 }

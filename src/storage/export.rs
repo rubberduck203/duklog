@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use super::error::StorageError;
 use crate::adif;
-use crate::model::Log;
+use crate::model::{DefaultFilename, Log};
 
 /// Exports a log as an ADIF file at the given path.
 ///
@@ -23,8 +23,7 @@ pub fn export_adif(log: &Log, path: &Path) -> Result<(), StorageError> {
 /// the documents directory is unavailable.
 ///
 /// Filename formats by log type:
-/// - POTA (park ref present): `{CALLSIGN}@{PARK}-{YYYYMMDD}.adif`
-/// - POTA (no park ref): `{CALLSIGN}-{YYYYMMDD}.adif`
+/// - POTA: `{CALLSIGN}@{PARK}-{YYYYMMDD}.adif`
 /// - General: `{CALLSIGN}-{YYYYMMDD}.adif`
 /// - Field Day: `{CALLSIGN}-FD-{YYYYMMDD}.adif`
 /// - Winter Field Day: `{CALLSIGN}-WFD-{YYYYMMDD}.adif`
@@ -34,28 +33,11 @@ pub fn export_adif(log: &Log, path: &Path) -> Result<(), StorageError> {
 /// Returns `StorageError::NoHomeDir` if no suitable directory can be
 /// determined.
 pub fn default_export_path(log: &Log) -> Result<PathBuf, StorageError> {
-    let callsign = log.header().station_callsign.replace('/', "_");
-    let date = log.header().created_at.format("%Y%m%d");
-
-    let filename = match log {
-        Log::Pota(p) => {
-            let prefix = p
-                .park_ref
-                .as_deref()
-                .map(|r| format!("{callsign}@{r}"))
-                .unwrap_or_else(|| callsign.clone());
-            format!("{prefix}-{date}.adif")
-        }
-        Log::General(_) => format!("{callsign}-{date}.adif"),
-        Log::FieldDay(_) => format!("{callsign}-FD-{date}.adif"),
-        Log::WinterFieldDay(_) => format!("{callsign}-WFD-{date}.adif"),
-    };
-
     let base = dirs::document_dir()
         .or_else(dirs::home_dir)
         .map(|d| d.join("duklog"))
         .ok_or(StorageError::NoHomeDir)?;
-    Ok(base.join(filename))
+    Ok(base.join(log.default_filename()))
 }
 
 #[cfg(test)]
@@ -73,19 +55,7 @@ mod tests {
         let mut log = PotaLog::new(
             "W1AW".to_string(),
             Some("W1AW".to_string()),
-            Some("K-0001".to_string()),
-            "FN31".to_string(),
-        )
-        .unwrap();
-        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
-        Log::Pota(log)
-    }
-
-    fn make_pota_log_without_park() -> Log {
-        let mut log = PotaLog::new(
-            "W1AW".to_string(),
-            Some("W1AW".to_string()),
-            None,
+            "K-0001".to_string(),
             "FN31".to_string(),
         )
         .unwrap();
@@ -195,14 +165,6 @@ mod tests {
     }
 
     #[test]
-    fn default_path_without_park_ref() {
-        let log = make_pota_log_without_park();
-        let path = default_export_path(&log).unwrap();
-        let filename = path.file_name().unwrap().to_str().unwrap();
-        assert_eq!(filename, "W1AW-20260216.adif");
-    }
-
-    #[test]
     fn default_path_sanitizes_portable_callsign_with_park_ref() {
         let mut log = make_pota_log();
         log.header_mut().station_callsign = "W1AW/P".to_string();
@@ -212,8 +174,8 @@ mod tests {
     }
 
     #[test]
-    fn default_path_sanitizes_portable_callsign_without_park_ref() {
-        let mut log = make_pota_log_without_park();
+    fn default_path_general_sanitizes_portable_callsign() {
+        let mut log = make_general_log();
         log.header_mut().station_callsign = "W1AW/P".to_string();
         let path = default_export_path(&log).unwrap();
         let filename = path.file_name().unwrap().to_str().unwrap();

@@ -266,7 +266,7 @@ mod tests {
             PotaLog::new(
                 "W1AW".to_string(),
                 None,
-                Some("K-0001".to_string()),
+                "K-0001".to_string(),
                 "FN31".to_string(),
             )
             .unwrap(),

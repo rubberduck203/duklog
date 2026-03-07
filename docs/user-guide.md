@@ -176,11 +176,10 @@ After export (success or error), press any key to return.
 The default export path depends on the log type:
 
 ```
-POTA (with park):  ~/Documents/duklog/{CALLSIGN}@{PARK}-{YYYYMMDD}.adif
-POTA (no park):    ~/Documents/duklog/{CALLSIGN}-{YYYYMMDD}.adif
-General:           ~/Documents/duklog/{CALLSIGN}-{YYYYMMDD}.adif
-Field Day:         ~/Documents/duklog/{CALLSIGN}-FD-{YYYYMMDD}.adif
-Winter FD:         ~/Documents/duklog/{CALLSIGN}-WFD-{YYYYMMDD}.adif
+POTA:      ~/Documents/duklog/{CALLSIGN}@{PARK}-{YYYYMMDD}.adif
+General:   ~/Documents/duklog/{CALLSIGN}-{YYYYMMDD}.adif
+Field Day: ~/Documents/duklog/{CALLSIGN}-FD-{YYYYMMDD}.adif
+Winter FD: ~/Documents/duklog/{CALLSIGN}-WFD-{YYYYMMDD}.adif
 ```
 
 The `~/Documents/duklog/` directory is created automatically if it does not exist.

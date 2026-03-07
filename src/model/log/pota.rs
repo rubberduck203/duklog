@@ -1,6 +1,6 @@
 use chrono::Utc;
 
-use super::LogHeader;
+use super::{DefaultFilename, LogHeader};
 use crate::model::validation::{
     ValidationError, validate_callsign, validate_grid_square, validate_park_ref,
 };
@@ -9,7 +9,7 @@ use crate::model::validation::{
 #[derive(Debug, Clone, PartialEq)]
 pub struct PotaLog {
     pub(crate) header: LogHeader,
-    pub(crate) park_ref: Option<String>,
+    pub(crate) park_ref: String,
 }
 
 impl PotaLog {
@@ -18,26 +18,22 @@ impl PotaLog {
     /// When `operator` is `Some`, it is validated as a callsign. `None` means
     /// the operator is the same as the station callsign (the common solo case).
     ///
-    /// Generates `log_id` as `"{park_ref}-{YYYYMMDD-HHMMSS}"` when a park ref
-    /// is provided, or `"{callsign}-{YYYYMMDD-HHMMSS}"` otherwise.
+    /// Generates `log_id` as `"{park_ref}-{YYYYMMDD-HHMMSS}"`.
     pub fn new(
         station_callsign: String,
         operator: Option<String>,
-        park_ref: Option<String>,
+        park_ref: String,
         grid_square: String,
     ) -> Result<Self, ValidationError> {
         validate_callsign(&station_callsign)?;
         if let Some(ref op) = operator {
             validate_callsign(op)?;
         }
-        if let Some(ref park) = park_ref {
-            validate_park_ref(park)?;
-        }
+        validate_park_ref(&park_ref)?;
         validate_grid_square(&grid_square)?;
 
         let now = Utc::now();
-        let id_prefix = park_ref.as_deref().unwrap_or(&station_callsign);
-        let log_id = format!("{}-{}", id_prefix, now.format("%Y%m%d-%H%M%S"));
+        let log_id = format!("{}-{}", park_ref, now.format("%Y%m%d-%H%M%S"));
 
         Ok(Self {
             header: LogHeader {
@@ -53,17 +49,25 @@ impl PotaLog {
     }
 }
 
+impl DefaultFilename for PotaLog {
+    fn default_filename(&self) -> String {
+        let callsign = self.header.station_callsign.replace('/', "_");
+        let date = self.header.created_at.format("%Y%m%d");
+        format!("{callsign}@{}-{date}.adif", self.park_ref)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::model::{Log, PotaLog, ValidationError};
 
     #[test]
-    fn display_label_with_park_returns_park_ref() {
+    fn display_label_returns_park_ref() {
         let log = Log::Pota(
             PotaLog::new(
                 "W1AW".to_string(),
                 Some("W1AW".to_string()),
-                Some("K-0001".to_string()),
+                "K-0001".to_string(),
                 "FN31".to_string(),
             )
             .unwrap(),
@@ -72,19 +76,12 @@ mod tests {
     }
 
     #[test]
-    fn display_label_pota_without_park_returns_callsign() {
-        let log =
-            Log::Pota(PotaLog::new("W1AW".to_string(), None, None, "FN31".to_string()).unwrap());
-        assert_eq!(log.display_label(), "W1AW");
-    }
-
-    #[test]
-    fn valid_pota_log_creation_with_park() {
+    fn valid_pota_log_creation() {
         let log = Log::Pota(
             PotaLog::new(
                 "W1AW".to_string(),
                 Some("W1AW".to_string()),
-                Some("K-0001".to_string()),
+                "K-0001".to_string(),
                 "FN31".to_string(),
             )
             .unwrap(),
@@ -98,27 +95,11 @@ mod tests {
     }
 
     #[test]
-    fn valid_pota_log_creation_without_park() {
-        let log = Log::Pota(
-            PotaLog::new(
-                "W1AW".to_string(),
-                Some("W1AW".to_string()),
-                None,
-                "FN31".to_string(),
-            )
-            .unwrap(),
-        );
-        assert_eq!(log.header().operator, Some("W1AW".to_string()));
-        assert_eq!(log.park_ref(), None);
-        assert!(log.header().log_id.starts_with("W1AW-"));
-    }
-
-    #[test]
     fn invalid_station_callsign() {
         let result = PotaLog::new(
             String::new(),
             Some("W1AW".to_string()),
-            Some("K-0001".to_string()),
+            "K-0001".to_string(),
             "FN31".to_string(),
         );
         assert_eq!(result, Err(ValidationError::EmptyCallsign));
@@ -129,7 +110,7 @@ mod tests {
         let result = PotaLog::new(
             "W1AW".to_string(),
             Some(String::new()),
-            Some("K-0001".to_string()),
+            "K-0001".to_string(),
             "FN31".to_string(),
         );
         assert_eq!(result, Err(ValidationError::EmptyCallsign));
@@ -141,7 +122,7 @@ mod tests {
             PotaLog::new(
                 "W1AW".to_string(),
                 None,
-                Some("K-0001".to_string()),
+                "K-0001".to_string(),
                 "FN31".to_string(),
             )
             .unwrap(),
@@ -154,7 +135,7 @@ mod tests {
         let result = PotaLog::new(
             "W1AW".to_string(),
             Some("W1AW".to_string()),
-            Some("bad".to_string()),
+            "bad".to_string(),
             "FN31".to_string(),
         );
         assert_eq!(
@@ -168,7 +149,7 @@ mod tests {
         let result = PotaLog::new(
             "W1AW".to_string(),
             Some("W1AW".to_string()),
-            Some("K-0001".to_string()),
+            "K-0001".to_string(),
             "ZZ99".to_string(),
         );
         assert_eq!(

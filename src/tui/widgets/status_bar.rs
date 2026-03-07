@@ -208,7 +208,7 @@ mod tests {
         fn pota_with_park_uses_park_ref_as_label() {
             let log = Log::Pota(PotaLog {
                 header: make_header("W1AW"),
-                park_ref: Some("K-0001".into()),
+                park_ref: "K-0001".into(),
             });
             let ctx = StatusBarContext::from_log(&log);
             assert_eq!(ctx.context_label, "K-0001");
@@ -217,13 +217,13 @@ mod tests {
         }
 
         #[test]
-        fn pota_without_park_uses_callsign_as_label() {
+        fn pota_uses_park_ref_as_label() {
             let log = Log::Pota(PotaLog {
                 header: make_header("W1AW"),
-                park_ref: None,
+                park_ref: "K-0001".into(),
             });
             let ctx = StatusBarContext::from_log(&log);
-            assert_eq!(ctx.context_label, "W1AW");
+            assert_eq!(ctx.context_label, "K-0001");
             assert!(ctx.pota_mode, "should be pota_mode");
         }
 
@@ -282,7 +282,7 @@ mod tests {
             });
             let pota = Log::Pota(PotaLog {
                 header: make_header("W1AW"),
-                park_ref: None,
+                park_ref: "K-0001".into(),
             });
             assert!(!StatusBarContext::from_log(&general).pota_mode);
             assert!(StatusBarContext::from_log(&pota).pota_mode);

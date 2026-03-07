@@ -76,7 +76,7 @@ impl LogMetadata {
         };
         match log {
             Log::Pota(p) => {
-                meta.park_ref = p.park_ref.clone();
+                meta.park_ref = Some(p.park_ref.clone());
             }
             Log::General(_) => {
                 meta.log_type = StoredLogType::General;
@@ -108,10 +108,12 @@ impl LogMetadata {
             log_id: self.log_id,
         };
         match self.log_type {
-            StoredLogType::Pota => Ok(Log::Pota(PotaLog {
-                header,
-                park_ref: self.park_ref,
-            })),
+            StoredLogType::Pota => {
+                let park_ref = self.park_ref.ok_or_else(|| {
+                    StorageError::CorruptMetadata("POTA log missing park_ref".into())
+                })?;
+                Ok(Log::Pota(PotaLog { header, park_ref }))
+            }
             StoredLogType::General => Ok(Log::General(GeneralLog { header })),
             StoredLogType::FieldDay => reconstruct_field_day(
                 self.tx_count,
@@ -378,17 +380,13 @@ fn wfd_config_eq(a: &WfdLog, b: &WfdLog) -> bool {
         && a.section.to_uppercase() == b.section.to_uppercase()
 }
 
-/// Returns `true` if two park reference fields represent the same park.
+/// Returns `true` if two park reference strings represent the same park.
 ///
-/// `None` matches `None`; two `Some` values are compared case-insensitively.
-/// Logs with different park references are always considered distinct, allowing
-/// multiple park activations from the same location on the same day.
-fn park_ref_eq(a: &Option<String>, b: &Option<String>) -> bool {
-    match (a, b) {
-        (None, None) => true,
-        (Some(x), Some(y)) => x.to_lowercase() == y.to_lowercase(),
-        _ => false,
-    }
+/// Comparison is case-insensitive. Logs with different park references are
+/// always considered distinct, allowing multiple park activations from the
+/// same location on the same day.
+fn park_ref_eq(a: &str, b: &str) -> bool {
+    a.to_lowercase() == b.to_lowercase()
 }
 
 /// Loads a log from the given JSONL file path.
@@ -429,7 +427,7 @@ mod tests {
         let mut log = PotaLog::new(
             "W1AW".to_string(),
             Some("W1AW".to_string()),
-            Some("K-0001".to_string()),
+            "K-0001".to_string(),
             "FN31".to_string(),
         )
         .unwrap();
@@ -442,7 +440,7 @@ mod tests {
         let mut log = PotaLog::new(
             "W1AW".to_string(),
             Some("W1AW".to_string()),
-            Some("K-0001".to_string()),
+            "K-0001".to_string(),
             "FN31".to_string(),
         )
         .unwrap();
@@ -754,25 +752,6 @@ mod tests {
     }
 
     #[test]
-    fn metadata_preserves_optional_park_ref() {
-        let (_dir, manager) = make_manager();
-        let mut log = PotaLog::new(
-            "W1AW".to_string(),
-            Some("W1AW".to_string()),
-            None,
-            "FN31".to_string(),
-        )
-        .unwrap();
-        log.header.log_id = "no-park".to_string();
-        let log = Log::Pota(log);
-        manager.save_log(&log).unwrap();
-
-        let loaded = manager.load_log("no-park").unwrap();
-        assert_eq!(loaded.park_ref(), None);
-        assert!(matches!(loaded, Log::Pota(_)));
-    }
-
-    #[test]
     fn general_log_round_trips_as_general() {
         let (_dir, manager) = make_manager();
         let mut log = GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap();
@@ -788,7 +767,7 @@ mod tests {
     #[test]
     fn old_format_operator_string_deserializes_to_some() {
         let (dir, manager) = make_manager();
-        let json = r#"{"station_callsign":"W1AW","operator":"W1AW","park_ref":null,"grid_square":"FN31","created_at":"2026-02-16T12:00:00Z","log_id":"compat"}"#;
+        let json = r#"{"station_callsign":"W1AW","operator":"W1AW","park_ref":"K-0001","grid_square":"FN31","created_at":"2026-02-16T12:00:00Z","log_id":"compat"}"#;
         fs::write(dir.path().join("compat.jsonl"), format!("{json}\n")).unwrap();
         let loaded = manager.load_log("compat").unwrap();
         assert_eq!(loaded.header().operator, Some("W1AW".to_string()));
@@ -811,7 +790,7 @@ mod tests {
         let mut log = PotaLog::new(
             "W1AW".to_string(),
             None,
-            Some("K-0001".to_string()),
+            "K-0001".to_string(),
             "FN31".to_string(),
         )
         .unwrap();
@@ -829,7 +808,7 @@ mod tests {
         let mut log = PotaLog::new(
             "W1AW".to_string(),
             Some("W1AW".to_string()),
-            Some("K-0001".to_string()),
+            "K-0001".to_string(),
             "FN31".to_string(),
         )
         .unwrap();
@@ -1029,7 +1008,7 @@ mod tests {
         manager.save_log(&existing).unwrap();
 
         let mut new_log = unwrap_pota(make_pota_log_for_today("new"));
-        new_log.park_ref = Some("K-0002".to_string());
+        new_log.park_ref = "K-0002".to_string();
         // Different park on same day — not a duplicate
         manager.create_log(&Log::Pota(new_log)).unwrap();
         assert_eq!(manager.list_logs().unwrap().len(), 2);
@@ -1045,20 +1024,6 @@ mod tests {
         let new_log = make_general_log_for_today("new");
         // Different type — never a duplicate
         manager.create_log(&new_log).unwrap();
-        assert_eq!(manager.list_logs().unwrap().len(), 2);
-    }
-
-    #[test]
-    fn create_log_allows_pota_no_park_vs_pota_with_park() {
-        let (_dir, manager) = make_manager();
-        let existing = make_pota_log_for_today("existing");
-        // existing has park_ref = Some("K-0001")
-        manager.save_log(&existing).unwrap();
-
-        let mut new_log = unwrap_pota(make_pota_log_for_today("new"));
-        new_log.park_ref = None;
-        // POTA with no park vs POTA with park — different config, not a duplicate
-        manager.create_log(&Log::Pota(new_log)).unwrap();
         assert_eq!(manager.list_logs().unwrap().len(), 2);
     }
 
@@ -1080,32 +1045,16 @@ mod tests {
         let mut existing = unwrap_pota(make_pota_log_for_today("existing"));
         existing.header.station_callsign = "W3DUK".to_string();
         existing.header.operator = Some("w3duk".to_string());
-        existing.park_ref = None;
         manager.save_log(&Log::Pota(existing)).unwrap();
 
         let mut new_log = unwrap_pota(make_pota_log_for_today("new"));
         new_log.header.station_callsign = "W3DUK".to_string();
         new_log.header.operator = Some("W3DUK".to_string());
-        new_log.park_ref = None;
         let result = manager.create_log(&Log::Pota(new_log));
         assert!(
             matches!(result, Err(StorageError::DuplicateLog { .. })),
             "duplicate with different-case operator should be blocked"
         );
-    }
-
-    #[test]
-    fn create_log_rejects_duplicate_none_park_refs() {
-        let (_dir, manager) = make_manager();
-        let mut existing = unwrap_pota(make_pota_log_for_today("existing"));
-        existing.park_ref = None;
-        manager.save_log(&Log::Pota(existing)).unwrap();
-
-        let mut new_log = unwrap_pota(make_pota_log_for_today("new"));
-        new_log.park_ref = None;
-        // Both POTA with no park ref — is a duplicate
-        let result = manager.create_log(&Log::Pota(new_log));
-        assert!(matches!(result, Err(StorageError::DuplicateLog { .. })));
     }
 
     #[test]
@@ -1160,33 +1109,18 @@ mod tests {
         use super::*;
 
         #[test]
-        fn none_and_none_are_equal() {
-            assert!(park_ref_eq(&None, &None));
-        }
-
-        #[test]
-        fn some_and_none_differ() {
-            assert!(!park_ref_eq(&Some("K-0001".into()), &None));
-        }
-
-        #[test]
-        fn none_and_some_differ() {
-            assert!(!park_ref_eq(&None, &Some("K-0001".into())));
-        }
-
-        #[test]
         fn same_park_ref_equal() {
-            assert!(park_ref_eq(&Some("K-0001".into()), &Some("K-0001".into())));
+            assert!(park_ref_eq("K-0001", "K-0001"));
         }
 
         #[test]
         fn different_case_park_ref_equal() {
-            assert!(park_ref_eq(&Some("k-0001".into()), &Some("K-0001".into())));
+            assert!(park_ref_eq("k-0001", "K-0001"));
         }
 
         #[test]
         fn different_park_ref_differ() {
-            assert!(!park_ref_eq(&Some("K-0001".into()), &Some("K-0002".into())));
+            assert!(!park_ref_eq("K-0001", "K-0002"));
         }
     }
 

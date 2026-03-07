@@ -421,7 +421,7 @@ mod tests {
                 created_at: chrono::Utc::now(),
                 log_id: id.into(),
             },
-            park_ref: Some("K-0001".into()),
+            park_ref: "K-0001".into(),
         });
         manager.save_log(&log).unwrap();
         log

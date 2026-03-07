@@ -5,7 +5,7 @@ use chrono::Utc;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use super::LogHeader;
+use super::{DefaultFilename, LogHeader};
 use crate::model::validation::{
     ValidationError, validate_callsign, validate_section, validate_tx_count,
 };
@@ -137,6 +137,14 @@ impl FieldDayLog {
     /// Returns the sent exchange string, e.g. `"1B EPA"`.
     pub(crate) fn sent_exchange(&self) -> String {
         format!("{}{} {}", self.tx_count, self.class, self.section)
+    }
+}
+
+impl DefaultFilename for FieldDayLog {
+    fn default_filename(&self) -> String {
+        let callsign = self.header.station_callsign.replace('/', "_");
+        let date = self.header.created_at.format("%Y%m%d");
+        format!("{callsign}-FD-{date}.adif")
     }
 }
 
