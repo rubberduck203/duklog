@@ -19,8 +19,8 @@ pub fn export_adif(log: &Log, path: &Path) -> Result<(), StorageError> {
 
 /// Returns the default export path for a log.
 ///
-/// Files are written to `~/Documents/duklog/`, falling back to `~/` if the
-/// documents directory is unavailable.
+/// Files are written to `~/Documents/duklog/`, falling back to `~/duklog/` if
+/// the documents directory is unavailable.
 ///
 /// Filename formats by log type:
 /// - POTA (park ref present): `{CALLSIGN}@{PARK}-{YYYYMMDD}.adif`
@@ -52,8 +52,8 @@ pub fn default_export_path(log: &Log) -> Result<PathBuf, StorageError> {
     };
 
     let base = dirs::document_dir()
-        .map(|d| d.join("duklog"))
         .or_else(dirs::home_dir)
+        .map(|d| d.join("duklog"))
         .ok_or(StorageError::NoHomeDir)?;
     Ok(base.join(filename))
 }
@@ -212,6 +212,15 @@ mod tests {
     }
 
     #[test]
+    fn default_path_sanitizes_portable_callsign_without_park_ref() {
+        let mut log = make_pota_log_without_park();
+        log.header_mut().station_callsign = "W1AW/P".to_string();
+        let path = default_export_path(&log).unwrap();
+        let filename = path.file_name().unwrap().to_str().unwrap();
+        assert_eq!(filename, "W1AW_P-20260216.adif");
+    }
+
+    #[test]
     fn default_path_general_log() {
         let log = make_general_log();
         let path = default_export_path(&log).unwrap();
@@ -236,12 +245,10 @@ mod tests {
     }
 
     #[test]
-    fn default_path_is_in_documents_subdirectory() {
-        let Some(documents) = dirs::document_dir() else {
-            return; // documents dir unavailable in this environment; skip
-        };
+    fn default_path_is_in_duklog_subdirectory() {
         let log = make_pota_log();
         let path = default_export_path(&log).unwrap();
-        assert_eq!(path.parent().unwrap(), documents.join("duklog"));
+        // Parent is always a `duklog/` directory, whether under Documents or home.
+        assert_eq!(path.parent().unwrap().file_name().unwrap(), "duklog");
     }
 }

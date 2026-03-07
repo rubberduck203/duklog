@@ -107,8 +107,7 @@ impl ExportState {
                     Action::None
                 }
                 KeyCode::Right => {
-                    if self.cursor < self.path.len() {
-                        let c = self.path[self.cursor..].chars().next().unwrap();
+                    if let Some(c) = self.path[self.cursor..].chars().next() {
                         self.cursor += c.len_utf8();
                     }
                     Action::None
@@ -382,7 +381,7 @@ mod tests {
         fn none_log_clears_state() {
             let mut state = ExportState::new();
             state.prepare(Some(&make_log()));
-            assert!(!state.path().is_empty());
+            assert!(state.path().contains("W1AW@K-0001"));
 
             state.prepare(None);
             assert_eq!(state.path(), "");
@@ -461,6 +460,15 @@ mod tests {
             state.handle_key(press(KeyCode::Home));
             state.handle_key(press(KeyCode::Delete));
             assert_eq!(state.path(), "tmp/foo.adif");
+        }
+
+        #[test]
+        fn delete_at_end_is_noop() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp/foo.adif".into());
+            // cursor is at end after set_path
+            state.handle_key(press(KeyCode::Delete));
+            assert_eq!(state.path(), "/tmp/foo.adif");
         }
 
         #[test]

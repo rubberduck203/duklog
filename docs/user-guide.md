@@ -162,10 +162,13 @@ Shows the export destination, QSO count, and station info. The status bar at the
 
 | Key | Action |
 |---|---|
-| Any printable character | Edit the export path |
-| `Backspace` | Delete the last character of the path |
+| Any printable character | Insert character at cursor position |
+| `Backspace` | Delete the character before the cursor |
+| `Delete` | Delete the character at the cursor |
+| `Left` / `Right` | Move cursor one character |
+| `Home` / `End` | Jump to start / end of path |
 | `Enter` | Export the ADIF file to the current path |
-| `Esc` | Back to QSO Entry |
+| `Esc` | Back to QSO Entry without exporting |
 | `F1` | Show help |
 
 After export (success or error), press any key to return.
