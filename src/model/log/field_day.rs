@@ -142,8 +142,7 @@ impl FieldDayLog {
 
 impl DefaultFilename for FieldDayLog {
     fn default_filename(&self) -> String {
-        let callsign = self.header.station_callsign.replace('/', "_");
-        let date = self.header.created_at.format("%Y%m%d");
+        let (callsign, date) = super::export_parts(&self.header);
         format!("{callsign}-FD-{date}.adif")
     }
 }

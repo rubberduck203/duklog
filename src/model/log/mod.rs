@@ -20,6 +20,17 @@ pub trait DefaultFilename {
     fn default_filename(&self) -> String;
 }
 
+/// Returns the sanitized callsign and formatted date string for use in export filenames.
+///
+/// `/` in callsigns is replaced with `_` (e.g. `W1AW/P` → `W1AW_P`).
+/// Date is formatted as `YYYYMMDD`.
+pub(super) fn export_parts(header: &LogHeader) -> (String, String) {
+    (
+        header.station_callsign.replace('/', "_"),
+        header.created_at.format("%Y%m%d").to_string(),
+    )
+}
+
 /// Minimum unique QSOs required for a valid POTA activation (per UTC day).
 const POTA_ACTIVATION_THRESHOLD: usize = 10;
 

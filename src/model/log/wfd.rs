@@ -119,8 +119,7 @@ impl WfdLog {
 
 impl DefaultFilename for WfdLog {
     fn default_filename(&self) -> String {
-        let callsign = self.header.station_callsign.replace('/', "_");
-        let date = self.header.created_at.format("%Y%m%d");
+        let (callsign, date) = super::export_parts(&self.header);
         format!("{callsign}-WFD-{date}.adif")
     }
 }
