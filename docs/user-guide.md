@@ -101,12 +101,12 @@ FD and WFD do not exchange RST. Row 1 Col 2/3 capture the contest class (e.g. `3
 
 **Row 2 (type-specific):**
 
-| Log Type | Left | Right |
-|---|---|---|
-| General | *(empty)* | Comments |
-| POTA | Their Park (optional) | Comments |
-| Field Day | Frequency (required, kHz) | Comments |
-| Winter FD | Frequency (required, kHz) | Comments |
+| Log Type | Col 1 | Col 2 | Col 3 |
+|---|---|---|---|
+| General | Frequency (optional, kHz) | Comments | — |
+| POTA | Their Park (optional) | Frequency (optional, kHz) | Comments |
+| Field Day | Frequency (required, kHz) | Comments | — |
+| Winter FD | Frequency (required, kHz) | Comments | — |
 
 **Field notes:**
 
@@ -115,7 +115,7 @@ FD and WFD do not exchange RST. Row 1 Col 2/3 capture the contest class (e.g. `3
   - Field Day: `<count><class>` — e.g. `3A`, `1F` (class: A–F)
   - Winter Field Day: `<count><class>` — e.g. `2H`, `1O` (class: H/I/O/M)
 - **Their Section** — received ARRL/RAC section (e.g. `CT`, `EPA`, `DX`); auto-uppercased; required for FD/WFD
-- **Frequency** — operating frequency in kHz (e.g. `14225`); required for FD/WFD ADIF export; tabbing away (or submitting) auto-selects the matching band if the frequency falls within a known amateur allocation
+- **Frequency** — operating frequency in kHz (e.g. `14225`); optional for General/POTA, required for FD/WFD; tabbing away (or submitting) auto-selects the matching band if the frequency falls within a known amateur allocation; exported as ADIF `FREQ` (MHz)
 - **Comments** — free-text; optional
 
 | Key | Action |

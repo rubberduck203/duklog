@@ -33,7 +33,7 @@ const WFD_CONTEST_ID: &str = "WFD";
 /// - POTA: emits `MY_SIG`/`MY_SIG_INFO` (when log has a park ref) and
 ///   `SIG`/`SIG_INFO` (when QSO has their park set).
 /// - Field Day: emits `CONTEST_ID`, `STX_STRING`, and `SRX_STRING` (when present).
-/// - Winter Field Day: emits `CONTEST_ID`, `STX_STRING`, `SRX_STRING`, and `FREQ`.
+/// - Winter Field Day: emits `CONTEST_ID`, `STX_STRING`, and `SRX_STRING` (when present).
 fn encode_type_specific_fields(
     encoder: &mut TagEncoder,
     buf: &mut BytesMut,
@@ -64,10 +64,6 @@ fn encode_type_specific_fields(
             if let Some(ref exch) = qso.exchange_rcvd {
                 encode(encoder, buf, field_tag("SRX_STRING", exch.as_str()))?;
             }
-            if let Some(freq) = qso.frequency {
-                let mhz = format!("{:.3}", f64::from(freq) / 1000.0);
-                encode(encoder, buf, field_tag("FREQ", mhz.as_str()))?;
-            }
         }
         Log::WinterFieldDay(wfd) => {
             encode(encoder, buf, field_tag("CONTEST_ID", WFD_CONTEST_ID))?;
@@ -78,10 +74,6 @@ fn encode_type_specific_fields(
             )?;
             if let Some(ref exch) = qso.exchange_rcvd {
                 encode(encoder, buf, field_tag("SRX_STRING", exch.as_str()))?;
-            }
-            if let Some(freq) = qso.frequency {
-                let mhz = format!("{:.3}", f64::from(freq) / 1000.0);
-                encode(encoder, buf, field_tag("FREQ", mhz.as_str()))?;
             }
         }
     }
@@ -126,7 +118,7 @@ pub fn format_header(log: &Log) -> Result<String, AdifError> {
 /// Includes per-log fields (station callsign, park ref) alongside per-QSO
 /// fields. OPERATOR is emitted only when set and different from the station
 /// callsign. POTA fields are only emitted when the relevant park references
-/// are present.
+/// are present. FREQ is emitted for any log type when `qso.frequency` is set.
 pub fn format_qso(log: &Log, qso: &Qso) -> Result<String, AdifError> {
     let mut encoder = TagEncoder::new();
     let mut buf = BytesMut::new();
@@ -185,6 +177,11 @@ pub fn format_qso(log: &Log, qso: &Qso) -> Result<String, AdifError> {
     }
 
     encode_type_specific_fields(&mut encoder, &mut buf, log, qso)?;
+
+    if let Some(freq) = qso.frequency {
+        let mhz = format!("{:.3}", f64::from(freq) / 1000.0);
+        encode(&mut encoder, &mut buf, field_tag("FREQ", mhz.as_str()))?;
+    }
 
     if !qso.comments.is_empty() {
         encode(
@@ -677,6 +674,59 @@ mod tests {
         assert!(
             !record.contains("<FREQ:"),
             "WFD record without frequency must not emit FREQ"
+        );
+    }
+
+    fn make_qso_with_freq(freq: u32) -> Qso {
+        Qso::new(
+            "KD9XYZ".to_string(),
+            "59".to_string(),
+            "59".to_string(),
+            Band::M20,
+            Mode::Ssb,
+            Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
+            String::new(),
+            None,
+            None,
+            Some(freq),
+        )
+        .unwrap()
+    }
+
+    fn make_general_log() -> Log {
+        Log::General(GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap())
+    }
+
+    // --- General / POTA FREQ tests ---
+
+    #[test]
+    fn general_qso_with_frequency_emits_freq() {
+        let log = make_general_log();
+        let record = format_qso(&log, &make_qso_with_freq(14225)).unwrap();
+        assert!(
+            record.contains("<FREQ:"),
+            "general QSO with freq must emit FREQ"
+        );
+        assert!(record.contains("14.225"), "FREQ must be in MHz");
+    }
+
+    #[test]
+    fn pota_qso_with_frequency_emits_freq() {
+        let record = format_qso(&make_log(), &make_qso_with_freq(7200)).unwrap();
+        assert!(
+            record.contains("<FREQ:"),
+            "POTA QSO with freq must emit FREQ"
+        );
+        assert!(record.contains("7.200"), "FREQ must be in MHz");
+    }
+
+    #[test]
+    fn general_qso_without_frequency_omits_freq() {
+        let log = make_general_log();
+        let record = format_qso(&log, &make_qso()).unwrap();
+        assert!(
+            !record.contains("<FREQ:"),
+            "general QSO without freq must not emit FREQ"
         );
     }
 

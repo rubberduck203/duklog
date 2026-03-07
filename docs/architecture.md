@@ -45,7 +45,7 @@ WfdLog             — header: LogHeader, tx_count: u8, class: WfdClass, section
 Log enum           — General(GeneralLog) | Pota(PotaLog) | FieldDay(FieldDayLog) | WinterFieldDay(WfdLog)
 ```
 
-Qso carries two optional contest fields: `exchange_rcvd: Option<String>` (received exchange verbatim, e.g. `"3A CT"`) and `frequency: Option<u32>` (kHz, required for WFD ADIF). Both default to `None` for POTA and General logs; they are populated during QSO entry for contest log types (Phase 4.3).
+Qso carries two optional fields: `exchange_rcvd: Option<String>` (received contest exchange verbatim, e.g. `"3A CT"`; contest logs only) and `frequency: Option<u32>` (kHz; required for FD/WFD, optional for General and POTA). Both default to `None`. They are populated during QSO entry for all log types that expose them.
 
 Serialization for storage lives in `src/storage/manager.rs` via a flat `LogMetadata` struct with optional FD/WFD fields and a `StoredLogType` discriminant. Existing JSONL files without `log_type` default to `Log::Pota` for backward compatibility. Shared fields are accessed via `log.header()` / `log.header_mut()`.
 

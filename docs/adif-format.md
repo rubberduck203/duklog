@@ -52,19 +52,19 @@ Each exported file contains a header followed by QSO records:
 | `CONTEST_ID` | `ARRL-FIELD-DAY` (FD) or `WFD` (WFD) | No (contest logs) |
 | `STX_STRING` | Sent exchange: `<tx_count><class> <section>` | No (contest logs) |
 | `SRX_STRING` | Received exchange (verbatim from QSO entry) | No (contest logs, when present) |
-| `FREQ` | Operating frequency in **MHz** (e.g. `14.225`) | No (FD and WFD logs, when frequency is set) |
+| `FREQ` | Operating frequency in **MHz** (e.g. `14.225`) | No (all log types, when frequency is set) |
 | `COMMENT` | QSO comments/notes | No (when non-empty) |
 
 ## Log Type Support
 
 | Log Type | Export Supported | Notes |
 |---|---|---|
-| General | Yes | No contest or activation fields |
-| POTA | Yes | `MY_SIG`/`MY_SIG_INFO` when park ref is set; `SIG`/`SIG_INFO` for P2P |
+| General | Yes | `FREQ` (MHz) when frequency is set |
+| POTA | Yes | `MY_SIG`/`MY_SIG_INFO` when park ref is set; `SIG`/`SIG_INFO` for P2P; `FREQ` (MHz) when frequency is set |
 | Field Day | Yes | `CONTEST_ID=ARRL-FIELD-DAY`, `STX_STRING`, `SRX_STRING`, `FREQ` (MHz) |
 | Winter Field Day | Yes | `CONTEST_ID=WFD`, `STX_STRING`, `SRX_STRING`, `FREQ` (MHz) |
 
-The `Qso` struct carries `exchange_rcvd: Option<String>` (received contest exchange verbatim) and `frequency: Option<u32>` (kHz internally, converted to MHz on export). POTA-specific fields (`SIG`/`SIG_INFO`) are gated strictly on the POTA log type and are never emitted for other log types.
+The `Qso` struct carries `exchange_rcvd: Option<String>` (received contest exchange verbatim) and `frequency: Option<u32>` (kHz internally, converted to MHz on export). POTA-specific fields (`SIG`/`SIG_INFO`) are gated strictly on the POTA log type and are never emitted for other log types. `FREQ` is emitted for all log types when frequency is set.
 
 ## POTA Submission
 

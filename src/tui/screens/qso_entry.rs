@@ -25,6 +25,10 @@ const THEIR_CALL: usize = 0;
 const RST_SENT: usize = 1;
 /// Field index for RST received (General and POTA only).
 const RST_RCVD: usize = 2;
+/// Field index for optional frequency in kHz (General form).
+const GENERAL_FREQUENCY: usize = 3;
+/// Field index for optional frequency in kHz (POTA form; after Their Park).
+const POTA_FREQUENCY: usize = 4;
 
 // FD / WFD contest form field indices (no RST; exchange split into class + section)
 /// Field index for the other station's contest class (FD and WFD).
@@ -61,8 +65,18 @@ impl QsoFormType {
     /// Index of the Comments field for this form type.
     fn comments_idx(self) -> usize {
         match self {
-            Self::General => 3,
-            Self::Pota | Self::FieldDay | Self::WinterFieldDay => 4,
+            Self::General => 4,
+            Self::Pota => 5,
+            Self::FieldDay | Self::WinterFieldDay => 4,
+        }
+    }
+
+    /// Index of the optional/required frequency field for this form type.
+    fn frequency_field_idx(self) -> usize {
+        match self {
+            Self::General => GENERAL_FREQUENCY,
+            Self::Pota => POTA_FREQUENCY,
+            Self::FieldDay | Self::WinterFieldDay => CONTEST_FREQUENCY,
         }
     }
 }
@@ -105,8 +119,8 @@ impl QsoEntryState {
 
     /// Constructs a [`Form`] with the correct fields for the given type and mode.
     ///
-    /// - General: Their Callsign | RST Sent | RST Rcvd | Comments
-    /// - POTA: Their Callsign | RST Sent | RST Rcvd | Their Park | Comments
+    /// - General: Their Callsign | RST Sent | RST Rcvd | Frequency (kHz) | Comments
+    /// - POTA: Their Callsign | RST Sent | RST Rcvd | Their Park | Frequency (kHz) | Comments
     /// - FD / WFD: Their Callsign | Their Class | Their Section | Frequency | Comments  (no RST)
     fn build_form_for_type(form_type: QsoFormType, mode: Mode) -> Form {
         match form_type {
@@ -116,6 +130,7 @@ impl QsoEntryState {
                     FormField::new("Their Callsign", true),
                     FormField::new("RST Sent", true),
                     FormField::new("RST Rcvd", true),
+                    FormField::new("Frequency (kHz)", false),
                     FormField::new("Comments", false),
                 ]);
                 form.set_value(RST_SENT, rst);
@@ -129,6 +144,7 @@ impl QsoEntryState {
                     FormField::new("RST Sent", true),
                     FormField::new("RST Rcvd", true),
                     FormField::new("Their Park", false),
+                    FormField::new("Frequency (kHz)", false),
                     FormField::new("Comments", false),
                 ]);
                 form.set_value(RST_SENT, rst);
@@ -191,14 +207,14 @@ impl QsoEntryState {
 
         match key.code {
             KeyCode::Tab => {
-                if self.form_type.has_contest_exchange() && self.form.focus() == CONTEST_FREQUENCY {
+                if self.form.focus() == self.form_type.frequency_field_idx() {
                     self.try_auto_set_band_from_frequency();
                 }
                 self.form.focus_next();
                 Action::None
             }
             KeyCode::BackTab => {
-                if self.form_type.has_contest_exchange() && self.form.focus() == CONTEST_FREQUENCY {
+                if self.form.focus() == self.form_type.frequency_field_idx() {
                     self.try_auto_set_band_from_frequency();
                 }
                 self.form.focus_prev();
@@ -290,12 +306,26 @@ impl QsoEntryState {
             QsoFormType::General => {
                 self.form.set_value(RST_SENT, &qso.rst_sent);
                 self.form.set_value(RST_RCVD, &qso.rst_rcvd);
+                self.form.set_value(
+                    GENERAL_FREQUENCY,
+                    qso.frequency
+                        .map(|f| f.to_string())
+                        .unwrap_or_default()
+                        .as_str(),
+                );
             }
             QsoFormType::Pota => {
                 self.form.set_value(RST_SENT, &qso.rst_sent);
                 self.form.set_value(RST_RCVD, &qso.rst_rcvd);
                 self.form
                     .set_value(3, qso.their_park.as_deref().unwrap_or(""));
+                self.form.set_value(
+                    POTA_FREQUENCY,
+                    qso.frequency
+                        .map(|f| f.to_string())
+                        .unwrap_or_default()
+                        .as_str(),
+                );
             }
             QsoFormType::FieldDay | QsoFormType::WinterFieldDay => {
                 // Parse exchange_rcvd ("CLASS SECTION") into the two separate fields.
@@ -336,8 +366,15 @@ impl QsoEntryState {
             let rst = self.mode.default_rst();
             self.form.set_value(RST_SENT, rst);
             self.form.set_value(RST_RCVD, rst);
-            if self.form_type == QsoFormType::Pota {
-                self.form.clear_value(3); // Their Park
+            match self.form_type {
+                QsoFormType::General => {
+                    self.form.clear_value(GENERAL_FREQUENCY);
+                }
+                QsoFormType::Pota => {
+                    self.form.clear_value(3); // Their Park
+                    self.form.clear_value(POTA_FREQUENCY);
+                }
+                _ => unreachable!(),
             }
         } else {
             self.form.clear_value(CONTEST_THEIR_CLASS);
@@ -382,7 +419,8 @@ impl QsoEntryState {
     /// If the frequency field contains a parseable kHz value that maps to a known band,
     /// auto-selects that band. Called when leaving the frequency field.
     fn try_auto_set_band_from_frequency(&mut self) {
-        if let Ok(freq) = self.form.value(CONTEST_FREQUENCY).parse::<u32>()
+        let idx = self.form_type.frequency_field_idx();
+        if let Ok(freq) = self.form.value(idx).parse::<u32>()
             && let Some(band) = Band::from_frequency_khz(freq)
         {
             self.band = band;
@@ -439,6 +477,19 @@ impl QsoEntryState {
                     self.form
                         .set_error(RST_RCVD, "RST received is required".into());
                 }
+                let freq_str = self.form.value(GENERAL_FREQUENCY).to_string();
+                if !freq_str.is_empty() {
+                    match freq_str.parse::<u32>() {
+                        Ok(f) if f > 0 => {
+                            self.try_auto_set_band_from_frequency();
+                            frequency = Some(f);
+                        }
+                        _ => self.form.set_error(
+                            GENERAL_FREQUENCY,
+                            "frequency must be a positive integer (kHz)".into(),
+                        ),
+                    }
+                }
             }
             QsoFormType::Pota => {
                 rst_sent = self.form.value(RST_SENT).to_string();
@@ -459,6 +510,19 @@ impl QsoEntryState {
                         self.form.set_error(3, e.to_string());
                     } else {
                         their_park = Some(park_str);
+                    }
+                }
+                let freq_str = self.form.value(POTA_FREQUENCY).to_string();
+                if !freq_str.is_empty() {
+                    match freq_str.parse::<u32>() {
+                        Ok(f) if f > 0 => {
+                            self.try_auto_set_band_from_frequency();
+                            frequency = Some(f);
+                        }
+                        _ => self.form.set_error(
+                            POTA_FREQUENCY,
+                            "frequency must be a positive integer (kHz)".into(),
+                        ),
                     }
                 }
             }
@@ -650,9 +714,9 @@ pub fn draw_qso_entry(state: &QsoEntryState, log: Option<&Log>, frame: &mut Fram
 ///   - FD / WFD:       Their Callsign | Their Class | Their Section
 ///
 /// Row 2: varies by log type
-///   - General / FD:   empty left half | Comments (index 3) on right half
-///   - POTA:           Their Park (3) | Comments (4) — two halves
-///   - WFD:            Frequency (3)  | Comments (4) — two halves
+///   - General:        Frequency (3)  | Comments (4) — two halves
+///   - POTA:           Their Park (3) | Frequency (4) | Comments (5) — three thirds
+///   - FD / WFD:       Frequency (3)  | Comments (4) — two halves
 #[mutants::skip]
 fn draw_qso_entry_form(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
     use ratatui::layout::Constraint::Ratio;
@@ -672,18 +736,20 @@ fn draw_qso_entry_form(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
 
     // Row 2: layout depends on form type
     match form_type {
-        QsoFormType::General => {
-            // Comments only on the right half; left half empty
-            let [_empty, comments_area] =
+        QsoFormType::General | QsoFormType::FieldDay | QsoFormType::WinterFieldDay => {
+            // Frequency on left half, Comments on right half
+            let [freq_area, comments_area] =
                 Layout::horizontal([Ratio(1, 2), Ratio(1, 2)]).areas(row2_area);
-            draw_form_field(form, 3, frame, comments_area);
-        }
-        QsoFormType::Pota | QsoFormType::FieldDay | QsoFormType::WinterFieldDay => {
-            // Index 3 on left (Their Park / Frequency), Comments on right
-            let [left_area, comments_area] =
-                Layout::horizontal([Ratio(1, 2), Ratio(1, 2)]).areas(row2_area);
-            draw_form_field(form, 3, frame, left_area);
+            draw_form_field(form, 3, frame, freq_area);
             draw_form_field(form, 4, frame, comments_area);
+        }
+        QsoFormType::Pota => {
+            // Their Park | Frequency | Comments — three equal columns
+            let [park_area, freq_area, comments_area] =
+                Layout::horizontal([Ratio(1, 3), Ratio(1, 3), Ratio(1, 3)]).areas(row2_area);
+            draw_form_field(form, 3, frame, park_area);
+            draw_form_field(form, POTA_FREQUENCY, frame, freq_area);
+            draw_form_field(form, 5, frame, comments_area);
         }
     }
 }
@@ -898,8 +964,9 @@ mod tests {
             assert_eq!(state.form().value(RST_SENT), "59");
             assert_eq!(state.form().value(RST_RCVD), "59");
             assert_eq!(state.form().value(THEIR_CALL), "");
-            // General form: no type-specific field; Comments at index 3
-            assert_eq!(state.form().value(3), "");
+            // General form: Frequency at index 3, Comments at index 4
+            assert_eq!(state.form().value(GENERAL_FREQUENCY), "");
+            assert_eq!(state.form().value(4), "");
             assert!(state.recent_qsos().is_empty());
             assert_eq!(state.error(), None);
         }
@@ -908,13 +975,19 @@ mod tests {
         fn pota_context_adds_their_park_field() {
             let mut state = QsoEntryState::new();
             state.set_log_context(&make_pota_log());
-            // POTA form: Their Park at index 3, Comments at index 4
+            // POTA form: Their Park at index 3, Frequency at index 4, Comments at index 5
             assert_eq!(state.form().value(3), "");
-            assert_eq!(state.form().value(4), "");
+            assert_eq!(state.form().value(POTA_FREQUENCY), "");
+            assert_eq!(state.form().value(5), "");
             assert_eq!(
                 state.form().fields()[3].label,
                 "Their Park",
                 "index 3 should be Their Park"
+            );
+            assert_eq!(
+                state.form().fields()[POTA_FREQUENCY].label,
+                "Frequency (kHz)",
+                "index 4 should be Frequency"
             );
         }
 
@@ -953,6 +1026,10 @@ mod tests {
             assert!(
                 !state.form().fields()[3].required,
                 "Their Park must be optional for POTA"
+            );
+            assert!(
+                !state.form().fields()[POTA_FREQUENCY].required,
+                "Frequency must be optional for POTA"
             );
         }
 
@@ -996,12 +1073,13 @@ mod tests {
         #[test]
         fn comments_not_uppercased() {
             let mut state = QsoEntryState::new();
-            // General form: Comments at index 3; 3 tabs from THEIR_CALL
+            // General form: Comments at index 4; 4 tabs from THEIR_CALL
+            state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             type_string(&mut state, "hello");
-            assert_eq!(state.form().value(3), "hello");
+            assert_eq!(state.form().value(4), "hello");
         }
 
         #[test]
@@ -1022,6 +1100,23 @@ mod tests {
         }
 
         #[test]
+        fn general_frequency_not_auto_uppercased() {
+            // GENERAL_FREQUENCY is at index 3. The `handle_char` uppercase condition
+            // checks `form_type == QsoFormType::Pota && focus == 3`. If `&&` were mutated
+            // to `||`, a General form focused on index 3 would incorrectly uppercase input.
+            let mut state = QsoEntryState::new();
+            state.handle_key(press(KeyCode::Tab)); // RST Sent
+            state.handle_key(press(KeyCode::Tab)); // RST Rcvd
+            state.handle_key(press(KeyCode::Tab)); // Frequency (index 3)
+            type_string(&mut state, "abc");
+            assert_eq!(
+                state.form().value(GENERAL_FREQUENCY),
+                "abc",
+                "General frequency field must not auto-uppercase input"
+            );
+        }
+
+        #[test]
         fn backspace_deletes_char() {
             let mut state = QsoEntryState::new();
             type_string(&mut state, "W1AW");
@@ -1031,7 +1126,7 @@ mod tests {
 
         #[test]
         fn tab_cycles_focus_general() {
-            // General form has 4 fields: THEIR_CALL, RST_SENT, RST_RCVD, Comments(3)
+            // General form has 5 fields: THEIR_CALL, RST_SENT, RST_RCVD, Frequency(3), Comments(4)
             let mut state = QsoEntryState::new();
             assert_eq!(state.form().focus(), THEIR_CALL);
             state.handle_key(press(KeyCode::Tab));
@@ -1039,14 +1134,16 @@ mod tests {
             state.handle_key(press(KeyCode::Tab));
             assert_eq!(state.form().focus(), RST_RCVD);
             state.handle_key(press(KeyCode::Tab));
-            assert_eq!(state.form().focus(), 3); // Comments in General form
+            assert_eq!(state.form().focus(), GENERAL_FREQUENCY);
+            state.handle_key(press(KeyCode::Tab));
+            assert_eq!(state.form().focus(), 4); // Comments in General form
             state.handle_key(press(KeyCode::Tab));
             assert_eq!(state.form().focus(), THEIR_CALL);
         }
 
         #[test]
         fn tab_cycles_focus_pota() {
-            // POTA form: THEIR_CALL, RST_SENT, RST_RCVD, Their Park(3), Comments(4)
+            // POTA form: THEIR_CALL, RST_SENT, RST_RCVD, Their Park(3), Frequency(4), Comments(5)
             let mut state = QsoEntryState::new();
             state.set_log_context(&make_pota_log());
             assert_eq!(state.form().focus(), THEIR_CALL);
@@ -1057,17 +1154,19 @@ mod tests {
             state.handle_key(press(KeyCode::Tab));
             assert_eq!(state.form().focus(), 3); // Their Park
             state.handle_key(press(KeyCode::Tab));
-            assert_eq!(state.form().focus(), 4); // Comments
+            assert_eq!(state.form().focus(), POTA_FREQUENCY);
+            state.handle_key(press(KeyCode::Tab));
+            assert_eq!(state.form().focus(), 5); // Comments
             state.handle_key(press(KeyCode::Tab));
             assert_eq!(state.form().focus(), THEIR_CALL);
         }
 
         #[test]
         fn backtab_cycles_focus_backward() {
-            // General form: last field is index 3 (Comments)
+            // General form: last field is index 4 (Comments)
             let mut state = QsoEntryState::new();
             state.handle_key(shift_press(KeyCode::BackTab));
-            assert_eq!(state.form().focus(), 3);
+            assert_eq!(state.form().focus(), 4);
         }
 
         #[test]
@@ -1348,7 +1447,8 @@ mod tests {
         fn submit_with_comments() {
             let mut state = QsoEntryState::new();
             fill_valid_callsign(&mut state);
-            // General form: Comments at index 3; 3 tabs from THEIR_CALL
+            // General form: Comments at index 4; 4 tabs from THEIR_CALL
+            state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
@@ -1612,15 +1712,16 @@ mod tests {
         }
 
         #[test]
-        fn general_form_tab_does_not_trigger_auto_band() {
-            // Guard: has_contest_exchange() is false for General; auto-band must not fire
+        fn general_form_tab_with_empty_frequency_does_not_change_band() {
+            // Tabbing off an empty frequency field must not change the band.
             let mut state = QsoEntryState::new();
             state.set_log_context(&make_general_log());
-            // Tab through all general fields (callsign → rst_sent → rst_rcvd → comments → wrap)
-            for _ in 0..4 {
-                state.handle_key(press(KeyCode::Tab));
-            }
-            // Band stays at default — no frequency field, no auto-band
+            // Tab to frequency field (index 3) and immediately tab away without typing
+            state.handle_key(press(KeyCode::Tab)); // → rst_sent
+            state.handle_key(press(KeyCode::Tab)); // → rst_rcvd
+            state.handle_key(press(KeyCode::Tab)); // → frequency
+            state.handle_key(press(KeyCode::Tab)); // → comments (triggers auto-band attempt)
+            // Band stays at default — empty frequency field, no auto-band
             assert_eq!(state.band(), Band::M20);
         }
 
@@ -1824,6 +1925,209 @@ mod tests {
                 other => panic!("expected AddQso, got {other:?}"),
             }
         }
+
+        // --- General / POTA frequency tests ---
+
+        #[test]
+        fn general_empty_frequency_is_optional() {
+            // Submitting without entering a frequency yields frequency = None
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_general_log());
+            fill_valid_callsign(&mut state);
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::AddQso(qso) => assert_eq!(qso.frequency, None),
+                other => panic!("expected AddQso, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn general_valid_frequency_is_stored() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_general_log());
+            fill_valid_callsign(&mut state);
+            // Tab to frequency field (index 3)
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "14225");
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::AddQso(qso) => assert_eq!(qso.frequency, Some(14225)),
+                other => panic!("expected AddQso, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn general_invalid_frequency_shows_error() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_general_log());
+            fill_valid_callsign(&mut state);
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "abc");
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert_eq!(action, Action::None);
+            assert!(
+                state.form().fields()[GENERAL_FREQUENCY].error.is_some(),
+                "invalid general frequency must show error"
+            );
+        }
+
+        #[test]
+        fn general_zero_frequency_shows_error() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_general_log());
+            fill_valid_callsign(&mut state);
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "0");
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert_eq!(action, Action::None);
+            assert!(
+                state.form().fields()[GENERAL_FREQUENCY].error.is_some(),
+                "zero general frequency must show error"
+            );
+        }
+
+        #[test]
+        fn general_frequency_auto_sets_band_on_submit() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_general_log());
+            fill_valid_callsign(&mut state);
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "7200"); // 40M
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::AddQso(qso) => assert_eq!(qso.band, Band::M40),
+                other => panic!("expected AddQso, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn general_frequency_auto_sets_band_on_tab() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_general_log());
+            state.handle_key(press(KeyCode::Tab)); // → rst_sent
+            state.handle_key(press(KeyCode::Tab)); // → rst_rcvd
+            state.handle_key(press(KeyCode::Tab)); // → frequency
+            type_string(&mut state, "3750"); // 80M
+            assert_eq!(
+                state.band(),
+                Band::M20,
+                "band should not change before tabbing away"
+            );
+            state.handle_key(press(KeyCode::Tab)); // → comments: triggers auto-band
+            assert_eq!(state.band(), Band::M80);
+        }
+
+        #[test]
+        fn pota_empty_frequency_is_optional() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
+            fill_valid_callsign(&mut state);
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::AddQso(qso) => assert_eq!(qso.frequency, None),
+                other => panic!("expected AddQso, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn pota_valid_frequency_is_stored() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
+            fill_valid_callsign(&mut state);
+            // Tab to Frequency field (index 4 in POTA form)
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "14225");
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::AddQso(qso) => assert_eq!(qso.frequency, Some(14225)),
+                other => panic!("expected AddQso, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn pota_invalid_frequency_shows_error() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
+            fill_valid_callsign(&mut state);
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "abc");
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert_eq!(action, Action::None);
+            assert!(
+                state.form().fields()[POTA_FREQUENCY].error.is_some(),
+                "invalid POTA frequency must show error"
+            );
+        }
+
+        #[test]
+        fn pota_zero_frequency_shows_error() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
+            fill_valid_callsign(&mut state);
+            // Tab to Frequency field (index 4 in POTA form)
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "0");
+            let action = state.handle_key(press(KeyCode::Enter));
+            assert_eq!(action, Action::None, "zero frequency should be rejected");
+            assert!(
+                state.form().fields()[POTA_FREQUENCY].error.is_some(),
+                "POTA frequency field must show an error for 0"
+            );
+        }
+
+        #[test]
+        fn pota_frequency_auto_sets_band_on_submit() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
+            fill_valid_callsign(&mut state);
+            // Tab to Frequency (index 4)
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "21200"); // 15M
+            let action = state.handle_key(press(KeyCode::Enter));
+            match action {
+                Action::AddQso(qso) => assert_eq!(qso.band, Band::M15),
+                other => panic!("expected AddQso, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn pota_frequency_auto_sets_band_on_tab() {
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
+            // Tab to frequency field (index 4: after callsign, rst_sent, rst_rcvd, their_park)
+            state.handle_key(press(KeyCode::Tab)); // → rst_sent
+            state.handle_key(press(KeyCode::Tab)); // → rst_rcvd
+            state.handle_key(press(KeyCode::Tab)); // → their_park
+            state.handle_key(press(KeyCode::Tab)); // → frequency
+            type_string(&mut state, "7200"); // 40M
+            assert_eq!(
+                state.band(),
+                Band::M20,
+                "band should not change before tabbing away"
+            );
+            state.handle_key(press(KeyCode::Tab)); // → comments: triggers auto-band
+            assert_eq!(state.band(), Band::M40);
+        }
     }
 
     mod clear_fast_fields {
@@ -1839,13 +2143,18 @@ mod tests {
             state.handle_key(press(KeyCode::Tab));
             state.handle_key(press(KeyCode::Tab));
             type_string(&mut state, "K-1234");
+            // Tab to Frequency (index 4)
+            state.handle_key(press(KeyCode::Tab));
+            type_string(&mut state, "14225");
+            // Tab to Comments (index 5)
             state.handle_key(press(KeyCode::Tab));
             type_string(&mut state, "test comment");
 
             state.clear_fast_fields();
             assert_eq!(state.form().value(THEIR_CALL), "");
             assert_eq!(state.form().value(3), ""); // Their Park in POTA form
-            assert_eq!(state.form().value(4), ""); // Comments in POTA form
+            assert_eq!(state.form().value(POTA_FREQUENCY), ""); // Frequency in POTA form
+            assert_eq!(state.form().value(5), ""); // Comments in POTA form
         }
 
         #[test]
@@ -2143,7 +2452,8 @@ mod tests {
             assert_eq!(state.form().value(RST_SENT), "57");
             assert_eq!(state.form().value(RST_RCVD), "55");
             assert_eq!(state.form().value(3), "K-5678"); // Their Park in POTA form
-            assert_eq!(state.form().value(4), "test comment"); // Comments in POTA form
+            assert_eq!(state.form().value(POTA_FREQUENCY), ""); // no frequency on test QSO
+            assert_eq!(state.form().value(5), "test comment"); // Comments in POTA form
             assert_eq!(state.band(), Band::M40);
             assert_eq!(state.mode(), Mode::Cw);
             assert_eq!(state.form().focus(), THEIR_CALL);
