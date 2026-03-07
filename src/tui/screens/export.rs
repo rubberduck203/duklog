@@ -3,7 +3,7 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
@@ -67,11 +67,22 @@ impl ExportState {
     }
 
     /// Handles a key event, returning an [`Action`] for the app to apply.
+    ///
+    /// While the export is ready, printable characters and `Backspace` edit
+    /// the path inline. `Enter` exports, `Esc` cancels.
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
         match self.status {
             ExportStatus::Ready => match key.code {
                 KeyCode::Enter => Action::ExportLog,
-                KeyCode::Esc | KeyCode::Char('q') => Action::Navigate(Screen::QsoEntry),
+                KeyCode::Esc => Action::Navigate(Screen::QsoEntry),
+                KeyCode::Backspace => {
+                    self.path.pop();
+                    Action::None
+                }
+                KeyCode::Char(c) => {
+                    self.path.push(c);
+                    Action::None
+                }
                 _ => Action::None,
             },
             ExportStatus::Success | ExportStatus::Error(_) => Action::Navigate(Screen::QsoEntry),
@@ -154,10 +165,19 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
         Style::default().fg(Color::White),
     )));
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        format!("Path: {}", state.path()),
-        Style::default().fg(Color::Yellow),
-    )));
+    let mut path_spans = vec![
+        Span::raw("Path: "),
+        Span::styled(state.path(), Style::default().fg(Color::Yellow)),
+    ];
+    if matches!(state.status(), ExportStatus::Ready) {
+        path_spans.push(Span::styled(
+            "\u{2588}",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::SLOW_BLINK),
+        ));
+    }
+    lines.push(Line::from(path_spans));
 
     frame.render_widget(Paragraph::new(lines), info_area);
 
@@ -175,7 +195,7 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
 
     // Footer
     let footer_text = match state.status() {
-        ExportStatus::Ready => "Enter: export  Esc: back",
+        ExportStatus::Ready => "Enter: export  Esc: back  (edit path above)",
         ExportStatus::Success | ExportStatus::Error(_) => "Press any key to return",
     };
     let footer =
@@ -314,17 +334,35 @@ mod tests {
         }
 
         #[test]
-        fn q_when_ready_returns_to_qso_entry() {
+        fn unhandled_key_when_ready_returns_none() {
             let mut state = ExportState::new();
-            let action = state.handle_key(press(KeyCode::Char('q')));
-            assert_eq!(action, Action::Navigate(Screen::QsoEntry));
+            let action = state.handle_key(press(KeyCode::F(2)));
+            assert_eq!(action, Action::None);
         }
 
         #[test]
-        fn unhandled_key_when_ready_returns_none() {
+        fn typing_chars_appends_to_path() {
             let mut state = ExportState::new();
-            let action = state.handle_key(press(KeyCode::Char('x')));
-            assert_eq!(action, Action::None);
+            state.handle_key(press(KeyCode::Char('/')));
+            state.handle_key(press(KeyCode::Char('t')));
+            state.handle_key(press(KeyCode::Char('m')));
+            state.handle_key(press(KeyCode::Char('p')));
+            assert_eq!(state.path(), "/tmp");
+        }
+
+        #[test]
+        fn backspace_removes_last_char() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp/foo.adif".into());
+            state.handle_key(press(KeyCode::Backspace));
+            assert_eq!(state.path(), "/tmp/foo.adi");
+        }
+
+        #[test]
+        fn q_appends_to_path() {
+            let mut state = ExportState::new();
+            state.handle_key(press(KeyCode::Char('q')));
+            assert_eq!(state.path(), "q");
         }
 
         #[test]
@@ -464,12 +502,16 @@ mod tests {
         #[test]
         fn renders_footer_when_ready() {
             let state = ExportState::new();
-            let output = render_export(&state, None, 80, 15);
+            let output = render_export(&state, None, 120, 15);
             assert!(
                 output.contains("Enter: export"),
                 "should show export keybinding"
             );
             assert!(output.contains("Esc: back"), "should show back keybinding");
+            assert!(
+                output.contains("edit path"),
+                "should hint that path is editable"
+            );
         }
 
         #[test]
