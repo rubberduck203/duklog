@@ -168,7 +168,17 @@ Shows the export destination, QSO count, and station info. The status bar at the
 
 After export (success or error), press any key to return.
 
-The default export path is `~/duklog-{PARK}-{YYYYMMDD}.adif` (or `~/duklog-{CALLSIGN}-{YYYYMMDD}.adif` if no park reference is set).
+The default export path depends on the log type:
+
+```
+POTA (with park):  ~/Documents/duklog/{CALLSIGN}@{PARK}-{YYYYMMDD}.adif
+POTA (no park):    ~/Documents/duklog/{CALLSIGN}-{YYYYMMDD}.adif
+General:           ~/Documents/duklog/{CALLSIGN}-{YYYYMMDD}.adif
+Field Day:         ~/Documents/duklog/{CALLSIGN}-FD-{YYYYMMDD}.adif
+Winter FD:         ~/Documents/duklog/{CALLSIGN}-WFD-{YYYYMMDD}.adif
+```
+
+The `~/Documents/duklog/` directory is created automatically if it does not exist.
 
 ### Help
 
@@ -182,7 +192,7 @@ Press `F1` from any screen to open context-sensitive help. The title shows which
 ## Data Storage
 
 - **Log files**: `~/.local/share/duklog/logs/` (one JSONL file per log)
-- **ADIF exports**: Default path is `~/duklog-{PARK}-{YYYYMMDD}.adif`
+- **ADIF exports**: `~/Documents/duklog/` — filename format is log-type-specific (see Export screen above)
 - Logs are auto-saved after every change — no manual save needed
 
 ## Terminal Compatibility

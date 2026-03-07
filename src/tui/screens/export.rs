@@ -258,7 +258,7 @@ mod tests {
 
             state.prepare(Some(&log));
             assert_eq!(state.qso_count(), 2);
-            assert!(state.path().contains("duklog-K-0001"));
+            assert!(state.path().contains("W1AW@K-0001"));
             assert!(state.path().ends_with(".adif"));
         }
 
@@ -292,7 +292,7 @@ mod tests {
             }
 
             state.prepare(Some(&log));
-            assert!(state.path().contains("duklog-W1AW"));
+            assert!(state.path().contains("W1AW-"));
         }
     }
 

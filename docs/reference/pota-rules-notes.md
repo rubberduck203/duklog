@@ -63,3 +63,9 @@ When both stations are activating a POTA park:
 - Upload at https://pota.app under activator tools
 - One file per activation (one park, one UTC day)
 - Multiple parks in a day = multiple files
+
+### Email Submission Filename Format
+
+- Required format: `{CALLSIGN}@{PARK}-{YYYYMMDD}.adif` (e.g. `KA8H@US-1515-20201127.adi`)
+- Multi-state parks: append state code, e.g. `W8MSC@US-4239-20181231-US-MI.adif`
+- Web uploader does not require a specific filename; email submission does
