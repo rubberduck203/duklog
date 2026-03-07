@@ -88,6 +88,30 @@ let chunks = Layout::default()
 
 Ratatui is synchronous. The blocking `event::read()` is exactly what a terminal UI wants — it sleeps until the user does something. No tokio, no async runtime.
 
+## Text Input / Cursor Editing
+
+Ratatui has **no built-in text input widget** with cursor tracking. The official third-party widget list (`https://ratatui.rs/showcase/third-party-widgets/`) recommends:
+
+### `tui-textarea` (recommended)
+
+- Crate: `tui-textarea = "0.7"` — requires `ratatui ^0.29.0` (compatible with duklog's pinned version)
+- Multi-line editor widget; also supports **single-line input** via a dedicated example (`single_line`)
+- Features: cursor, undo/redo, Emacs-like keybindings (`Ctrl+F/B`, `Ctrl+K`), text selection, yank buffer, search (optional feature), mouse scroll
+- Key API:
+  ```rust
+  let mut textarea = TextArea::default();
+  textarea.input(key_event);   // feeds crossterm KeyEvent directly
+  textarea.lines()             // &[String] — current text
+  textarea.into_lines()        // Vec<String> — consume
+  ```
+- Backend-agnostic; works with crossterm
+
+### Hand-rolled cursor (current approach in `export.rs`)
+
+Track `cursor: usize` byte offset; render before/at/after as separate `Span`s; `Modifier::REVERSED` on the char under cursor; `█` only at end-of-text. ~50 lines of logic per widget; prefer `tui-textarea` for future editable fields.
+
+> **PR #32 feedback**: check ratatui third-party widget list before hand-rolling cursor logic. Consider adopting `tui-textarea` for any future editable field screens.
+
 ## Dependencies
 
 ratatui 0.29 uses crossterm 0.28 by default. Pin both to match:

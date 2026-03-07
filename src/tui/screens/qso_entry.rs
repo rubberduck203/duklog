@@ -851,7 +851,7 @@ mod tests {
             PotaLog::new(
                 "W1AW".to_string(),
                 None,
-                Some("K-0001".to_string()),
+                "K-0001".to_string(),
                 "FN31".to_string(),
             )
             .unwrap(),
@@ -1980,7 +1980,7 @@ mod tests {
                 PotaLog::new(
                     "W1AW".to_string(),
                     None,
-                    Some("K-0001".to_string()),
+                    "K-0001".to_string(),
                     "FN31".to_string(),
                 )
                 .unwrap(),
@@ -2004,7 +2004,7 @@ mod tests {
                 PotaLog::new(
                     "W1AW".to_string(),
                     None,
-                    Some("K-0001".to_string()),
+                    "K-0001".to_string(),
                     "FN31".to_string(),
                 )
                 .unwrap(),
@@ -2081,7 +2081,7 @@ mod tests {
                 PotaLog::new(
                     "W1AW".to_string(),
                     None,
-                    Some("K-0001".to_string()),
+                    "K-0001".to_string(),
                     "FN31".to_string(),
                 )
                 .unwrap(),
@@ -2348,7 +2348,7 @@ mod tests {
                 PotaLog::new(
                     "W1AW".to_string(),
                     None,
-                    Some("K-0001".to_string()),
+                    "K-0001".to_string(),
                     "FN31".to_string(),
                 )
                 .unwrap(),
@@ -2490,15 +2490,13 @@ mod tests {
         }
 
         #[test]
-        fn renders_park_dash_when_no_park_ref() {
+        fn renders_dash_for_non_pota_log() {
             let state = QsoEntryState::new();
-            let log = Log::Pota(
-                PotaLog::new("W1AW".to_string(), None, None, "FN31".to_string()).unwrap(),
-            );
+            let log = make_general_log();
             let output = render_qso_entry(&state, Some(&log), 80, 30);
             assert!(
                 output.contains("W1AW @ -"),
-                "should show dash for missing park"
+                "non-POTA logs show dash for park"
             );
         }
 

@@ -6,6 +6,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use tui_textarea::TextArea;
 
 use crate::model::Log;
 use crate::storage::default_export_path;
@@ -27,7 +28,7 @@ pub enum ExportStatus {
 /// State for the export confirmation screen.
 #[derive(Debug, Clone)]
 pub struct ExportState {
-    path: String,
+    textarea: TextArea<'static>,
     status: ExportStatus,
     qso_count: usize,
 }
@@ -42,7 +43,7 @@ impl ExportState {
     /// Creates a new export state with empty defaults.
     pub fn new() -> Self {
         Self {
-            path: String::new(),
+            textarea: TextArea::default(),
             status: ExportStatus::Ready,
             qso_count: 0,
         }
@@ -50,29 +51,42 @@ impl ExportState {
 
     /// Prepares the export screen for the given log, computing the default
     /// export path and QSO count. Resets status to [`ExportStatus::Ready`].
+    /// Cursor is placed at the end of the path.
     pub fn prepare(&mut self, log: Option<&Log>) {
         self.status = ExportStatus::Ready;
         match log {
             Some(log) => {
                 self.qso_count = log.header().qsos.len();
-                self.path = default_export_path(log)
+                let path = default_export_path(log)
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|e| format!("<error: {e}>"));
+                self.set_path(path);
             }
             None => {
                 self.qso_count = 0;
-                self.path = String::new();
+                self.textarea = TextArea::default();
             }
         }
     }
 
     /// Handles a key event, returning an [`Action`] for the app to apply.
+    ///
+    /// While the export is ready, the path is editable:
+    /// - Printable characters are inserted at the cursor position.
+    /// - `Backspace` removes the character before the cursor.
+    /// - `Delete` removes the character at the cursor.
+    /// - `Left` / `Right` move the cursor one character.
+    /// - `Home` / `End` jump to the start or end of the path.
+    /// - `Enter` exports to the current path; `Esc` cancels.
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
         match self.status {
             ExportStatus::Ready => match key.code {
                 KeyCode::Enter => Action::ExportLog,
-                KeyCode::Esc | KeyCode::Char('q') => Action::Navigate(Screen::QsoEntry),
-                _ => Action::None,
+                KeyCode::Esc => Action::Navigate(Screen::QsoEntry),
+                _ => {
+                    self.textarea.input(key);
+                    Action::None
+                }
             },
             ExportStatus::Success | ExportStatus::Error(_) => Action::Navigate(Screen::QsoEntry),
         }
@@ -90,12 +104,19 @@ impl ExportState {
 
     /// Returns the export file path.
     pub fn path(&self) -> &str {
-        &self.path
+        self.textarea.lines().first().map_or("", String::as_str)
     }
 
-    /// Sets the export file path.
+    /// Sets the export file path and moves the cursor to the end.
     pub fn set_path(&mut self, path: String) {
-        self.path = path;
+        use tui_textarea::CursorMove;
+        self.textarea = TextArea::new(vec![path]);
+        self.textarea.move_cursor(CursorMove::End);
+    }
+
+    /// Returns the cursor column position within the path (character-based).
+    pub fn cursor(&self) -> usize {
+        self.textarea.cursor().1
     }
 
     /// Returns the current export status.
@@ -126,16 +147,16 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
     let inner = block.inner(content_area);
     frame.render_widget(block, content_area);
 
-    let [info_area, export_status_area, footer_area] = Layout::vertical([
-        Constraint::Min(5),
+    let [info_area, path_area, export_status_area, footer_area] = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Length(1),
         Constraint::Length(2),
         Constraint::Length(1),
     ])
     .areas(inner);
 
-    // Station info and export details
+    // Station info and QSO count
     let mut lines = Vec::new();
-
     if let Some(log) = log {
         let callsign = &log.header().station_callsign;
         let park = log
@@ -147,19 +168,34 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
             Style::default().fg(Color::White),
         )));
     }
-
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         format!("QSOs: {}", state.qso_count()),
         Style::default().fg(Color::White),
     )));
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        format!("Path: {}", state.path()),
-        Style::default().fg(Color::Yellow),
-    )));
-
     frame.render_widget(Paragraph::new(lines), info_area);
+
+    // Path row: "Path: " label + editable textarea (or plain text after export)
+    let [label_area, edit_area] =
+        Layout::horizontal([Constraint::Length(6), Constraint::Min(0)]).areas(path_area);
+    frame.render_widget(
+        Paragraph::new(Line::from("Path: ")).style(Style::default().fg(Color::White)),
+        label_area,
+    );
+    if matches!(state.status(), ExportStatus::Ready) {
+        let mut ta = state.textarea.clone();
+        ta.set_style(Style::default().fg(Color::Yellow));
+        ta.set_cursor_line_style(Style::default().fg(Color::Yellow));
+        frame.render_widget(&ta, edit_area);
+    } else {
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                state.path(),
+                Style::default().fg(Color::Yellow),
+            ))),
+            edit_area,
+        );
+    }
 
     // Status message
     let (status_text, status_color) = match state.status() {
@@ -175,7 +211,7 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
 
     // Footer
     let footer_text = match state.status() {
-        ExportStatus::Ready => "Enter: export  Esc: back",
+        ExportStatus::Ready => "Enter: export  Esc: back  (edit path above)",
         ExportStatus::Success | ExportStatus::Error(_) => "Press any key to return",
     };
     let footer =
@@ -204,7 +240,7 @@ mod tests {
         let mut log = PotaLog::new(
             "W1AW".to_string(),
             None,
-            Some("K-0001".to_string()),
+            "K-0001".to_string(),
             "FN31".to_string(),
         )
         .unwrap();
@@ -258,7 +294,7 @@ mod tests {
 
             state.prepare(Some(&log));
             assert_eq!(state.qso_count(), 2);
-            assert!(state.path().contains("duklog-K-0001"));
+            assert!(state.path().contains("W1AW@K-0001"));
             assert!(state.path().ends_with(".adif"));
         }
 
@@ -276,23 +312,11 @@ mod tests {
         fn none_log_clears_state() {
             let mut state = ExportState::new();
             state.prepare(Some(&make_log()));
-            assert!(!state.path().is_empty());
+            assert!(state.path().contains("W1AW@K-0001"));
 
             state.prepare(None);
             assert_eq!(state.path(), "");
             assert_eq!(state.qso_count(), 0);
-        }
-
-        #[test]
-        fn path_without_park_uses_callsign() {
-            let mut state = ExportState::new();
-            let mut log = make_log();
-            if let Log::Pota(ref mut p) = log {
-                p.park_ref = None;
-            }
-
-            state.prepare(Some(&log));
-            assert!(state.path().contains("duklog-W1AW"));
         }
     }
 
@@ -314,17 +338,122 @@ mod tests {
         }
 
         #[test]
-        fn q_when_ready_returns_to_qso_entry() {
+        fn unhandled_key_when_ready_returns_none() {
             let mut state = ExportState::new();
-            let action = state.handle_key(press(KeyCode::Char('q')));
-            assert_eq!(action, Action::Navigate(Screen::QsoEntry));
+            let action = state.handle_key(press(KeyCode::F(2)));
+            assert_eq!(action, Action::None);
         }
 
         #[test]
-        fn unhandled_key_when_ready_returns_none() {
+        fn typing_chars_inserts_at_cursor() {
             let mut state = ExportState::new();
-            let action = state.handle_key(press(KeyCode::Char('x')));
-            assert_eq!(action, Action::None);
+            state.handle_key(press(KeyCode::Char('/')));
+            state.handle_key(press(KeyCode::Char('t')));
+            state.handle_key(press(KeyCode::Char('m')));
+            state.handle_key(press(KeyCode::Char('p')));
+            assert_eq!(state.path(), "/tmp");
+            assert_eq!(state.cursor(), 4);
+        }
+
+        #[test]
+        fn backspace_removes_char_before_cursor() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp/foo.adif".into());
+            state.handle_key(press(KeyCode::Backspace));
+            assert_eq!(state.path(), "/tmp/foo.adi");
+        }
+
+        #[test]
+        fn backspace_at_start_is_noop() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp/foo.adif".into());
+            state.handle_key(press(KeyCode::Home));
+            state.handle_key(press(KeyCode::Backspace));
+            assert_eq!(state.path(), "/tmp/foo.adif");
+        }
+
+        #[test]
+        fn delete_removes_char_at_cursor() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp/foo.adif".into());
+            state.handle_key(press(KeyCode::Home));
+            state.handle_key(press(KeyCode::Delete));
+            assert_eq!(state.path(), "tmp/foo.adif");
+        }
+
+        #[test]
+        fn delete_at_end_is_noop() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp/foo.adif".into());
+            // cursor is at end after set_path
+            state.handle_key(press(KeyCode::Delete));
+            assert_eq!(state.path(), "/tmp/foo.adif");
+        }
+
+        #[test]
+        fn left_moves_cursor_back() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp".into());
+            state.handle_key(press(KeyCode::Left));
+            assert_eq!(state.cursor(), 3);
+        }
+
+        #[test]
+        fn left_at_start_is_noop() {
+            let mut state = ExportState::new();
+            state.handle_key(press(KeyCode::Left));
+            assert_eq!(state.cursor(), 0);
+        }
+
+        #[test]
+        fn right_moves_cursor_forward() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp".into());
+            state.handle_key(press(KeyCode::Home));
+            state.handle_key(press(KeyCode::Right));
+            assert_eq!(state.cursor(), 1);
+        }
+
+        #[test]
+        fn right_at_end_is_noop() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp".into());
+            state.handle_key(press(KeyCode::Right));
+            assert_eq!(state.cursor(), 4);
+        }
+
+        #[test]
+        fn home_moves_cursor_to_start() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp/foo.adif".into());
+            state.handle_key(press(KeyCode::Home));
+            assert_eq!(state.cursor(), 0);
+        }
+
+        #[test]
+        fn end_moves_cursor_to_end() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp/foo.adif".into());
+            state.handle_key(press(KeyCode::Home));
+            state.handle_key(press(KeyCode::End));
+            assert_eq!(state.cursor(), 13);
+        }
+
+        #[test]
+        fn insert_at_mid_cursor() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp/foo.adif".into());
+            state.handle_key(press(KeyCode::Home));
+            state.handle_key(press(KeyCode::Right)); // cursor at 1
+            state.handle_key(press(KeyCode::Char('X')));
+            assert_eq!(state.path(), "/Xtmp/foo.adif");
+        }
+
+        #[test]
+        fn q_appends_to_path() {
+            let mut state = ExportState::new();
+            state.handle_key(press(KeyCode::Char('q')));
+            assert_eq!(state.path(), "q");
         }
 
         #[test]
@@ -464,12 +593,16 @@ mod tests {
         #[test]
         fn renders_footer_when_ready() {
             let state = ExportState::new();
-            let output = render_export(&state, None, 80, 15);
+            let output = render_export(&state, None, 120, 15);
             assert!(
                 output.contains("Enter: export"),
                 "should show export keybinding"
             );
             assert!(output.contains("Esc: back"), "should show back keybinding");
+            assert!(
+                output.contains("edit path"),
+                "should hint that path is editable"
+            );
         }
 
         #[test]
@@ -489,19 +622,6 @@ mod tests {
             let output = render_export(&state, None, 80, 15);
             assert!(output.contains("Export ADIF"), "should still show title");
             assert!(output.contains("QSOs: 0"), "should show zero count");
-        }
-
-        #[test]
-        fn renders_without_park_ref() {
-            let mut state = ExportState::new();
-            let mut log = make_log();
-            if let Log::Pota(ref mut p) = log {
-                p.park_ref = None;
-            }
-            state.prepare(Some(&log));
-            let output = render_export(&state, Some(&log), 80, 15);
-            assert!(output.contains("W1AW"), "should show callsign");
-            assert!(!output.contains("Park:"), "should not show park label");
         }
     }
 }

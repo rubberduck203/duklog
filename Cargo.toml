@@ -1,6 +1,6 @@
 [package]
 name = "duklog"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2024"
 description = "Offline ham radio logging TUI for POTA activations"
 
@@ -15,6 +15,7 @@ difa = "0.1.1"
 dirs = "6"
 mutants = "0.0.3"
 ratatui = "0.29"
+tui-textarea = "0.7"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

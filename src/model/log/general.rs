@@ -1,6 +1,6 @@
 use chrono::Utc;
 
-use super::LogHeader;
+use super::{DefaultFilename, LogHeader};
 use crate::model::validation::{ValidationError, validate_callsign, validate_grid_square};
 
 /// General-purpose log — no type-specific setup fields.
@@ -40,6 +40,13 @@ impl GeneralLog {
                 log_id,
             },
         })
+    }
+}
+
+impl DefaultFilename for GeneralLog {
+    fn default_filename(&self) -> String {
+        let (callsign, date) = super::export_parts(&self.header);
+        format!("{callsign}-{date}.adif")
     }
 }
 

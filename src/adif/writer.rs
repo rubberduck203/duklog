@@ -43,10 +43,12 @@ fn encode_type_specific_fields(
     match log {
         Log::General(_) => {}
         Log::Pota(pota) => {
-            if let Some(ref park) = pota.park_ref {
-                encode(encoder, buf, field_tag("MY_SIG", POTA_SIG))?;
-                encode(encoder, buf, field_tag("MY_SIG_INFO", park.as_str()))?;
-            }
+            encode(encoder, buf, field_tag("MY_SIG", POTA_SIG))?;
+            encode(
+                encoder,
+                buf,
+                field_tag("MY_SIG_INFO", pota.park_ref.as_str()),
+            )?;
             if let Some(ref their_park) = qso.their_park {
                 encode(encoder, buf, field_tag("SIG", POTA_SIG))?;
                 encode(encoder, buf, field_tag("SIG_INFO", their_park.as_str()))?;
@@ -220,19 +222,7 @@ mod tests {
         let mut log = PotaLog::new(
             "W1AW".to_string(),
             Some("W1AW".to_string()),
-            Some("K-0001".to_string()),
-            "FN31".to_string(),
-        )
-        .unwrap();
-        log.header.created_at = Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap();
-        Log::Pota(log)
-    }
-
-    fn make_log_without_park() -> Log {
-        let mut log = PotaLog::new(
-            "W1AW".to_string(),
-            Some("W1AW".to_string()),
-            None,
+            "K-0001".to_string(),
             "FN31".to_string(),
         )
         .unwrap();
@@ -244,7 +234,7 @@ mod tests {
         let mut log = PotaLog::new(
             "W1AW".to_string(),
             Some("N0CALL".to_string()),
-            Some("K-0001".to_string()),
+            "K-0001".to_string(),
             "FN31".to_string(),
         )
         .unwrap();
@@ -256,7 +246,7 @@ mod tests {
         let mut log = PotaLog::new(
             "W1AW".to_string(),
             None,
-            Some("K-0001".to_string()),
+            "K-0001".to_string(),
             "FN31".to_string(),
         )
         .unwrap();
@@ -393,14 +383,6 @@ mod tests {
     }
 
     #[test]
-    fn qso_without_park_excludes_my_sig() {
-        let record = format_qso(&make_log_without_park(), &make_qso()).unwrap();
-
-        assert!(!record.contains("MY_SIG"));
-        assert!(!record.contains("MY_SIG_INFO"));
-    }
-
-    #[test]
     fn general_log_excludes_pota_sig_fields() {
         let log =
             Log::General(GeneralLog::new("W1AW".to_string(), None, "FN31".to_string()).unwrap());
@@ -509,7 +491,7 @@ mod tests {
             Ok(q) => q,
             Err(_) => return true,
         };
-        let record = format_qso(&make_log_without_park(), &qso).unwrap();
+        let record = format_qso(&make_log(), &qso).unwrap();
         let expected = format!("<CALL:{}>{}", call.len(), call);
         record.contains(&expected)
     }

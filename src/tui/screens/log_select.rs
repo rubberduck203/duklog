@@ -241,7 +241,7 @@ mod tests {
     use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers};
 
     use super::*;
-    use crate::model::{LogHeader, PotaLog};
+    use crate::model::{GeneralLog, LogHeader, PotaLog};
 
     fn press(code: KeyCode) -> KeyEvent {
         KeyEvent {
@@ -252,7 +252,7 @@ mod tests {
         }
     }
 
-    fn make_log(id: &str, callsign: &str, park: Option<&str>) -> Log {
+    fn make_pota_log(id: &str, callsign: &str, park_ref: &str) -> Log {
         Log::Pota(PotaLog {
             header: LogHeader {
                 station_callsign: callsign.into(),
@@ -262,16 +262,29 @@ mod tests {
                 created_at: Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap(),
                 log_id: id.into(),
             },
-            park_ref: park.map(Into::into),
+            park_ref: park_ref.into(),
+        })
+    }
+
+    fn make_general_log(id: &str, callsign: &str) -> Log {
+        Log::General(GeneralLog {
+            header: LogHeader {
+                station_callsign: callsign.into(),
+                operator: None,
+                grid_square: "FN31".into(),
+                qsos: vec![],
+                created_at: Utc.with_ymd_and_hms(2026, 2, 16, 12, 0, 0).unwrap(),
+                log_id: id.into(),
+            },
         })
     }
 
     fn make_populated_state() -> LogSelectState {
         LogSelectState {
             logs: vec![
-                make_log("log1", "W1AW", Some("K-0001")),
-                make_log("log2", "N0CALL", None),
-                make_log("log3", "KD9XYZ", Some("K-1234")),
+                make_pota_log("log1", "W1AW", "K-0001"),
+                make_general_log("log2", "N0CALL"),
+                make_pota_log("log3", "KD9XYZ", "K-1234"),
             ],
             selected: Some(0),
             error: None,
@@ -298,7 +311,7 @@ mod tests {
         fn populates_from_manager() {
             let dir = tempfile::tempdir().unwrap();
             let manager = LogManager::with_path(dir.path()).unwrap();
-            let log = make_log("test", "W1AW", Some("K-0001"));
+            let log = make_pota_log("test", "W1AW", "K-0001");
             manager.save_log(&log).unwrap();
 
             let mut state = LogSelectState::new();

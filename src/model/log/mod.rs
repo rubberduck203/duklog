@@ -14,6 +14,23 @@ pub use header::LogHeader;
 pub use pota::PotaLog;
 pub use wfd::{WfdClass, WfdLog, parse_wfd_class, validate_wfd_exchange};
 
+/// Provides a default ADIF export filename for a log.
+pub trait DefaultFilename {
+    /// Returns the default filename (without directory) for this log's ADIF export.
+    fn default_filename(&self) -> String;
+}
+
+/// Returns the sanitized callsign and formatted date string for use in export filenames.
+///
+/// `/` in callsigns is replaced with `_` (e.g. `W1AW/P` → `W1AW_P`).
+/// Date is formatted as `YYYYMMDD`.
+pub(super) fn export_parts(header: &LogHeader) -> (String, String) {
+    (
+        header.station_callsign.replace('/', "_"),
+        header.created_at.format("%Y%m%d").to_string(),
+    )
+}
+
 /// Minimum unique QSOs required for a valid POTA activation (per UTC day).
 const POTA_ACTIVATION_THRESHOLD: usize = 10;
 
@@ -54,7 +71,7 @@ impl Log {
     /// Returns the POTA park reference for this log, or `None` for non-POTA logs.
     pub fn park_ref(&self) -> Option<&str> {
         match self {
-            Self::Pota(p) => p.park_ref.as_deref(),
+            Self::Pota(p) => Some(p.park_ref.as_str()),
             _ => None,
         }
     }
@@ -147,19 +164,26 @@ impl Log {
 
     /// Returns a short display label for this log.
     ///
-    /// - POTA: park reference if present, otherwise station callsign.
+    /// - POTA: park reference.
     /// - Field Day / Winter Field Day: sent exchange string (e.g. `"1B EPA"`).
     /// - General: station callsign.
     pub fn display_label(&self) -> String {
         match self {
-            Self::Pota(p) => p
-                .park_ref
-                .as_deref()
-                .unwrap_or(&p.header.station_callsign)
-                .to_string(),
+            Self::Pota(p) => p.park_ref.clone(),
             Self::General(l) => l.header.station_callsign.clone(),
             Self::FieldDay(l) => l.sent_exchange(),
             Self::WinterFieldDay(l) => l.sent_exchange(),
+        }
+    }
+}
+
+impl DefaultFilename for Log {
+    fn default_filename(&self) -> String {
+        match self {
+            Self::General(l) => l.default_filename(),
+            Self::Pota(p) => p.default_filename(),
+            Self::FieldDay(f) => f.default_filename(),
+            Self::WinterFieldDay(w) => w.default_filename(),
         }
     }
 }
@@ -178,7 +202,7 @@ mod tests {
             PotaLog::new(
                 "W1AW".to_string(),
                 Some("W1AW".to_string()),
-                Some("K-0001".to_string()),
+                "K-0001".to_string(),
                 "FN31".to_string(),
             )
             .unwrap(),

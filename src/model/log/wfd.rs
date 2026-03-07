@@ -5,7 +5,7 @@ use chrono::Utc;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use super::LogHeader;
+use super::{DefaultFilename, LogHeader};
 use crate::model::validation::{
     ValidationError, validate_callsign, validate_section, validate_tx_count,
 };
@@ -114,6 +114,13 @@ impl WfdLog {
     /// Returns the sent exchange string, e.g. `"1H EPA"`.
     pub(crate) fn sent_exchange(&self) -> String {
         format!("{}{} {}", self.tx_count, self.class, self.section)
+    }
+}
+
+impl DefaultFilename for WfdLog {
+    fn default_filename(&self) -> String {
+        let (callsign, date) = super::export_parts(&self.header);
+        format!("{callsign}-WFD-{date}.adif")
     }
 }
 

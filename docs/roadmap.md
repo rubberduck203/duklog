@@ -29,6 +29,7 @@
 - **4.4 Log select and status bar updates** — Done
 - **4.4.5 QSO deletion** (`feature/qso-deletion`) — Done
 - **Phase 4: Multiple Logbook Types** — Done
+- **Export to Documents dir + log-type-aware filenames** (`feature/export-to-documents-dir`) — Done: ADIF exports written to `~/Documents/duklog/` (auto-created); filenames are log-type-specific: POTA → `{CALL}@{PARK}-{DATE}.adif`; General → `{CALL}-{DATE}.adif`; FD → `{CALL}-FD-{DATE}.adif`; WFD → `{CALL}-WFD-{DATE}.adif`; `/` in callsigns replaced with `_`; export path is editable on the export screen; `park_ref` made required on `PotaLog`; `DefaultFilename` trait added
 
 ---
 
@@ -130,6 +131,16 @@ For General/POTA: last column shows their park for POTA (empty for General witho
 - No changes outside `draw_recent_qsos`; no model or logic changes needed
 
 **Tests**: Draw functions are `#[mutants::skip]`; no new tests required. If render tests exist for this function, update expected strings.
+
+### Phase 5.4 — `q`-key / `Esc` consistency audit
+
+**Priority: Low | Effort: Small | Depends on: —**
+
+**Why**: On screens with editable text fields, pressing `q` inserts the character `q` into the field rather than navigating away, which is surprising to users who expect `q` to quit. `Esc` is the correct and consistent key for cancelling/navigating back in editing contexts. Some screens currently bind both `q` and `Esc` for navigation; screens with free-text input should only use `Esc`.
+
+**Scope**: Audit all screens for `q`-as-navigation bindings. Remove `q` from any screen that has free-text input fields. Keep `q` on list/selection screens (Log Select, QSO List) where there is no text entry. Update `docs/user-guide.md` keybinding tables accordingly.
+
+**Files**: `src/tui/screens/*.rs`, `docs/user-guide.md`
 
 ### Phase 5 dependency order
 

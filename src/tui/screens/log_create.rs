@@ -368,7 +368,7 @@ impl LogCreateState {
         let operator_str = self.form.value(OPERATOR).to_string();
         let operator = (!operator_str.is_empty()).then_some(operator_str);
         // POTA_PARK_REF is auto-uppercased at input time
-        let park_ref_str = self.form.value(POTA_PARK_REF).to_string();
+        let park_ref = self.form.value(POTA_PARK_REF).to_string();
         let grid_square = normalize_grid_square(self.form.value(POTA_GRID));
 
         if let Err(e) = validate_callsign(&callsign) {
@@ -379,9 +379,7 @@ impl LogCreateState {
         {
             self.form.set_error(OPERATOR, e.to_string());
         }
-        if !park_ref_str.is_empty()
-            && let Err(e) = validate_park_ref(&park_ref_str)
-        {
+        if let Err(e) = validate_park_ref(&park_ref) {
             self.form.set_error(POTA_PARK_REF, e.to_string());
         }
         if let Err(e) = validate_grid_square(&grid_square) {
@@ -392,7 +390,6 @@ impl LogCreateState {
             return Action::None;
         }
 
-        let park_ref = (!park_ref_str.is_empty()).then_some(park_ref_str);
         match PotaLog::new(callsign, operator, park_ref, grid_square) {
             Ok(log) => Action::CreateLog(Log::Pota(log)),
             Err(e) => {
@@ -660,7 +657,8 @@ mod tests {
         enter_fields(state); // TypeSelector → CALLSIGN
         type_string(state, "W1AW");
         state.handle_key(press(KeyCode::Tab)); // CALLSIGN → OPERATOR (leave empty)
-        state.handle_key(press(KeyCode::Tab)); // OPERATOR → POTA_PARK_REF (leave empty)
+        state.handle_key(press(KeyCode::Tab)); // OPERATOR → POTA_PARK_REF
+        type_string(state, "K-0001");
         state.handle_key(press(KeyCode::Tab)); // POTA_PARK_REF → POTA_GRID
         type_string(state, "FN31");
     }
@@ -670,10 +668,11 @@ mod tests {
         switch_to_pota(state);
         enter_fields(state);
         type_string(state, "W1AW");
-        state.handle_key(press(KeyCode::Tab));
+        state.handle_key(press(KeyCode::Tab)); // CALLSIGN → OPERATOR
         type_string(state, "W1AW");
-        state.handle_key(press(KeyCode::Tab));
-        state.handle_key(press(KeyCode::Tab));
+        state.handle_key(press(KeyCode::Tab)); // OPERATOR → POTA_PARK_REF
+        type_string(state, "K-0001");
+        state.handle_key(press(KeyCode::Tab)); // POTA_PARK_REF → POTA_GRID
         type_string(state, "FN31");
     }
 
@@ -1078,22 +1077,6 @@ mod tests {
         }
 
         #[test]
-        fn pota_log_created_without_park_ref() {
-            let mut state = LogCreateState::new();
-            fill_valid_pota_form(&mut state);
-            let action = state.handle_key(press(KeyCode::Enter));
-            match action {
-                Action::CreateLog(log) => {
-                    assert_eq!(log.header().station_callsign, "W1AW");
-                    assert_eq!(log.header().operator, None);
-                    assert_eq!(log.park_ref(), None);
-                    assert_eq!(log.header().grid_square, "FN31");
-                }
-                other => panic!("expected CreateLog, got {other:?}"),
-            }
-        }
-
-        #[test]
         fn pota_log_created_with_park_ref() {
             let mut state = LogCreateState::new();
             switch_to_pota(&mut state);
@@ -1117,7 +1100,11 @@ mod tests {
             fill_valid_pota_form(&mut state);
             let action = state.handle_key(press(KeyCode::Enter));
             match action {
-                Action::CreateLog(log) => assert_eq!(log.header().operator, None),
+                Action::CreateLog(log) => {
+                    assert_eq!(log.header().operator, None);
+                    assert_eq!(log.park_ref(), Some("K-0001"));
+                    assert_eq!(log.header().grid_square, "FN31");
+                }
                 other => panic!("expected CreateLog, got {other:?}"),
             }
         }
@@ -1141,9 +1128,10 @@ mod tests {
             switch_to_pota(&mut state);
             enter_fields(&mut state);
             type_string(&mut state, "W1AW");
-            state.handle_key(press(KeyCode::Tab));
-            state.handle_key(press(KeyCode::Tab));
-            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab)); // → OPERATOR (empty)
+            state.handle_key(press(KeyCode::Tab)); // → POTA_PARK_REF
+            type_string(&mut state, "K-0001");
+            state.handle_key(press(KeyCode::Tab)); // → POTA_GRID
             type_string(&mut state, "fn31");
             let action = state.handle_key(press(KeyCode::Enter));
             match action {
@@ -1158,9 +1146,10 @@ mod tests {
             switch_to_pota(&mut state);
             enter_fields(&mut state);
             type_string(&mut state, "W1AW");
-            state.handle_key(press(KeyCode::Tab));
-            state.handle_key(press(KeyCode::Tab));
-            state.handle_key(press(KeyCode::Tab));
+            state.handle_key(press(KeyCode::Tab)); // → OPERATOR (empty)
+            state.handle_key(press(KeyCode::Tab)); // → POTA_PARK_REF
+            type_string(&mut state, "K-0001");
+            state.handle_key(press(KeyCode::Tab)); // → POTA_GRID
             type_string(&mut state, "FN31PR");
             let action = state.handle_key(press(KeyCode::Enter));
             match action {
@@ -1246,7 +1235,7 @@ mod tests {
             assert!(state.form().has_errors());
             assert!(state.form().fields()[CALLSIGN].error.is_some());
             assert!(state.form().fields()[OPERATOR].error.is_none()); // optional
-            assert!(state.form().fields()[POTA_PARK_REF].error.is_none()); // optional
+            assert!(state.form().fields()[POTA_PARK_REF].error.is_some()); // required
             assert!(state.form().fields()[POTA_GRID].error.is_some());
         }
 

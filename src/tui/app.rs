@@ -421,7 +421,7 @@ mod tests {
                 created_at: chrono::Utc::now(),
                 log_id: id.into(),
             },
-            park_ref: Some("K-0001".into()),
+            park_ref: "K-0001".into(),
         });
         manager.save_log(&log).unwrap();
         log
@@ -1430,12 +1430,15 @@ mod tests {
         }
 
         #[test]
-        fn q_on_export_returns_to_qso_entry() {
+        fn q_on_export_appends_to_path() {
             let (_dir, mut app) = make_app_with_log();
             app.handle_key(alt_press(KeyCode::Char('x')));
             assert_eq!(app.screen(), Screen::Export);
+            let path_before = app.export.path().to_string();
             app.handle_key(press(KeyCode::Char('q')));
-            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert_eq!(app.screen(), Screen::Export);
+            assert!(app.export.path().ends_with('q'));
+            assert_ne!(app.export.path(), path_before);
         }
 
         #[test]
