@@ -52,8 +52,21 @@ Each module defines its own error type using `thiserror`. Errors propagate with 
 - No feature is complete without documentation updates — update these as part of every feature:
   - `docs/user-guide.md` — screen descriptions, keybindings, user-facing workflows
   - `docs/architecture.md` — Action enum, module layout, design decisions
-  - `docs/implementation-plan.md` — move completed phases, update remaining work
+  - `docs/roadmap.md` — move completed phases, update remaining work
   - `docs/adif-format.md` — if ADIF fields or export format changes
+
+## Reference Docs
+
+Offline domain and framework research in `docs/reference/` — consult these instead of fetching from the web:
+
+- `adif-spec-notes.md` — ADIF v3.1.6 file format, field syntax, band/mode values, header format
+- `adif-band-frequencies.md` — frequency ranges (MHz and kHz) for all 13 bands in `Band` enum
+- `fcc-us-band-privileges.md` — US FCC Part 97 band privileges by license class; General class sub-ranges, 60m channelization
+- `pota-rules-notes.md` — POTA activation rules, required/recommended ADIF fields, park reference format, P2P contacts
+- `arrl-field-day-notes.md` — Field Day exchange format, classes, sections, scoring, ADIF mapping
+- `winter-field-day-notes.md` — WFD exchange format, classes, scoring, ADIF mapping, differences from Field Day
+- `ratatui-notes.md` — Ratatui architecture, widget inventory, crossterm integration, terminal setup/teardown pattern
+- `testing-tools-notes.md` — cargo-llvm-cov and cargo-mutants setup, commands, test writing guidance
 
 ## Git Workflow
 

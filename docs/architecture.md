@@ -215,3 +215,14 @@ Display format: `[context_label]  N/10 QSOs` (POTA) / `[context_label]  ACTIVATE
 | difa | ADIF v3.1.6 tag encoding |
 | thiserror | Ergonomic error types per module |
 | mutants | `#[mutants::skip]` attribute for untestable functions |
+
+## Design Notes: General-Purpose vs. POTA Focus
+
+The original design treated duklog as a POTA-first logger with general logging as a fallback. The multi-logbook-type direction inverts this:
+
+- **General purpose is the default** — no activation threshold, no park reference required
+- **POTA is one logbook type** among several, not the primary identity
+- **Contest logs** (FD, WFD) are first-class: they have their own creation fields, exchange capture, and ADIF output
+- duklog is a **general offline ham radio logging TUI** with POTA and field day support
+
+Existing data: logs without a `log_type` field should default to `Pota` during deserialization to preserve behaviour for current users.
