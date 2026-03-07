@@ -85,7 +85,15 @@ Validation errors are shown inline when you submit. If a log already exists with
 
 ### QSO Entry
 
-The main logging screen. A status bar at the top shows the active log context: park reference (if set), callsign, today's QSO count, and — once you reach 10 QSOs — `ACTIVATED` in green. The header below shows your station info, current band/mode, and detailed activation progress. The most recent QSOs are displayed below the form.
+The main logging screen. A status bar at the top shows the active log context: park reference (if set), callsign, today's QSO count, and — once you reach 10 QSOs — `ACTIVATED` in green. The header below shows your station info, current band/mode, and detailed activation progress. The most recent QSOs are displayed below the form in a table whose columns adapt to the active log type:
+
+| Log Type | Col 5 | Col 6 |
+|---|---|---|
+| General | RST Sent/Rcvd | Frequency (kHz, if set) |
+| POTA | RST Sent/Rcvd | Their Park (if set), else Frequency (kHz, if set) |
+| Field Day / Winter FD | Exchange Rcvd | Frequency (kHz, if set) |
+
+Columns 1–4 (Time, Call, Band, Mode) are the same for all log types.
 
 The form uses a two-row layout that adapts to the active log type:
 

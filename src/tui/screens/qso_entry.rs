@@ -812,19 +812,27 @@ fn draw_recent_qsos(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
             .iter()
             .map(|qso| {
                 let time = qso.timestamp.format("%H:%M").to_string();
-                let (col5, col6) = if state.form_type.has_rst() {
-                    let rst = format!("{}/{}", qso.rst_sent, qso.rst_rcvd);
-                    let last = qso
-                        .their_park
-                        .as_deref()
-                        .map(|p| p.to_string())
-                        .or_else(|| qso.frequency.map(|f| format!("{f}")))
-                        .unwrap_or_default();
-                    (rst, last)
-                } else {
-                    let exchange = qso.exchange_rcvd.clone().unwrap_or_default();
-                    let freq = qso.frequency.map(|f| format!("{f}")).unwrap_or_default();
-                    (exchange, freq)
+                let (col5, col6) = match state.form_type {
+                    QsoFormType::General => {
+                        let rst = format!("{}/{}", qso.rst_sent, qso.rst_rcvd);
+                        let freq = qso.frequency.map(|f| f.to_string()).unwrap_or_default();
+                        (rst, freq)
+                    }
+                    QsoFormType::Pota => {
+                        let rst = format!("{}/{}", qso.rst_sent, qso.rst_rcvd);
+                        let last = qso
+                            .their_park
+                            .as_deref()
+                            .map(|p| p.to_string())
+                            .or_else(|| qso.frequency.map(|f| f.to_string()))
+                            .unwrap_or_default();
+                        (rst, last)
+                    }
+                    QsoFormType::FieldDay | QsoFormType::WinterFieldDay => {
+                        let exchange = qso.exchange_rcvd.clone().unwrap_or_default();
+                        let freq = qso.frequency.map(|f| f.to_string()).unwrap_or_default();
+                        (exchange, freq)
+                    }
                 };
                 Row::new(vec![
                     time,
@@ -2773,8 +2781,10 @@ mod tests {
         }
 
         #[test]
-        fn renders_p2p_in_recent() {
+        fn renders_their_park_in_recent_pota() {
+            let log = make_log();
             let mut state = QsoEntryState::new();
+            state.set_log_context(&log);
             let qso = Qso::new(
                 "W3ABC".to_string(),
                 "59".to_string(),
@@ -2789,8 +2799,34 @@ mod tests {
             )
             .unwrap();
             state.add_recent_qso(qso);
-            let output = render_qso_entry(&state, None, 80, 30);
-            assert!(output.contains("K-5678"), "should show P2P park reference");
+            let output = render_qso_entry(&state, Some(&log), 80, 30);
+            assert!(output.contains("K-5678"), "should show park reference");
+        }
+
+        #[test]
+        fn renders_pota_park_priority_over_frequency() {
+            let log = make_log();
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&log);
+            let qso = Qso::new(
+                "W3ABC".to_string(),
+                "59".to_string(),
+                "59".to_string(),
+                Band::M20,
+                Mode::Ssb,
+                Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
+                String::new(),
+                Some("K-5678".to_string()),
+                None,
+                Some(14_225),
+            )
+            .unwrap();
+            state.add_recent_qso(qso);
+            let output = render_qso_entry(&state, Some(&log), 80, 30);
+            assert!(
+                output.contains("K-5678"),
+                "park should appear when both park and freq set"
+            );
         }
 
         #[test]
@@ -2840,6 +2876,32 @@ mod tests {
             assert!(
                 output.contains("3A CT"),
                 "should show exchange in FD recent QSOs"
+            );
+        }
+
+        #[test]
+        fn renders_exchange_in_recent_wfd() {
+            let mut state = QsoEntryState::new();
+            let log = make_wfd_log();
+            state.set_log_context(&log);
+            let qso = Qso::new(
+                "W3ABC".to_string(),
+                "59".to_string(),
+                "59".to_string(),
+                Band::M20,
+                Mode::Ssb,
+                Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
+                String::new(),
+                None,
+                Some("2H EPA".to_string()),
+                None,
+            )
+            .unwrap();
+            state.add_recent_qso(qso);
+            let output = render_qso_entry(&state, Some(&log), 80, 30);
+            assert!(
+                output.contains("2H EPA"),
+                "should show exchange in WFD recent QSOs"
             );
         }
 
