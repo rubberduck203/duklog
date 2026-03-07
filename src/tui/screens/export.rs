@@ -28,6 +28,8 @@ pub enum ExportStatus {
 #[derive(Debug, Clone)]
 pub struct ExportState {
     path: String,
+    /// Byte offset of the cursor within `path`.
+    cursor: usize,
     status: ExportStatus,
     qso_count: usize,
 }
@@ -43,6 +45,7 @@ impl ExportState {
     pub fn new() -> Self {
         Self {
             path: String::new(),
+            cursor: 0,
             status: ExportStatus::Ready,
             qso_count: 0,
         }
@@ -50,6 +53,7 @@ impl ExportState {
 
     /// Prepares the export screen for the given log, computing the default
     /// export path and QSO count. Resets status to [`ExportStatus::Ready`].
+    /// Cursor is placed at the end of the path.
     pub fn prepare(&mut self, log: Option<&Log>) {
         self.status = ExportStatus::Ready;
         match log {
@@ -58,35 +62,83 @@ impl ExportState {
                 self.path = default_export_path(log)
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|e| format!("<error: {e}>"));
+                self.cursor = self.path.len();
             }
             None => {
                 self.qso_count = 0;
                 self.path = String::new();
+                self.cursor = 0;
             }
         }
     }
 
     /// Handles a key event, returning an [`Action`] for the app to apply.
     ///
-    /// While the export is ready, printable characters and `Backspace` edit
-    /// the path inline. `Enter` exports, `Esc` cancels.
+    /// While the export is ready, the path is editable:
+    /// - Printable characters are inserted at the cursor position.
+    /// - `Backspace` removes the character before the cursor.
+    /// - `Delete` removes the character at the cursor.
+    /// - `Left` / `Right` move the cursor one character.
+    /// - `Home` / `End` jump to the start or end of the path.
+    /// - `Enter` exports to the current path; `Esc` cancels.
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
         match self.status {
             ExportStatus::Ready => match key.code {
                 KeyCode::Enter => Action::ExportLog,
                 KeyCode::Esc => Action::Navigate(Screen::QsoEntry),
                 KeyCode::Backspace => {
-                    self.path.pop();
+                    if self.cursor > 0 {
+                        let prev = self.prev_char_boundary();
+                        self.path.remove(prev);
+                        self.cursor = prev;
+                    }
+                    Action::None
+                }
+                KeyCode::Delete => {
+                    if self.cursor < self.path.len() {
+                        self.path.remove(self.cursor);
+                    }
+                    Action::None
+                }
+                KeyCode::Left => {
+                    if self.cursor > 0 {
+                        self.cursor = self.prev_char_boundary();
+                    }
+                    Action::None
+                }
+                KeyCode::Right => {
+                    if self.cursor < self.path.len() {
+                        let c = self.path[self.cursor..].chars().next().unwrap();
+                        self.cursor += c.len_utf8();
+                    }
+                    Action::None
+                }
+                KeyCode::Home => {
+                    self.cursor = 0;
+                    Action::None
+                }
+                KeyCode::End => {
+                    self.cursor = self.path.len();
                     Action::None
                 }
                 KeyCode::Char(c) => {
-                    self.path.push(c);
+                    self.path.insert(self.cursor, c);
+                    self.cursor += c.len_utf8();
                     Action::None
                 }
                 _ => Action::None,
             },
             ExportStatus::Success | ExportStatus::Error(_) => Action::Navigate(Screen::QsoEntry),
         }
+    }
+
+    /// Returns the byte offset of the character boundary before the cursor.
+    fn prev_char_boundary(&self) -> usize {
+        self.path[..self.cursor]
+            .char_indices()
+            .next_back()
+            .map(|(i, _)| i)
+            .unwrap_or(0)
     }
 
     /// Marks the export as successful.
@@ -104,9 +156,15 @@ impl ExportState {
         &self.path
     }
 
-    /// Sets the export file path.
+    /// Sets the export file path and moves the cursor to the end.
     pub fn set_path(&mut self, path: String) {
+        self.cursor = path.len();
         self.path = path;
+    }
+
+    /// Returns the cursor position as a byte offset within the path.
+    pub fn cursor(&self) -> usize {
+        self.cursor
     }
 
     /// Returns the current export status.
@@ -165,16 +223,21 @@ pub fn draw_export(state: &ExportState, log: Option<&Log>, frame: &mut Frame, ar
         Style::default().fg(Color::White),
     )));
     lines.push(Line::from(""));
-    let mut path_spans = vec![
-        Span::raw("Path: "),
-        Span::styled(state.path(), Style::default().fg(Color::Yellow)),
-    ];
+    let mut path_spans = vec![Span::raw("Path: ")];
     if matches!(state.status(), ExportStatus::Ready) {
+        let (before, after) = state.path().split_at(state.cursor());
+        path_spans.push(Span::styled(before, Style::default().fg(Color::Yellow)));
         path_spans.push(Span::styled(
             "\u{2588}",
             Style::default()
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::SLOW_BLINK),
+        ));
+        path_spans.push(Span::styled(after, Style::default().fg(Color::Yellow)));
+    } else {
+        path_spans.push(Span::styled(
+            state.path(),
+            Style::default().fg(Color::Yellow),
         ));
     }
     lines.push(Line::from(path_spans));
@@ -341,21 +404,99 @@ mod tests {
         }
 
         #[test]
-        fn typing_chars_appends_to_path() {
+        fn typing_chars_inserts_at_cursor() {
             let mut state = ExportState::new();
             state.handle_key(press(KeyCode::Char('/')));
             state.handle_key(press(KeyCode::Char('t')));
             state.handle_key(press(KeyCode::Char('m')));
             state.handle_key(press(KeyCode::Char('p')));
             assert_eq!(state.path(), "/tmp");
+            assert_eq!(state.cursor(), 4);
         }
 
         #[test]
-        fn backspace_removes_last_char() {
+        fn backspace_removes_char_before_cursor() {
             let mut state = ExportState::new();
             state.set_path("/tmp/foo.adif".into());
             state.handle_key(press(KeyCode::Backspace));
             assert_eq!(state.path(), "/tmp/foo.adi");
+        }
+
+        #[test]
+        fn backspace_at_start_is_noop() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp/foo.adif".into());
+            state.handle_key(press(KeyCode::Home));
+            state.handle_key(press(KeyCode::Backspace));
+            assert_eq!(state.path(), "/tmp/foo.adif");
+        }
+
+        #[test]
+        fn delete_removes_char_at_cursor() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp/foo.adif".into());
+            state.handle_key(press(KeyCode::Home));
+            state.handle_key(press(KeyCode::Delete));
+            assert_eq!(state.path(), "tmp/foo.adif");
+        }
+
+        #[test]
+        fn left_moves_cursor_back() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp".into());
+            state.handle_key(press(KeyCode::Left));
+            assert_eq!(state.cursor(), 3);
+        }
+
+        #[test]
+        fn left_at_start_is_noop() {
+            let mut state = ExportState::new();
+            state.handle_key(press(KeyCode::Left));
+            assert_eq!(state.cursor(), 0);
+        }
+
+        #[test]
+        fn right_moves_cursor_forward() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp".into());
+            state.handle_key(press(KeyCode::Home));
+            state.handle_key(press(KeyCode::Right));
+            assert_eq!(state.cursor(), 1);
+        }
+
+        #[test]
+        fn right_at_end_is_noop() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp".into());
+            state.handle_key(press(KeyCode::Right));
+            assert_eq!(state.cursor(), 4);
+        }
+
+        #[test]
+        fn home_moves_cursor_to_start() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp/foo.adif".into());
+            state.handle_key(press(KeyCode::Home));
+            assert_eq!(state.cursor(), 0);
+        }
+
+        #[test]
+        fn end_moves_cursor_to_end() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp/foo.adif".into());
+            state.handle_key(press(KeyCode::Home));
+            state.handle_key(press(KeyCode::End));
+            assert_eq!(state.cursor(), 13);
+        }
+
+        #[test]
+        fn insert_at_mid_cursor() {
+            let mut state = ExportState::new();
+            state.set_path("/tmp/foo.adif".into());
+            state.handle_key(press(KeyCode::Home));
+            state.handle_key(press(KeyCode::Right)); // cursor at 1
+            state.handle_key(press(KeyCode::Char('X')));
+            assert_eq!(state.path(), "/Xtmp/foo.adif");
         }
 
         #[test]
