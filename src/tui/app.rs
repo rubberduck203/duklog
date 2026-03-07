@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{Frame, Terminal};
 
 use crate::model::{Log, Qso};
@@ -111,6 +111,18 @@ impl App {
         if key.kind != KeyEventKind::Press {
             return;
         }
+
+        // Normalize Ctrl+H (^H, ASCII 0x08) to Backspace.
+        // Some terminals (e.g. qterminal) send ^H instead of DEL (0x7F).
+        let key = if key.code == KeyCode::Char('h') && key.modifiers == KeyModifiers::CONTROL {
+            KeyEvent {
+                code: KeyCode::Backspace,
+                modifiers: KeyModifiers::NONE,
+                ..key
+            }
+        } else {
+            key
+        };
 
         // Global F1 for help — works on every screen.
         if key.code == KeyCode::F(1) {
@@ -575,6 +587,52 @@ mod tests {
             app.handle_key(press(KeyCode::Char('x')));
             assert_eq!(app.screen(), Screen::LogSelect);
             assert!(!app.should_quit());
+        }
+
+        #[test]
+        fn ctrl_h_acts_as_backspace() {
+            // Some terminals (e.g. qterminal) send ^H (Ctrl+H) instead of DEL
+            // (0x7F) for the Backspace key. Verify it deletes a character.
+            let (_dir, mut app) = make_app();
+            app.screen = Screen::QsoEntry;
+            app.handle_key(press(KeyCode::Char('W')));
+            app.handle_key(KeyEvent {
+                code: KeyCode::Char('h'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                state: KeyEventState::NONE,
+            });
+            // Field 0 (THEIR_CALL) should be empty — the ^H deleted the 'W'.
+            assert_eq!(app.qso_entry.form().value(0), "");
+        }
+
+        #[test]
+        fn plain_h_is_not_normalized_to_backspace() {
+            // Normalization must only trigger on Ctrl+H, not on bare 'h'.
+            let (_dir, mut app) = make_app();
+            app.screen = Screen::QsoEntry;
+            app.handle_key(press(KeyCode::Char('h')));
+            // Form uppercases callsign input, so 'h' → "H" (not deleted).
+            assert_eq!(app.qso_entry.form().value(0), "H");
+        }
+
+        #[test]
+        fn ctrl_h_normalized_event_has_no_modifiers() {
+            // The synthetic Backspace event must not carry the CONTROL modifier,
+            // so downstream handlers don't confuse it with Ctrl+Backspace.
+            let (_dir, mut app) = make_app();
+            app.screen = Screen::QsoEntry;
+            // Type two chars then delete one via ^H; if CONTROL were left set
+            // on the synthesized event the form would not handle it as Backspace.
+            app.handle_key(press(KeyCode::Char('A')));
+            app.handle_key(press(KeyCode::Char('B')));
+            app.handle_key(KeyEvent {
+                code: KeyCode::Char('h'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                state: KeyEventState::NONE,
+            });
+            assert_eq!(app.qso_entry.form().value(0), "A");
         }
 
         #[test]
