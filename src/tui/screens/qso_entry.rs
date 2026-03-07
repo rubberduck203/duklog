@@ -812,18 +812,27 @@ fn draw_recent_qsos(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
             .iter()
             .map(|qso| {
                 let time = qso.timestamp.format("%H:%M").to_string();
-                let p2p = qso
-                    .their_park
-                    .as_ref()
-                    .map(|p| format!("P2P {p}"))
-                    .unwrap_or_default();
+                let (col5, col6) = if state.form_type.has_rst() {
+                    let rst = format!("{}/{}", qso.rst_sent, qso.rst_rcvd);
+                    let last = qso
+                        .their_park
+                        .as_deref()
+                        .map(|p| p.to_string())
+                        .or_else(|| qso.frequency.map(|f| format!("{f}")))
+                        .unwrap_or_default();
+                    (rst, last)
+                } else {
+                    let exchange = qso.exchange_rcvd.clone().unwrap_or_default();
+                    let freq = qso.frequency.map(|f| format!("{f}")).unwrap_or_default();
+                    (exchange, freq)
+                };
                 Row::new(vec![
                     time,
                     qso.their_call.clone(),
                     qso.band.to_string(),
                     qso.mode.to_string(),
-                    format!("{}/{}", qso.rst_sent, qso.rst_rcvd),
-                    p2p,
+                    col5,
+                    col6,
                 ])
             })
             .collect();
@@ -2781,9 +2790,56 @@ mod tests {
             .unwrap();
             state.add_recent_qso(qso);
             let output = render_qso_entry(&state, None, 80, 30);
+            assert!(output.contains("K-5678"), "should show P2P park reference");
+        }
+
+        #[test]
+        fn renders_frequency_in_recent_general() {
+            let mut state = QsoEntryState::new();
+            let qso = Qso::new(
+                "W3ABC".to_string(),
+                "59".to_string(),
+                "59".to_string(),
+                Band::M20,
+                Mode::Ssb,
+                Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
+                String::new(),
+                None,
+                None,
+                Some(14_225),
+            )
+            .unwrap();
+            state.add_recent_qso(qso);
+            let output = render_qso_entry(&state, None, 80, 30);
             assert!(
-                output.contains("P2P K-5678"),
-                "should show P2P park reference"
+                output.contains("14225"),
+                "should show frequency in general recent QSOs"
+            );
+        }
+
+        #[test]
+        fn renders_exchange_in_recent_fd() {
+            let mut state = QsoEntryState::new();
+            let log = make_fd_log();
+            state.set_log_context(&log);
+            let qso = Qso::new(
+                "W3ABC".to_string(),
+                "59".to_string(),
+                "59".to_string(),
+                Band::M20,
+                Mode::Ssb,
+                Utc.with_ymd_and_hms(2026, 2, 16, 14, 30, 0).unwrap(),
+                String::new(),
+                None,
+                Some("3A CT".to_string()),
+                None,
+            )
+            .unwrap();
+            state.add_recent_qso(qso);
+            let output = render_qso_entry(&state, Some(&log), 80, 30);
+            assert!(
+                output.contains("3A CT"),
+                "should show exchange in FD recent QSOs"
             );
         }
 
