@@ -607,6 +607,35 @@ mod tests {
         }
 
         #[test]
+        fn plain_h_is_not_normalized_to_backspace() {
+            // Normalization must only trigger on Ctrl+H, not on bare 'h'.
+            let (_dir, mut app) = make_app();
+            app.screen = Screen::QsoEntry;
+            app.handle_key(press(KeyCode::Char('h')));
+            // Form uppercases callsign input, so 'h' → "H" (not deleted).
+            assert_eq!(app.qso_entry.form().value(0), "H");
+        }
+
+        #[test]
+        fn ctrl_h_normalized_event_has_no_modifiers() {
+            // The synthetic Backspace event must not carry the CONTROL modifier,
+            // so downstream handlers don't confuse it with Ctrl+Backspace.
+            let (_dir, mut app) = make_app();
+            app.screen = Screen::QsoEntry;
+            // Type two chars then delete one via ^H; if CONTROL were left set
+            // on the synthesized event the form would not handle it as Backspace.
+            app.handle_key(press(KeyCode::Char('A')));
+            app.handle_key(press(KeyCode::Char('B')));
+            app.handle_key(KeyEvent {
+                code: KeyCode::Char('h'),
+                modifiers: KeyModifiers::CONTROL,
+                kind: KeyEventKind::Press,
+                state: KeyEventState::NONE,
+            });
+            assert_eq!(app.qso_entry.form().value(0), "A");
+        }
+
+        #[test]
         fn q_on_qso_list_navigates_to_qso_entry() {
             let (_dir, mut app) = make_app();
             app.screen = Screen::QsoList;

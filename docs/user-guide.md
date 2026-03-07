@@ -185,6 +185,12 @@ Press `F1` from any screen to open context-sensitive help. The title shows which
 - **ADIF exports**: Default path is `~/duklog-{PARK}-{YYYYMMDD}.adif`
 - Logs are auto-saved after every change — no manual save needed
 
+## Terminal Compatibility
+
+duklog expects the Backspace key to send `DEL` (ASCII 0x7F), which is the modern default for most terminal emulators. Some terminals (notably **qterminal** with default settings) send `^H` (Ctrl+H, ASCII 0x08) instead. duklog normalizes `^H` to Backspace automatically, so both sequences work correctly with no configuration required.
+
+If Backspace still does not work in your terminal, check the terminal's keyboard settings and ensure it is configured to send `ASCII DEL` for the Backspace key.
+
 ## POTA Activation Workflow
 
 1. Create a new log with your callsign and park reference
