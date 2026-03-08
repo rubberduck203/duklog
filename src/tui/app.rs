@@ -488,10 +488,11 @@ mod tests {
         use super::*;
 
         #[test]
-        fn q_on_log_select_quits() {
+        fn q_on_log_select_is_ignored() {
             let (_dir, mut app) = make_app();
             app.handle_key(press(KeyCode::Char('q')));
-            assert!(app.should_quit());
+            assert!(!app.should_quit());
+            assert_eq!(app.screen(), Screen::LogSelect);
         }
 
         #[test]
@@ -510,13 +511,13 @@ mod tests {
         }
 
         #[test]
-        fn q_on_help_navigates_to_log_select() {
+        fn q_on_help_is_ignored() {
             let (_dir, mut app) = make_app();
             app.handle_key(press(KeyCode::F(1)));
             assert_eq!(app.screen(), Screen::Help);
 
             app.handle_key(press(KeyCode::Char('q')));
-            assert_eq!(app.screen(), Screen::LogSelect);
+            assert_eq!(app.screen(), Screen::Help);
             assert!(!app.should_quit());
         }
 
@@ -538,13 +539,13 @@ mod tests {
         }
 
         #[test]
-        fn q_on_help_returns_to_origin_screen() {
+        fn q_on_help_does_not_return_to_origin_screen() {
             let (_dir, mut app) = make_app();
             app.screen = Screen::QsoEntry;
             app.handle_key(press(KeyCode::F(1)));
             assert_eq!(app.screen(), Screen::Help);
             app.handle_key(press(KeyCode::Char('q')));
-            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert_eq!(app.screen(), Screen::Help);
         }
 
         #[test]
@@ -569,7 +570,7 @@ mod tests {
             app.apply_action(Action::Navigate(Screen::Help));
             assert_eq!(app.screen(), Screen::Help);
 
-            app.handle_key(press(KeyCode::Char('q')));
+            app.handle_key(press(KeyCode::Esc));
             assert_eq!(app.screen(), Screen::QsoEntry);
         }
 
@@ -636,11 +637,11 @@ mod tests {
         }
 
         #[test]
-        fn q_on_qso_list_navigates_to_qso_entry() {
+        fn q_on_qso_list_is_ignored() {
             let (_dir, mut app) = make_app();
             app.screen = Screen::QsoList;
             app.handle_key(press(KeyCode::Char('q')));
-            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert_eq!(app.screen(), Screen::QsoList);
             assert!(!app.should_quit());
         }
 
@@ -675,7 +676,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn n_q_and_esc_work_on_log_select_after_creating_first_log() {
+        fn n_and_esc_work_on_log_select_after_creating_first_log() {
             let (_dir, mut app) = make_app();
             assert_eq!(app.screen(), Screen::LogSelect);
 
@@ -702,11 +703,11 @@ mod tests {
             app.handle_key(press(KeyCode::Esc));
             assert_eq!(app.screen(), Screen::LogSelect);
 
-            // 'q' must quit
-            app.handle_key(press(KeyCode::Char('q')));
+            // Esc must quit
+            app.handle_key(press(KeyCode::Esc));
             assert!(
                 app.should_quit(),
-                "'q' should quit from LogSelect after first log created"
+                "'Esc' should quit from LogSelect after first log created"
             );
         }
     }
@@ -1511,12 +1512,12 @@ mod tests {
         }
 
         #[test]
-        fn q_on_qso_list_returns_to_qso_entry() {
+        fn q_on_qso_list_is_ignored() {
             let (_dir, mut app) = make_app_with_log();
             app.handle_key(alt_press(KeyCode::Char('e')));
             assert_eq!(app.screen(), Screen::QsoList);
             app.handle_key(press(KeyCode::Char('q')));
-            assert_eq!(app.screen(), Screen::QsoEntry);
+            assert_eq!(app.screen(), Screen::QsoList);
         }
 
         #[test]

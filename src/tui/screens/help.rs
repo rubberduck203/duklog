@@ -15,7 +15,7 @@ static LOG_SELECT_KEYS: &[(&str, &str)] = &[
     ("Enter", "open log"),
     ("n", "new log"),
     ("d", "delete log (y/n to confirm)"),
-    ("q / Esc", "quit"),
+    ("Esc", "quit"),
     ("F1", "help"),
 ];
 
@@ -44,17 +44,14 @@ static QSO_LIST_KEYS: &[(&str, &str)] = &[
     ("Home / End", "first / last"),
     ("Enter", "edit QSO"),
     ("d", "delete QSO (y/n to confirm)"),
-    ("q / Esc", "back"),
+    ("Esc", "back"),
     ("F1", "help"),
 ];
 
-static EXPORT_KEYS: &[(&str, &str)] = &[
-    ("Enter", "export to ADIF"),
-    ("q / Esc", "back"),
-    ("F1", "help"),
-];
+static EXPORT_KEYS: &[(&str, &str)] =
+    &[("Enter", "export to ADIF"), ("Esc", "back"), ("F1", "help")];
 
-static HELP_KEYS: &[(&str, &str)] = &[("↑/↓", "scroll"), ("q / Esc", "back")];
+static HELP_KEYS: &[(&str, &str)] = &[("↑/↓", "scroll"), ("Esc", "back")];
 
 /// State for the help screen.
 #[derive(Debug, Clone)]
@@ -109,7 +106,7 @@ impl HelpState {
                 self.scroll = self.scroll.saturating_add(1);
                 Action::None
             }
-            KeyCode::Char('q') | KeyCode::Esc => Action::Navigate(self.origin),
+            KeyCode::Esc => Action::Navigate(self.origin),
             _ => Action::None,
         }
     }
@@ -181,7 +178,7 @@ pub fn draw_help(state: &HelpState, frame: &mut Frame, area: Rect) {
     frame.render_widget(paragraph, content_area);
 
     let footer =
-        Paragraph::new("↑/↓: scroll  q/Esc: back").style(Style::default().fg(Color::DarkGray));
+        Paragraph::new("↑/↓: scroll  Esc: back").style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, footer_area);
 }
 
@@ -270,10 +267,10 @@ mod tests {
         }
 
         #[test]
-        fn q_navigates_to_log_select() {
+        fn q_is_ignored() {
             let mut state = HelpState::new();
             let action = state.handle_key(press(KeyCode::Char('q')));
-            assert_eq!(action, Action::Navigate(Screen::LogSelect));
+            assert_eq!(action, Action::None);
         }
 
         #[test]
@@ -281,14 +278,6 @@ mod tests {
             let mut state = HelpState::new();
             let action = state.handle_key(press(KeyCode::Esc));
             assert_eq!(action, Action::Navigate(Screen::LogSelect));
-        }
-
-        #[test]
-        fn q_navigates_to_origin() {
-            let mut state = HelpState::new();
-            state.set_origin(Screen::QsoEntry);
-            let action = state.handle_key(press(KeyCode::Char('q')));
-            assert_eq!(action, Action::Navigate(Screen::QsoEntry));
         }
 
         #[test]
@@ -483,10 +472,9 @@ mod tests {
         }
 
         #[test]
-        fn footer_contains_q_and_esc() {
+        fn footer_contains_esc() {
             let state = HelpState::new();
             let output = render_help(&state, 80, 30);
-            assert!(output.contains('q'), "footer should mention q");
             assert!(output.contains("Esc"), "footer should mention Esc");
         }
     }

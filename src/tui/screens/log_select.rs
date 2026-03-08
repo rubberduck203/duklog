@@ -74,7 +74,7 @@ impl LogSelectState {
                 KeyCode::Enter => self.select_current(),
                 KeyCode::Char('n') => Action::Navigate(Screen::LogCreate),
                 KeyCode::Char('d') => self.start_delete(),
-                KeyCode::Char('q') | KeyCode::Esc => Action::Quit,
+                KeyCode::Esc => Action::Quit,
                 _ => Action::None,
             },
         }
@@ -218,7 +218,7 @@ pub fn draw_log_select(state: &LogSelectState, frame: &mut Frame, area: Rect) {
 
     frame.render_widget(table, table_area);
 
-    let footer = Paragraph::new("n: new  Enter: open  d: delete  q: quit  F1: help")
+    let footer = Paragraph::new("n: new  Enter: open  d: delete  Esc: quit  F1: help")
         .style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, footer_area);
 
@@ -413,9 +413,9 @@ mod tests {
         use super::*;
 
         #[test]
-        fn q_quits() {
+        fn q_is_ignored() {
             let mut state = make_populated_state();
-            assert_eq!(state.handle_key(press(KeyCode::Char('q'))), Action::Quit);
+            assert_eq!(state.handle_key(press(KeyCode::Char('q'))), Action::None);
         }
 
         #[test]
