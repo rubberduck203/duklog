@@ -1,8 +1,8 @@
-//! Log persistence (JSONL) and ADIF file export.
+//! Log persistence (ADIF) and file export.
 //!
-//! Each log is stored as a single `.jsonl` file: line 1 is metadata,
-//! lines 2+ are individual QSO records. This makes appending a QSO a
-//! single-line file append with no read/rewrite.
+//! Each log is stored as a single `.adif` file. The ADIF header encodes all
+//! log metadata; subsequent records encode individual QSOs. Appending a QSO
+//! is an O(1) file append — no read or rewrite required.
 
 mod error;
 mod export;

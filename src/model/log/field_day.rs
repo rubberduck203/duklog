@@ -81,6 +81,33 @@ pub enum FdPowerCategory {
     High,
 }
 
+impl FdPowerCategory {
+    /// Returns the `APP_DUKLOG_POWER` field value for this power category.
+    ///
+    /// These strings are duklog's own internal representation stored via the
+    /// `APP_DUKLOG_POWER` application-extension field in the ADIF header.
+    /// The power category determines the QSO point multiplier per
+    /// ARRL Field Day rules (see `docs/reference/arrl-field-day-notes.md`):
+    /// QRP (≤5 W, ×5), Low (≤100 W, ×2), High (>100 W, ×1).
+    pub fn adif_str(&self) -> &'static str {
+        match self {
+            Self::Qrp => "qrp",
+            Self::Low => "low",
+            Self::High => "high",
+        }
+    }
+
+    /// Parses a power category from its `APP_DUKLOG_POWER` field value.
+    pub fn from_adif_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "qrp" => Some(Self::Qrp),
+            "low" => Some(Self::Low),
+            "high" => Some(Self::High),
+            _ => None,
+        }
+    }
+}
+
 /// ARRL Field Day log.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldDayLog {
@@ -412,5 +439,21 @@ mod tests {
             "FN31".to_string(),
         );
         assert_eq!(result, Err(ValidationError::EmptySection));
+    }
+
+    #[test]
+    fn power_category_adif_str_round_trips() {
+        for power in &[
+            FdPowerCategory::Qrp,
+            FdPowerCategory::Low,
+            FdPowerCategory::High,
+        ] {
+            assert_eq!(
+                FdPowerCategory::from_adif_str(power.adif_str()),
+                Some(*power),
+                "from_adif_str({:?}) failed",
+                power.adif_str()
+            );
+        }
     }
 }

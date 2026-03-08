@@ -194,8 +194,9 @@ impl App {
     fn apply_export_log(&mut self) {
         match self.current_log {
             Some(ref log) => {
-                let path = Path::new(self.export.path());
-                match storage::export_adif(log, path) {
+                let export_path = Path::new(self.export.path());
+                let internal_path = self.manager.log_path(&log.header().log_id);
+                match storage::export_adif(&internal_path, export_path) {
                     Ok(()) => self.export.set_success(),
                     Err(e) => self.export.set_error(e.to_string()),
                 }
@@ -294,7 +295,7 @@ impl App {
                         qso.their_call, qso.band, qso.mode
                     )
                 });
-                if let Err(e) = self.manager.append_qso(&log.header().log_id, &qso) {
+                if let Err(e) = self.manager.append_qso(log, &qso) {
                     self.qso_entry.set_error(format!("Failed to save QSO: {e}"));
                     return;
                 }
@@ -1052,7 +1053,7 @@ mod tests {
             let mut app = App::new(manager).unwrap();
 
             // Remove the log file to cause a delete error, but keep the dir
-            std::fs::remove_file(dir.path().join("log1.jsonl")).unwrap();
+            std::fs::remove_file(dir.path().join("log1.adif")).unwrap();
 
             app.apply_action(Action::DeleteLog("log1".into()));
 
@@ -1170,7 +1171,7 @@ mod tests {
                 None,
             )
             .unwrap();
-            manager.append_qso(&log.header().log_id, &qso).unwrap();
+            manager.append_qso(&log, &qso).unwrap();
 
             // Reload the log so it has the QSO
             let mut app = App::new(LogManager::with_path(dir.path()).unwrap()).unwrap();
@@ -1324,7 +1325,7 @@ mod tests {
             assert_eq!(app.screen(), Screen::QsoEntry);
 
             // Delete the log file to cause an append error
-            std::fs::remove_file(dir.path().join("test-log.jsonl")).unwrap();
+            std::fs::remove_file(dir.path().join("test-log.adif")).unwrap();
 
             type_string(&mut app, "KD9XYZ");
             app.handle_key(press(KeyCode::Enter));
@@ -1673,7 +1674,7 @@ mod tests {
             app.handle_key(press(KeyCode::Enter));
 
             // Delete the storage dir to cause save error
-            std::fs::remove_file(dir.path().join("test-log.jsonl")).unwrap();
+            std::fs::remove_file(dir.path().join("test-log.adif")).unwrap();
             std::fs::remove_dir_all(dir.path()).unwrap();
 
             let qso = app.current_log().unwrap().header().qsos[0].clone();

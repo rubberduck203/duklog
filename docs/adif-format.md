@@ -1,37 +1,86 @@
-# ADIF Export Format
+# ADIF Storage and Export Format
 
 ## Overview
 
-duklog exports logs in ADIF (Amateur Data Interchange Format) v3.1.6, the standard format accepted by POTA for log submission. Field encoding uses the [`difa`](https://crates.io/crates/difa) crate, which outputs lowercase markers (`<eoh>`, `<eor>`) per the case-insensitive ADIF spec.
+duklog uses ADIF (Amateur Data Interchange Format) v3.1.6 as its **single storage format** — the same file that is stored internally is also the file that gets exported. No reformatting is required at export time; `export_adif` is a file copy. Field encoding uses the [`difa`](https://crates.io/crates/difa) crate, which outputs lowercase markers (`<eoh>`, `<eor>`) per the case-insensitive ADIF spec.
+
+Internal storage: `~/.local/share/duklog/logs/{log-id}.adif`
+
+Export destination: `~/Documents/duklog/{filename}.adif` (falls back to `~/duklog/` if Documents is unavailable)
 
 ## File Structure
 
-Each exported file contains a header followed by QSO records:
+Each file contains a header followed by QSO records. The header encodes both standard ADIF metadata and duklog-specific log metadata via `APP_DUKLOG_*` application-extension fields.
 
 ```
 <ADIF_VER:5>3.1.6
-<PROGRAMID:6>duklog
-<PROGRAMVERSION:5>0.1.0
 <CREATED_TIMESTAMP:15>20260216 120000
+<PROGRAMID:6>duklog
+<PROGRAMVERSION:5>0.6.0
+<STATION_CALLSIGN:4>W1AW
+<MY_GRIDSQUARE:4>FN31
+<APP_DUKLOG_LOG_ID:24>K-0001-20260216-120000
+<APP_DUKLOG_PARK_REF:6>K-0001
+<APP_DUKLOG_LOG_TYPE:4>pota
 <eoh>
 
-<STATION_CALLSIGN:4>W1AW<OPERATOR:4>W1AW<CALL:6>KD9XYZ<QSO_DATE:8>20260216<TIME_ON:6>143000<BAND:3>20M<MODE:3>SSB<RST_SENT:2>59<RST_RCVD:2>59<MY_GRIDSQUARE:4>FN31<MY_SIG:4>POTA<MY_SIG_INFO:6>K-0001<eor>
-
-(MY_GRIDSQUARE is omitted when the log has no grid square set, e.g. FD/WFD logs.)
+<CALL:6>KD9XYZ<QSO_DATE:8>20260216<TIME_ON:6>143000<BAND:3>20M<MODE:3>SSB<RST_SENT:2>59<RST_RCVD:2>59<MY_SIG:4>POTA<MY_SIG_INFO:6>K-0001<eor>
 ```
 
-## Fields Written
+## Header Fields
 
-### Header Fields
+### Standard ADIF header fields
+
+Per the ADIF v3.1.6 spec, the following are true header-only fields:
 
 | Field | Description |
 |---|---|
 | `ADIF_VER` | Always `3.1.6` |
+| `CREATED_TIMESTAMP` | UTC timestamp of log creation (YYYYMMDD HHMMSS) |
 | `PROGRAMID` | Always `duklog` |
 | `PROGRAMVERSION` | Current application version |
-| `CREATED_TIMESTAMP` | UTC timestamp of export (YYYYMMDD HHMMSS) |
 
-### Per-QSO Fields
+### Standard QSO record fields (placed in header as log-level context)
+
+`STATION_CALLSIGN`, `OPERATOR`, and `MY_GRIDSQUARE` are defined as QSO record fields in the ADIF spec, not header fields. duklog places them in the header as a convenience — they apply uniformly to every QSO in the log and don't need to repeat per record.
+
+| Field | Description |
+|---|---|
+| `STATION_CALLSIGN` | Station callsign |
+| `OPERATOR` | Operator callsign (omitted when same as `STATION_CALLSIGN`) |
+| `MY_GRIDSQUARE` | Maidenhead grid square (omitted when not set; FD/WFD logs may not set it) |
+
+### APP_DUKLOG_* metadata fields (all log types)
+
+| Field | Description |
+|---|---|
+| `APP_DUKLOG_LOG_ID` | Unique log identifier; used by duklog to reload the log from disk |
+| `APP_DUKLOG_LOG_TYPE` | Log variant: `general`, `pota`, `field_day`, or `wfd` |
+
+### APP_DUKLOG_* metadata fields (POTA logs only)
+
+| Field | Description |
+|---|---|
+| `APP_DUKLOG_PARK_REF` | POTA park reference (e.g. `K-0001`); used by duklog to reconstruct the log on load |
+
+### APP_DUKLOG_* metadata fields (Field Day logs only)
+
+| Field | Description |
+|---|---|
+| `APP_DUKLOG_TX_COUNT` | Number of transmitters |
+| `APP_DUKLOG_FD_CLASS` | Field Day class (e.g. `B`) |
+| `APP_DUKLOG_SECTION` | ARRL/RAC section (e.g. `EPA`) |
+| `APP_DUKLOG_POWER` | Power category: `qrp`, `low`, or `high` |
+
+### APP_DUKLOG_* metadata fields (Winter Field Day logs only)
+
+| Field | Description |
+|---|---|
+| `APP_DUKLOG_TX_COUNT` | Number of transmitters |
+| `APP_DUKLOG_WFD_CLASS` | WFD class (e.g. `H`) |
+| `APP_DUKLOG_SECTION` | WFD section (e.g. `EPA`) |
+
+## Per-QSO Fields
 
 | Field | Source | Always Present |
 |---|---|---|
@@ -44,7 +93,7 @@ Each exported file contains a header followed by QSO records:
 | `MODE` | Operating mode | Yes |
 | `RST_SENT` | Signal report sent | Yes |
 | `RST_RCVD` | Signal report received | Yes |
-| `MY_GRIDSQUARE` | Activator's Maidenhead grid square | No (omitted when grid square not set; FD/WFD logs never set it) |
+| `MY_GRIDSQUARE` | Activator's Maidenhead grid square | No (omitted when not set) |
 | `MY_SIG` | `POTA` (POTA logs only, when park ref is set) | No |
 | `MY_SIG_INFO` | Activator's park reference | No (with `MY_SIG`) |
 | `SIG` | `POTA` (POTA logs only, P2P contacts) | No |
@@ -55,17 +104,17 @@ Each exported file contains a header followed by QSO records:
 | `FREQ` | Operating frequency in **MHz** (e.g. `14.225`) | No (all log types, when frequency is set) |
 | `COMMENT` | QSO comments/notes | No (when non-empty) |
 
+Note: `MY_SIG`/`MY_SIG_INFO` appear in QSO records for POTA contacts. The park reference is also stored in `APP_DUKLOG_PARK_REF` in the header (as log metadata), so the two serve different purposes: QSO-level fields for external tool compatibility, header metadata for duklog internal round-trip.
+
 ## Log Type Support
 
-| Log Type | Export Supported | Notes |
-|---|---|---|
-| General | Yes | `FREQ` (MHz) when frequency is set |
-| POTA | Yes | `MY_SIG`/`MY_SIG_INFO` when park ref is set; `SIG`/`SIG_INFO` for P2P; `FREQ` (MHz) when frequency is set |
-| Field Day | Yes | `CONTEST_ID=ARRL-FIELD-DAY`, `STX_STRING`, `SRX_STRING`, `FREQ` (MHz) |
-| Winter Field Day | Yes | `CONTEST_ID=WFD`, `STX_STRING`, `SRX_STRING`, `FREQ` (MHz) |
-
-The `Qso` struct carries `exchange_rcvd: Option<String>` (received contest exchange verbatim) and `frequency: Option<u32>` (kHz internally, converted to MHz on export). POTA-specific fields (`SIG`/`SIG_INFO`) are gated strictly on the POTA log type and are never emitted for other log types. `FREQ` is emitted for all log types when frequency is set.
+| Log Type | Notes |
+|---|---|
+| General | `FREQ` (MHz) when frequency is set |
+| POTA | `MY_SIG`/`MY_SIG_INFO` per QSO; `SIG`/`SIG_INFO` for P2P; `FREQ` when set; `APP_DUKLOG_PARK_REF` in header |
+| Field Day | `CONTEST_ID=ARRL-FIELD-DAY`, `STX_STRING`, `SRX_STRING`, `FREQ`; FD metadata in `APP_DUKLOG_*` header fields |
+| Winter Field Day | `CONTEST_ID=WFD`, `STX_STRING`, `SRX_STRING`, `FREQ`; WFD metadata in `APP_DUKLOG_*` header fields |
 
 ## POTA Submission
 
-Upload the exported `.adif` file at https://pota.app under activator tools. One file per activation (one park, one UTC day).
+Upload the exported `.adif` file at https://pota.app under activator tools. Since internal and exported files are identical, you can also submit the internal file directly from `~/.local/share/duklog/logs/`. One file per activation (one park, one UTC day).

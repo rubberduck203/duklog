@@ -33,20 +33,11 @@
 - **Phase 5.1 — Optional frequency for General and POTA logs** — Done
 - **Phase 5.3 — Log-type-aware recent QSO display** — Done: `draw_recent_qsos` branches on form type; General shows RST + freq; POTA shows RST + their_park (park takes priority over freq when both set); FD/WFD show exchange_rcvd + freq
 - **Phase 5.4 — `q`-key / `Esc` consistency audit** — Done: removed `q` as navigation key from Log Select, QSO List, and Help screens; `Esc` is the sole navigation/quit key everywhere
+- **Phase 5.5 — ADIF native storage** — Done: internal storage switched from `.jsonl` to `.adif`; log metadata encoded in ADIF header via standard and `APP_DUKLOG_*` fields; QSO appends remain O(1) file appends; reads use `difa::RecordStream` via a current-thread tokio runtime held by `LogManager`; export simplified to `std::fs::copy`; legacy `.jsonl` files auto-migrated on startup; `tokio` and `futures` added as direct dependencies
 
 ---
 
 ## Remaining Work
-
-### Phase 5.5 — ADIF native storage
-
-**Priority: High | Effort: Medium | Depends on: — | Required before 1.0**
-
-**Why**: duklog currently stores QSOs as JSON Lines (`.jsonl`) internally and separately exports to ADIF. This is accidental complexity — ADIF is the canonical ham radio exchange format and simple enough to serve as the primary storage format. After this change, internal storage files are immediately usable by external tools without an explicit export step. This is a breaking change to the storage format; it must land before the user base grows.
-
-**What changes**: Internal storage switches from `.jsonl` to `.adif`. Log metadata moves to the ADIF header using standard fields where available and `APP_DUKLOG_*` app-specific extension fields otherwise. QSO appends remain O(1) pure-append file writes (no reading). Reading uses difa's async `RecordStream` via a tokio runtime held by `LogManager`. Export simplifies to a file copy. `serde_json` is removed; `tokio` is added as a direct dependency.
-
-See `docs/adif-native-storage.md` for the full design and implementation plan.
 
 ### Phase 5 dependency order
 
@@ -55,6 +46,16 @@ See `docs/adif-native-storage.md` for the full design and implementation plan.
 5.1 ──► Phase 10 (US license privilege checker)
 Phase 6 ──► (future) Geographic QSO analysis / county/state tallies
 ```
+
+---
+
+### Post-1.0 — Remove JSONL migration code
+
+**Priority: Low | Effort: Tiny | Depends on: 1.0 release**
+
+**Why**: The JSONL-to-ADIF migration code in `src/storage/manager.rs` (`load_jsonl_from_path`, `reconstruct_field_day`, `reconstruct_wfd`, `LogMetadata`, `StoredLogType`, `migrate_jsonl_files`) is marked `// Migration only — delete after 1.0`. Once 1.0 ships, it is safe to assume all users have migrated. Remove the dead code, the `serde_json` dependency, and the `Serialize`/`Deserialize` derives on model types that were only needed for JSONL.
+
+**Files**: `src/storage/manager.rs`, `Cargo.toml`, model derive annotations.
 
 ---
 
@@ -68,7 +69,7 @@ This is a large feature. The scope here is the roadmap description; full impleme
 
 **Sync mechanism** (transparent / automatic):
 
-The app is fully synchronous (no async runtime; `tokio-util` is only used for the `difa` ADIF encoder trait). Background sync uses a `std::thread` spawned during `duklog::run()` startup. The TUI starts immediately; sync happens concurrently. Results are delivered via a `std::sync::mpsc` channel polled in the event loop alongside crossterm events.
+The app uses a minimal tokio runtime (current-thread, no worker threads) inside `LogManager` for ADIF reads. Background sync uses a separate `std::thread` spawned during `duklog::run()` startup — no additional async complexity needed. The TUI starts immediately; sync happens concurrently. Results are delivered via a `std::sync::mpsc` channel polled in the event loop alongside crossterm events.
 
 The "No network access, ever" project principle is revised to:
 > No network access during logging. An optional background sync at startup fetches the POTA park database when connectivity is available.

@@ -62,6 +62,29 @@ impl Band {
         ALL_BANDS
     }
 
+    /// Parses a band from its ADIF string representation.
+    ///
+    /// Accepts the same strings returned by [`adif_str`](Self::adif_str),
+    /// case-insensitively.
+    pub fn from_adif_str(s: &str) -> Option<Band> {
+        match s.to_uppercase().as_str() {
+            "160M" => Some(Band::M160),
+            "80M" => Some(Band::M80),
+            "60M" => Some(Band::M60),
+            "40M" => Some(Band::M40),
+            "30M" => Some(Band::M30),
+            "20M" => Some(Band::M20),
+            "17M" => Some(Band::M17),
+            "15M" => Some(Band::M15),
+            "12M" => Some(Band::M12),
+            "10M" => Some(Band::M10),
+            "6M" => Some(Band::M6),
+            "2M" => Some(Band::M2),
+            "70CM" => Some(Band::Cm70),
+            _ => None,
+        }
+    }
+
     /// Returns the band that contains `freq_khz`, or `None` if the frequency
     /// does not fall within any amateur allocation supported by this enum.
     ///
@@ -203,6 +226,18 @@ mod tests {
             let json = serde_json::to_string(band).unwrap();
             let deserialized: Band = serde_json::from_str(&json).unwrap();
             assert_eq!(*band, deserialized);
+        }
+    }
+
+    #[test]
+    fn from_adif_str_round_trips_all_bands() {
+        for band in Band::all() {
+            assert_eq!(
+                Band::from_adif_str(band.adif_str()),
+                Some(*band),
+                "from_adif_str({:?}) failed",
+                band.adif_str()
+            );
         }
     }
 }
