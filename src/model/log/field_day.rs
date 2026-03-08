@@ -81,6 +81,27 @@ pub enum FdPowerCategory {
     High,
 }
 
+impl FdPowerCategory {
+    /// Returns the ADIF field value for this power category.
+    pub fn adif_str(&self) -> &'static str {
+        match self {
+            Self::Qrp => "qrp",
+            Self::Low => "low",
+            Self::High => "high",
+        }
+    }
+
+    /// Parses a power category from its ADIF field value.
+    pub fn from_adif_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "qrp" => Some(Self::Qrp),
+            "low" => Some(Self::Low),
+            "high" => Some(Self::High),
+            _ => None,
+        }
+    }
+}
+
 /// ARRL Field Day log.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldDayLog {

@@ -48,6 +48,26 @@ impl Mode {
         }
     }
 
+    /// Parses a mode from its ADIF string representation.
+    ///
+    /// Accepts the same strings returned by [`adif_str`](Self::adif_str),
+    /// case-insensitively.
+    pub fn from_adif_str(s: &str) -> Option<Mode> {
+        match s.to_uppercase().as_str() {
+            "SSB" => Some(Mode::Ssb),
+            "CW" => Some(Mode::Cw),
+            "FT8" => Some(Mode::Ft8),
+            "FT4" => Some(Mode::Ft4),
+            "JS8" => Some(Mode::Js8),
+            "PSK31" => Some(Mode::Psk31),
+            "RTTY" => Some(Mode::Rtty),
+            "FM" => Some(Mode::Fm),
+            "AM" => Some(Mode::Am),
+            "DIGI" => Some(Mode::Digi),
+            _ => None,
+        }
+    }
+
     /// Returns all modes.
     pub fn all() -> &'static [Mode] {
         ALL_MODES

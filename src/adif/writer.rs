@@ -82,8 +82,12 @@ fn encode_type_specific_fields(
 
 /// Formats the ADIF file header for a log.
 ///
-/// Includes `ADIF_VER`, `PROGRAMID`, `PROGRAMVERSION`, and `CREATED_TIMESTAMP`,
-/// terminated by `<eoh>`.
+/// Includes standard fields (`ADIF_VER`, `PROGRAMID`, `PROGRAMVERSION`,
+/// `CREATED_TIMESTAMP`, `STATION_CALLSIGN`, `OPERATOR`, `MY_GRIDSQUARE`) plus
+/// duklog-specific `APP_DUKLOG_*` fields that encode log type and
+/// type-specific metadata needed to reconstruct the [`Log`] on read.
+///
+/// Terminated by `<eoh>`.
 pub fn format_header(log: &Log) -> Result<String, AdifError> {
     let mut encoder = TagEncoder::new();
     let mut buf = BytesMut::new();
@@ -105,6 +109,110 @@ pub fn format_header(log: &Log) -> Result<String, AdifError> {
         &mut buf,
         field_tag("CREATED_TIMESTAMP", timestamp.as_str()),
     )?;
+    buf.extend_from_slice(b"\n");
+    encode(
+        &mut encoder,
+        &mut buf,
+        field_tag("STATION_CALLSIGN", log.header().station_callsign.as_str()),
+    )?;
+    buf.extend_from_slice(b"\n");
+    if let Some(ref op) = log.header().operator {
+        encode(&mut encoder, &mut buf, field_tag("OPERATOR", op.as_str()))?;
+        buf.extend_from_slice(b"\n");
+    }
+    if !log.header().grid_square.is_empty() {
+        encode(
+            &mut encoder,
+            &mut buf,
+            field_tag("MY_GRIDSQUARE", log.header().grid_square.as_str()),
+        )?;
+        buf.extend_from_slice(b"\n");
+    }
+    encode(
+        &mut encoder,
+        &mut buf,
+        field_tag("APP_DUKLOG_LOG_ID", log.header().log_id.as_str()),
+    )?;
+    buf.extend_from_slice(b"\n");
+
+    match log {
+        Log::General(_) => {
+            encode(
+                &mut encoder,
+                &mut buf,
+                field_tag("APP_DUKLOG_LOG_TYPE", "general"),
+            )?;
+        }
+        Log::Pota(pota) => {
+            encode(
+                &mut encoder,
+                &mut buf,
+                field_tag("APP_DUKLOG_PARK_REF", pota.park_ref.as_str()),
+            )?;
+            buf.extend_from_slice(b"\n");
+            encode(
+                &mut encoder,
+                &mut buf,
+                field_tag("APP_DUKLOG_LOG_TYPE", "pota"),
+            )?;
+        }
+        Log::FieldDay(fd) => {
+            encode(
+                &mut encoder,
+                &mut buf,
+                field_tag("APP_DUKLOG_LOG_TYPE", "field_day"),
+            )?;
+            buf.extend_from_slice(b"\n");
+            encode(
+                &mut encoder,
+                &mut buf,
+                field_tag("APP_DUKLOG_TX_COUNT", fd.tx_count.to_string().as_str()),
+            )?;
+            buf.extend_from_slice(b"\n");
+            encode(
+                &mut encoder,
+                &mut buf,
+                field_tag("APP_DUKLOG_FD_CLASS", fd.class.to_string().as_str()),
+            )?;
+            buf.extend_from_slice(b"\n");
+            encode(
+                &mut encoder,
+                &mut buf,
+                field_tag("APP_DUKLOG_SECTION", fd.section.as_str()),
+            )?;
+            buf.extend_from_slice(b"\n");
+            encode(
+                &mut encoder,
+                &mut buf,
+                field_tag("APP_DUKLOG_POWER", fd.power.adif_str()),
+            )?;
+        }
+        Log::WinterFieldDay(wfd) => {
+            encode(
+                &mut encoder,
+                &mut buf,
+                field_tag("APP_DUKLOG_LOG_TYPE", "wfd"),
+            )?;
+            buf.extend_from_slice(b"\n");
+            encode(
+                &mut encoder,
+                &mut buf,
+                field_tag("APP_DUKLOG_TX_COUNT", wfd.tx_count.to_string().as_str()),
+            )?;
+            buf.extend_from_slice(b"\n");
+            encode(
+                &mut encoder,
+                &mut buf,
+                field_tag("APP_DUKLOG_WFD_CLASS", wfd.class.to_string().as_str()),
+            )?;
+            buf.extend_from_slice(b"\n");
+            encode(
+                &mut encoder,
+                &mut buf,
+                field_tag("APP_DUKLOG_SECTION", wfd.section.as_str()),
+            )?;
+        }
+    }
     buf.extend_from_slice(b"\n");
 
     encode(&mut encoder, &mut buf, Tag::Eoh)?;

@@ -2,18 +2,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::error::StorageError;
-use crate::adif;
 use crate::model::{DefaultFilename, Log};
 
-/// Exports a log as an ADIF file at the given path.
+/// Copies the internal ADIF file to the given export path.
 ///
-/// Creates any missing parent directories before writing.
-pub fn export_adif(log: &Log, path: &Path) -> Result<(), StorageError> {
-    let content = adif::format_adif(log)?;
-    if let Some(parent) = path.parent() {
+/// Creates any missing parent directories before copying.
+pub fn export_adif(internal_path: &Path, export_path: &Path) -> Result<(), StorageError> {
+    if let Some(parent) = export_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(path, content)?;
+    fs::copy(internal_path, export_path)?;
     Ok(())
 }
 
@@ -46,6 +44,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+    use crate::adif::format_adif;
     use crate::model::{
         Band, FdClass, FdPowerCategory, FieldDayLog, GeneralLog, Mode, PotaLog, Qso, WfdClass,
         WfdLog,
@@ -114,18 +113,25 @@ mod tests {
         .unwrap()
     }
 
+    fn write_internal(dir: &std::path::Path, log: &Log) -> PathBuf {
+        let path = dir.join("internal.adif");
+        fs::write(&path, format_adif(log).unwrap()).unwrap();
+        path
+    }
+
     // --- export_adif tests ---
 
     #[test]
     fn export_creates_file_with_header_and_records() {
         let dir = tempdir().unwrap();
-        let path = dir.path().join("test.adif");
-
         let mut log = make_pota_log();
         log.add_qso(make_qso());
-        export_adif(&log, &path).unwrap();
+        let internal = write_internal(dir.path(), &log);
+        let export_path = dir.path().join("export.adif");
 
-        let content = fs::read_to_string(&path).unwrap();
+        export_adif(&internal, &export_path).unwrap();
+
+        let content = fs::read_to_string(&export_path).unwrap();
         let eoh_pos = content.find("<eoh>").expect("missing <eoh>");
         let eor_pos = content.find("<eor>").expect("missing <eor>");
         assert!(eoh_pos < eor_pos, "header must precede records");
@@ -135,11 +141,12 @@ mod tests {
     #[test]
     fn export_empty_log_produces_header_only() {
         let dir = tempdir().unwrap();
-        let path = dir.path().join("empty.adif");
+        let internal = write_internal(dir.path(), &make_pota_log());
+        let export_path = dir.path().join("empty.adif");
 
-        export_adif(&make_pota_log(), &path).unwrap();
+        export_adif(&internal, &export_path).unwrap();
 
-        let content = fs::read_to_string(&path).unwrap();
+        let content = fs::read_to_string(&export_path).unwrap();
         assert!(content.contains("<eoh>"));
         assert!(!content.contains("<eor>"));
     }
@@ -147,11 +154,12 @@ mod tests {
     #[test]
     fn export_creates_missing_parent_directories() {
         let dir = tempdir().unwrap();
-        let path = dir.path().join("subdir").join("nested").join("out.adif");
+        let internal = write_internal(dir.path(), &make_pota_log());
+        let export_path = dir.path().join("subdir").join("nested").join("out.adif");
 
-        export_adif(&make_pota_log(), &path).unwrap();
+        export_adif(&internal, &export_path).unwrap();
 
-        assert!(path.exists());
+        assert!(export_path.exists());
     }
 
     // --- default_export_path tests ---
@@ -210,7 +218,6 @@ mod tests {
     fn default_path_is_in_duklog_subdirectory() {
         let log = make_pota_log();
         let path = default_export_path(&log).unwrap();
-        // Parent is always a `duklog/` directory, whether under Documents or home.
         assert_eq!(path.parent().unwrap().file_name().unwrap(), "duklog");
     }
 }

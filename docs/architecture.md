@@ -11,8 +11,8 @@ src/
   main.rs       Terminal setup/teardown, panic hook
   lib.rs        Module re-exports, run() entry point
   model/        Domain types: Log, Qso, Band, Mode, validation
-  adif/         ADIF file format writer (pure functions, no I/O)
-  storage/      JSONL persistence to XDG paths, ADIF file export
+  adif/         ADIF format writer and reader (pure formatting + async reader, no I/O in writer)
+  storage/      ADIF persistence to XDG paths, file-copy export
   tui/          Application state, event loop, UI rendering
     screens/    Individual screen implementations
     widgets/    Reusable UI components
@@ -29,8 +29,8 @@ User Input → TUI Event Loop → Model Mutation → Auto-Save (Storage)
 1. **Input**: Crossterm captures keyboard events
 2. **Dispatch**: TUI event loop routes events to the active screen
 3. **Model**: Screen handlers mutate the domain model (Log, Qso)
-4. **Persistence**: After every model mutation, storage layer auto-saves to JSONL
-5. **Export**: User-triggered ADIF export calls the pure ADIF writer, then writes to disk
+4. **Persistence**: After every model mutation, storage layer auto-saves to ADIF (`.adif` files in `~/.local/share/duklog/logs/`)
+5. **Export**: User-triggered export copies the internal ADIF file to `~/Documents/duklog/` — no reformatting required
 
 ## Domain Model
 
@@ -47,7 +47,7 @@ Log enum           — General(GeneralLog) | Pota(PotaLog) | FieldDay(FieldDayLo
 
 Qso carries two optional fields: `exchange_rcvd: Option<String>` (received contest exchange verbatim, e.g. `"3A CT"`; contest logs only) and `frequency: Option<u32>` (kHz; required for FD/WFD, optional for General and POTA). Both default to `None`. They are populated during QSO entry for all log types that expose them.
 
-Serialization for storage lives in `src/storage/manager.rs` via a flat `LogMetadata` struct with optional FD/WFD fields and a `StoredLogType` discriminant. Existing JSONL files without `log_type` default to `Log::Pota` for backward compatibility. Shared fields are accessed via `log.header()` / `log.header_mut()`.
+Persistence uses ADIF as the single storage format. Log metadata is encoded in the ADIF header via standard fields (`STATION_CALLSIGN`, `MY_GRIDSQUARE`, `CREATED_TIMESTAMP`, `MY_SIG`/`MY_SIG_INFO` for POTA) and `APP_DUKLOG_*` app-extension fields (`APP_DUKLOG_LOG_TYPE`, `APP_DUKLOG_LOG_ID`, `APP_DUKLOG_FD_CLASS`, `APP_DUKLOG_SECTION`, etc.). The async `difa::RecordStream` reader is invoked via a `tokio::runtime::Runtime` (current-thread) held by `LogManager`, keeping the public API synchronous. Legacy `.jsonl` files are auto-migrated to ADIF on startup. Shared fields are accessed via `log.header()` / `log.header_mut()`.
 
 ### Duplicate detection scoping
 
@@ -146,10 +146,11 @@ Display format: `[context_label]  N/10 QSOs` (POTA) / `[context_label]  ACTIVATE
 
 ## Design Decisions
 
-- **No async runtime**: The TUI is synchronous. Crossterm's event polling is sufficient for a keyboard-driven logger. No need for tokio/async-std complexity.
-- **`difa` crate for ADIF**: Uses the `difa` crate with `TagEncoder` and `BytesMut` for spec-compliant ADIF encoding.
-- **Pure ADIF module**: `src/adif/` contains only pure formatting functions with no I/O. The storage module handles file writes. This makes ADIF logic fully unit-testable.
-- **JSONL storage**: Each log is a single `.jsonl` file in `~/.local/share/duklog/logs/` (XDG). Line 1 is log metadata, lines 2+ are QSO records. Appending a new QSO is a single-line file append. Editing a QSO triggers a full file rewrite via `save_log`.
+- **Minimal async footprint**: The TUI event loop is synchronous. A single `tokio::runtime::Runtime` (current-thread, no worker threads) lives on `LogManager` solely to drive `difa::RecordStream` during log reads. All public storage APIs are synchronous (`block_on` internally). Crossterm event polling is unaffected.
+- **`difa` crate for ADIF**: Uses the `difa` crate with `TagEncoder` and `BytesMut` for spec-compliant ADIF encoding, and `RecordStream` for async record-by-record reading.
+- **ADIF as single storage format**: `src/adif/` contains pure formatting functions (writer) and an async reader. No I/O in the writer; storage module handles file writes. This makes ADIF logic fully unit-testable. Internal `.adif` files are immediately usable by external tools without export.
+- **ADIF storage**: Each log is a single `.adif` file in `~/.local/share/duklog/logs/` (XDG). The file header encodes all log metadata; subsequent records encode QSOs. Appending a QSO is an O(1) pure file append. Editing a QSO rewrites the full file via `save_log`.
+- **File-copy export**: `export_adif` copies the internal `.adif` file to the export path — no reformatting. This is O(file size) but simpler and provably correct.
 - **Auto-save**: Every model mutation triggers a save. No explicit "save" action needed — prevents data loss during field operation.
 - **PostToolUse hooks**: `cargo check` and `cargo clippy` run automatically after every `.rs` file edit, providing immediate compilation and lint feedback. Tests and mutation testing are too slow for hooks and run explicitly via `make` targets.
 - **Adversarial code review**: `code-review` subagent (Sonnet) runs before every PR to catch issues the developer is blind to.
@@ -169,7 +170,7 @@ Display format: `[context_label]  N/10 QSOs` (POTA) / `[context_label]  ACTIVATE
 - Type-specific methods live on the concrete type, not on `Log`. `PotaLog::is_activated()` exists; `GeneralLog` simply has no such method.
 - The compiler enforces exhaustiveness at each dispatch point in `log.rs`. Adding a new log type surfaces all required method updates at compile time.
 - Each concrete type can be unit-tested in isolation without constructing the `Log` enum wrapper.
-- Serialization uses `#[serde(tag = "log_type")]`; existing JSONL files without `log_type` default to `Log::Pota` for backward compatibility.
+- Storage uses ADIF; the `Log` enum does not derive `Serialize`/`Deserialize`. Log metadata is encoded in ADIF header fields; `APP_DUKLOG_LOG_TYPE` is the discriminant. Legacy `.jsonl` files are auto-migrated on startup via a serde-based JSONL reader kept in `manager.rs` until v1.0.
 
 **Tradeoff accepted:** `Log` methods that delegate to `LogHeader` (e.g., `header()`, `header_mut()`, `add_qso()`) require one match arm per variant. This is mechanical boilerplate that grows linearly with log types — acceptable given the benefits.
 
@@ -210,9 +211,11 @@ Display format: `[context_label]  N/10 QSOs` (POTA) / `[context_label]  ACTIVATE
 | ratatui | Terminal UI framework |
 | crossterm | Terminal backend (input, raw mode) |
 | chrono | UTC timestamps, date formatting |
-| serde / serde_json | JSON serialization for log persistence |
+| serde / serde_json | Serde derives (model types) + JSON (JSONL migration path only) |
 | dirs | XDG Base Directory paths for platform-native storage |
-| difa | ADIF v3.1.6 tag encoding |
+| difa | ADIF v3.1.6 tag encoding and async record streaming |
+| tokio | Async runtime for driving `difa::RecordStream` in `LogManager` |
+| futures | `StreamExt` trait for `.next()` on `RecordStream` |
 | thiserror | Ergonomic error types per module |
 | mutants | `#[mutants::skip]` attribute for untestable functions |
 
