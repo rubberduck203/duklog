@@ -1,4 +1,10 @@
 {
+  "permissions": {
+    "deny": [
+      "Bash(git push* main*)",
+      "Bash(git push*origin main*)"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {
