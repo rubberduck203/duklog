@@ -31,12 +31,21 @@ Each file contains a header followed by QSO records. The header encodes both sta
 
 ### Standard ADIF header fields
 
+Per the ADIF v3.1.6 spec, the following are true header-only fields:
+
 | Field | Description |
 |---|---|
 | `ADIF_VER` | Always `3.1.6` |
 | `CREATED_TIMESTAMP` | UTC timestamp of log creation (YYYYMMDD HHMMSS) |
 | `PROGRAMID` | Always `duklog` |
 | `PROGRAMVERSION` | Current application version |
+
+### Standard QSO record fields (placed in header as log-level context)
+
+`STATION_CALLSIGN`, `OPERATOR`, and `MY_GRIDSQUARE` are defined as QSO record fields in the ADIF spec, not header fields. duklog places them in the header as a convenience — they apply uniformly to every QSO in the log and don't need to repeat per record.
+
+| Field | Description |
+|---|---|
 | `STATION_CALLSIGN` | Station callsign |
 | `OPERATOR` | Operator callsign (omitted when same as `STATION_CALLSIGN`) |
 | `MY_GRIDSQUARE` | Maidenhead grid square (omitted when not set; FD/WFD logs may not set it) |

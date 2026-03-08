@@ -43,6 +43,7 @@ description: duklog coding standards, testing requirements, and review checklist
 
 ## Documentation
 - Rustdoc (`///`) on all `pub` items
+- When adding `adif_str()`/`from_adif_str()` methods, add a doc comment citing the spec source (e.g., the relevant file in `docs/reference/`) and explain the field name used in storage (e.g., "`APP_DUKLOG_POWER`")
 - Update `docs/` when implementing or changing features:
   - `docs/user-guide.md` — screen descriptions, keybindings, workflows
   - `docs/architecture.md` — module layout, Action enum, design decisions

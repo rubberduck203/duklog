@@ -82,7 +82,13 @@ pub enum FdPowerCategory {
 }
 
 impl FdPowerCategory {
-    /// Returns the ADIF field value for this power category.
+    /// Returns the `APP_DUKLOG_POWER` field value for this power category.
+    ///
+    /// These strings are duklog's own internal representation stored via the
+    /// `APP_DUKLOG_POWER` application-extension field in the ADIF header.
+    /// The power category determines the QSO point multiplier per
+    /// ARRL Field Day rules (see `docs/reference/arrl-field-day-notes.md`):
+    /// QRP (≤5 W, ×5), Low (≤100 W, ×2), High (>100 W, ×1).
     pub fn adif_str(&self) -> &'static str {
         match self {
             Self::Qrp => "qrp",
@@ -91,7 +97,7 @@ impl FdPowerCategory {
         }
     }
 
-    /// Parses a power category from its ADIF field value.
+    /// Parses a power category from its `APP_DUKLOG_POWER` field value.
     pub fn from_adif_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "qrp" => Some(Self::Qrp),

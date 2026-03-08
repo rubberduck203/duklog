@@ -54,9 +54,20 @@ Where `length` is the byte length of `value`.
 
 ## Storage
 
-- XDG path: `~/.local/share/duklog/logs/` with one JSON file per log
-- ADIF export default path: `~/duklog-{PARK}-{YYYYMMDD}.adif`
+- XDG path: `~/.local/share/duklog/logs/` with one `.adif` file per log (ADIF is the single storage format)
+- Export is a file copy (`std::fs::copy`) — no reformatting; the internal file is already valid ADIF
 - Auto-save after every mutation
+
+## ADIF Header Field Taxonomy
+
+True ADIF header fields (per spec): `ADIF_VER`, `CREATED_TIMESTAMP`, `PROGRAMID`, `PROGRAMVERSION`.
+
+Fields placed in the header for convenience (defined as QSO record fields in spec, but valid anywhere):
+`STATION_CALLSIGN`, `OPERATOR`, `MY_GRIDSQUARE` — apply uniformly to every QSO; no need to repeat per record.
+
+App-extension fields (`APP_DUKLOG_*`): encode log metadata not expressible in standard fields
+(`APP_DUKLOG_LOG_TYPE`, `APP_DUKLOG_LOG_ID`, `APP_DUKLOG_PARK_REF`, `APP_DUKLOG_FD_CLASS`,
+`APP_DUKLOG_SECTION`, `APP_DUKLOG_POWER`, `APP_DUKLOG_TX_COUNT`, `APP_DUKLOG_WFD_CLASS`).
 
 ## Offline References
 
