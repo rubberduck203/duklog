@@ -190,6 +190,27 @@ Display format: `[context_label]  N/10 QSOs` (POTA) / `[context_label]  ACTIVATE
 
 ---
 
+### ADR-4: Hand-written ADIF reader over a serde ADIF format (Phase 5.5)
+
+**Decision:** ADIF reading uses an explicit, hand-written async function (`adif::reader::read_log`) that extracts fields from `difa::Record` objects by name. `Mode`, `Band`, `FdClass`, etc. expose `adif_str()`/`from_adif_str()` methods rather than implementing custom serde serializers.
+
+**Rejected alternative:** Implement a `serde::Serializer` + `serde::Deserializer` backed by difa's `TagEncoder`/`RecordStream`, making `Qso` and the log types `#[derive(Serialize, Deserialize)]` with ADIF as the wire format.
+
+**Rationale:**
+- The `Qso` ↔ ADIF record mapping has structural mismatches that resist a generic serde format:
+  - `QSO_DATE` + `TIME_ON` (two ADIF fields) → `DateTime<Utc>` (one Rust field)
+  - `FREQ` stored in MHz in ADIF, kHz internally — requires a unit conversion
+  - Optional fields (`SIG_INFO`, `SRX_STRING`) are absent from the record when `None`
+  - Each mismatch would require `#[serde(deserialize_with = "...")]` — producing noisier code than the hand-written version
+- The hand-written reader is already ~200 lines and straightforward; the serde plumbing to replace it would be comparable in size but less readable
+- difa has no serde integration; a `serde_adif` crate would be a standalone project
+
+**What was implemented instead:** `adif_str()`/`from_adif_str()` on each domain enum (`Mode`, `Band`, `FdPowerCategory`, `FdClass`, `WfdClass`) serve as the explicit ADIF ↔ Rust conversion layer.
+
+**When to revisit:** If a `serde_adif` crate becomes available in the ecosystem, or if ADIF serialization is needed for types beyond `Qso` and the structural mismatches listed above are resolved by schema changes.
+
+---
+
 ### ADR-2: Explicit screen dispatch over a ScreenState trait (Phase 4.0)
 
 **Decision:** `App::handle_key` uses an explicit `match self.screen` to dispatch key events. Draw functions remain free functions called from a `match` in `App::draw`. Navigation initialization logic stays in `App::navigate`.
