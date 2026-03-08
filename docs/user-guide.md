@@ -29,7 +29,7 @@ cargo build --release
 
 ### Log Select
 
-The home screen. Shows all saved logs in a table with columns for Callsign, Date, Park, Grid, and QSO count.
+The home screen. Shows all saved logs in a table with columns for Callsign, Date, Type, Grid, and QSO count.
 
 | Key | Action |
 |---|---|
@@ -37,7 +37,7 @@ The home screen. Shows all saved logs in a table with columns for Callsign, Date
 | `Enter` | Open the selected log |
 | `n` | Create a new log |
 | `d` | Delete the selected log (asks for confirmation; `y` to confirm, `n`/`Esc` to cancel) |
-| `q` / `Esc` | Quit duklog |
+| `Esc` | Quit duklog |
 | `F1` | Show help |
 
 ### Log Create
@@ -157,7 +157,7 @@ A scrollable table of all QSOs in the current log. Columns: Time, Date, Call, Ba
 | `Home` / `End` | Jump to first / last row |
 | `Enter` | Edit the selected QSO |
 | `d` | Delete the selected QSO (prompts y/n) |
-| `q` / `Esc` | Back to QSO Entry |
+| `Esc` | Back to QSO Entry |
 | `F1` | Show help |
 
 Pressing `Enter` opens the selected QSO in the entry form for editing. Save with `Enter` or cancel with `Esc`.
@@ -194,12 +194,12 @@ The `~/Documents/duklog/` directory is created automatically if it does not exis
 
 ### Help
 
-Press `F1` from any screen to open context-sensitive help. The title shows which screen you are on, and only that screen's keybindings are shown. Pressing `q` or `Esc` returns you to the screen you came from.
+Press `F1` from any screen to open context-sensitive help. The title shows which screen you are on, and only that screen's keybindings are shown. Pressing `Esc` returns you to the screen you came from.
 
 | Key | Action |
 |---|---|
 | `Up` / `Down` | Scroll |
-| `q` / `Esc` | Return to previous screen |
+| `Esc` | Return to previous screen |
 
 ## Data Storage
 

@@ -82,7 +82,7 @@ impl QsoListState {
                     }
                     Action::None
                 }
-                KeyCode::Esc | KeyCode::Char('q') => Action::Navigate(Screen::QsoEntry),
+                KeyCode::Esc => Action::Navigate(Screen::QsoEntry),
                 _ => Action::None,
             },
         }
@@ -222,7 +222,7 @@ pub fn draw_qso_list(state: &QsoListState, log: Option<&Log>, frame: &mut Frame,
         frame.render_widget(err_line, footer_area);
     } else {
         let footer =
-            Paragraph::new("↑↓: navigate  Home/End: jump  Enter: edit  d: delete  q: back")
+            Paragraph::new("↑↓: navigate  Home/End: jump  Enter: edit  d: delete  Esc: back")
                 .style(Style::default().fg(Color::DarkGray));
         frame.render_widget(footer, footer_area);
     }
@@ -397,10 +397,10 @@ mod tests {
         }
 
         #[test]
-        fn q_navigates_to_qso_entry() {
+        fn q_is_ignored() {
             let mut state = QsoListState::new();
             let action = state.handle_key(press(KeyCode::Char('q')), 5);
-            assert_eq!(action, Action::Navigate(Screen::QsoEntry));
+            assert_eq!(action, Action::None);
         }
     }
 
@@ -639,7 +639,7 @@ mod tests {
             let output = render_qso_list(&state, None, 80, 20);
             assert!(output.contains("navigate"), "should show navigation hint");
             assert!(output.contains("Enter: edit"), "should show edit hint");
-            assert!(output.contains("q: back"), "should show back hint");
+            assert!(output.contains("Esc: back"), "should show back hint");
             assert!(output.contains("Home/End"), "should show jump hint");
         }
 

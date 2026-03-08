@@ -32,20 +32,11 @@
 - **Export to Documents dir + log-type-aware filenames** (`feature/export-to-documents-dir`) — Done: ADIF exports written to `~/Documents/duklog/` (auto-created); filenames are log-type-specific: POTA → `{CALL}@{PARK}-{DATE}.adif`; General → `{CALL}-{DATE}.adif`; FD → `{CALL}-FD-{DATE}.adif`; WFD → `{CALL}-WFD-{DATE}.adif`; `/` in callsigns replaced with `_`; export path is editable on the export screen; `park_ref` made required on `PotaLog`; `DefaultFilename` trait added
 - **Phase 5.1 — Optional frequency for General and POTA logs** — Done
 - **Phase 5.3 — Log-type-aware recent QSO display** — Done: `draw_recent_qsos` branches on form type; General shows RST + freq; POTA shows RST + their_park (park takes priority over freq when both set); FD/WFD show exchange_rcvd + freq
+- **Phase 5.4 — `q`-key / `Esc` consistency audit** — Done: removed `q` as navigation key from Log Select, QSO List, and Help screens; `Esc` is the sole navigation/quit key everywhere
 
 ---
 
 ## Remaining Work
-
-### Phase 5.4 — `q`-key / `Esc` consistency audit
-
-**Priority: Low | Effort: Small | Depends on: —**
-
-**Why**: On screens with editable text fields, pressing `q` inserts the character `q` into the field rather than navigating away, which is surprising to users who expect `q` to quit. `Esc` is the correct and consistent key for cancelling/navigating back in editing contexts. Some screens currently bind both `q` and `Esc` for navigation; screens with free-text input should only use `Esc`.
-
-**Scope**: Audit all screens for `q`-as-navigation bindings. Remove `q` from any screen that has free-text input fields. Keep `q` on list/selection screens (Log Select, QSO List) where there is no text entry. Update `docs/user-guide.md` keybinding tables accordingly.
-
-**Files**: `src/tui/screens/*.rs`, `docs/user-guide.md`
 
 ### Phase 5.5 — ADIF native storage
 
