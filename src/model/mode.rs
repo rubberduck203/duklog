@@ -136,6 +136,18 @@ mod tests {
     }
 
     #[test]
+    fn from_adif_str_round_trips_all_modes() {
+        for mode in Mode::all() {
+            assert_eq!(
+                Mode::from_adif_str(mode.adif_str()),
+                Some(*mode),
+                "from_adif_str({:?}) failed",
+                mode.adif_str()
+            );
+        }
+    }
+
+    #[test]
     fn serde_round_trip() {
         for mode in Mode::all() {
             let json = serde_json::to_string(mode).unwrap();

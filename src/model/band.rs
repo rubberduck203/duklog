@@ -228,4 +228,16 @@ mod tests {
             assert_eq!(*band, deserialized);
         }
     }
+
+    #[test]
+    fn from_adif_str_round_trips_all_bands() {
+        for band in Band::all() {
+            assert_eq!(
+                Band::from_adif_str(band.adif_str()),
+                Some(*band),
+                "from_adif_str({:?}) failed",
+                band.adif_str()
+            );
+        }
+    }
 }

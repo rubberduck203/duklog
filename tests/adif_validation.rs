@@ -24,16 +24,42 @@ use duklog::storage::{LogManager, export_adif};
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Run `adif-multitool validate <path>` and panic with a diagnostic if it fails.
+/// Returns the adifmt binary name.
+///
+/// Resolution order:
+/// 1. `ADIFMT` environment variable (explicit override)
+/// 2. `adifmt` — installed via `go install github.com/flwyd/adif-multitool@latest`
+/// 3. `adif-multitool` — installed via package managers (e.g. Arch AUR)
+fn adifmt_bin() -> String {
+    if let Ok(bin) = std::env::var("ADIFMT") {
+        return bin;
+    }
+    for candidate in ["adifmt", "adif-multitool"] {
+        if std::process::Command::new(candidate)
+            .arg("version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok()
+        {
+            return candidate.to_string();
+        }
+    }
+    "adifmt".to_string() // produces a clear error message when the test actually runs
+}
+
+/// Run `adifmt validate <path>` and panic with a diagnostic if it fails.
 fn validate_adif(path: &Path) {
-    let output = Command::new("adif-multitool")
+    let bin = adifmt_bin();
+    let output = Command::new(&bin)
         .arg("validate")
         .arg(path)
         .output()
         .unwrap_or_else(|e| {
             panic!(
-                "failed to run adif-multitool: {e}\n\
-                 Install with: go install github.com/flwyd/adif-multitool@latest"
+                "failed to run {bin}: {e}\n\
+                 Install with: go install github.com/flwyd/adif-multitool@latest\n\
+                 Override binary name with ADIFMT env var (e.g. ADIFMT=adif-multitool)"
             )
         });
 

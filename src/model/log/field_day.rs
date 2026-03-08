@@ -434,4 +434,20 @@ mod tests {
         );
         assert_eq!(result, Err(ValidationError::EmptySection));
     }
+
+    #[test]
+    fn power_category_adif_str_round_trips() {
+        for power in &[
+            FdPowerCategory::Qrp,
+            FdPowerCategory::Low,
+            FdPowerCategory::High,
+        ] {
+            assert_eq!(
+                FdPowerCategory::from_adif_str(power.adif_str()),
+                Some(*power),
+                "from_adif_str({:?}) failed",
+                power.adif_str()
+            );
+        }
+    }
 }

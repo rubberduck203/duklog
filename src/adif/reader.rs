@@ -14,7 +14,7 @@ use tokio::io::BufReader;
 use super::error::AdifError;
 use crate::model::{
     Band, FdPowerCategory, FieldDayLog, GeneralLog, Log, LogHeader, Mode, PotaLog, Qso, WfdLog,
-    parse_fd_class, parse_wfd_class,
+    parse_fd_class, parse_wfd_class, validate_tx_count,
 };
 
 /// Reads an ADIF file and reconstructs the [`Log`] it encodes.
@@ -89,6 +89,7 @@ pub async fn read_log(path: &Path) -> Result<Log, AdifError> {
             let tx_count = tx_count.ok_or_else(|| {
                 AdifError::InvalidLog("FieldDay log missing APP_DUKLOG_TX_COUNT".into())
             })?;
+            validate_tx_count(tx_count).map_err(|e| AdifError::InvalidLog(e.to_string()))?;
             let class = fd_class.ok_or_else(|| {
                 AdifError::InvalidLog("FieldDay log missing APP_DUKLOG_FD_CLASS".into())
             })?;
@@ -110,6 +111,7 @@ pub async fn read_log(path: &Path) -> Result<Log, AdifError> {
             let tx_count = tx_count.ok_or_else(|| {
                 AdifError::InvalidLog("WFD log missing APP_DUKLOG_TX_COUNT".into())
             })?;
+            validate_tx_count(tx_count).map_err(|e| AdifError::InvalidLog(e.to_string()))?;
             let class = wfd_class.ok_or_else(|| {
                 AdifError::InvalidLog("WFD log missing APP_DUKLOG_WFD_CLASS".into())
             })?;
@@ -396,6 +398,24 @@ mod tests {
         log.add_qso(qso);
         let loaded = round_trip(&log).await;
         assert_eq!(loaded.header().qsos[0].frequency, Some(14_225));
+    }
+
+    #[tokio::test]
+    async fn qso_only_file_without_header_returns_error() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("qso-only.adif");
+        // A valid QSO record but no <eoh> header section
+        let content =
+            "<CALL:6>KD9XYZ<QSO_DATE:8>20260216<TIME_ON:6>143000<BAND:3>20M<MODE:3>SSB<eor>\n";
+        tokio::fs::write(&path, content).await.unwrap();
+        let result = read_log(&path).await;
+        let Err(AdifError::InvalidLog(msg)) = result else {
+            panic!("expected InvalidLog error, got {result:?}");
+        };
+        assert!(
+            msg.contains("header"),
+            "error should mention 'header', got: {msg}"
+        );
     }
 
     #[tokio::test]

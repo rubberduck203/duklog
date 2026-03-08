@@ -693,18 +693,14 @@ mod tests {
              <APP_DUKLOG_POWER:3>low\n",
         );
         let result = manager.load_log("fd-zero-tx");
-        // tx_count=0 is invalid; parsed as u8 successfully but fails validate_tx_count
-        // The ADIF reader doesn't validate tx_count (just stores it); invalid values
-        // fail at reconstruction. Currently AdifError::InvalidLog from parse_qso is
-        // not triggered here — zero is valid for u8. The model struct stores it as-is.
-        // This edge case: FieldDayLog struct stores tx_count directly without re-validation.
-        // We accept this — the zero-tx-count guard existed in JSONL reconstruction; it
-        // doesn't exist in the ADIF reader (the struct just holds the value).
-        let _ = result; // may succeed or fail; behaviour matches raw struct construction
+        assert!(
+            matches!(result, Err(StorageError::Adif(_))),
+            "tx_count=0 should be rejected by validate_tx_count in the ADIF reader"
+        );
     }
 
     #[test]
-    fn wfd_zero_tx_count_is_stored() {
+    fn wfd_zero_tx_count_returns_error() {
         let (dir, manager) = make_manager();
         write_adif_header(
             dir.path(),
@@ -717,8 +713,11 @@ mod tests {
              <APP_DUKLOG_WFD_CLASS:1>H\n\
              <APP_DUKLOG_SECTION:3>EPA\n",
         );
-        // As above — tx_count=0 in ADIF is stored as-is; no error from the reader.
-        let _ = manager.load_log("wfd-zero-tx");
+        let result = manager.load_log("wfd-zero-tx");
+        assert!(
+            matches!(result, Err(StorageError::Adif(_))),
+            "tx_count=0 should be rejected by validate_tx_count in the ADIF reader"
+        );
     }
 
     // --- Metadata round-trip ---
@@ -791,6 +790,40 @@ mod tests {
         let loaded = manager2.load_log("compat-pota").unwrap();
         assert!(matches!(loaded, Log::Pota(_)));
         assert_eq!(loaded.park_ref(), Some("K-0001"));
+    }
+
+    #[test]
+    fn fd_jsonl_with_valid_section_migrates_to_adif() {
+        // Exercises the !s.is_empty() filter in reconstruct_field_day.
+        // If mutated to s.is_empty(), non-empty sections would be rejected → migration fails.
+        let (dir, _manager) = make_manager();
+        let json = r#"{"log_type":"FieldDay","station_callsign":"W1AW","operator":null,"park_ref":null,"grid_square":"FN31","created_at":"2026-06-21T12:00:00Z","log_id":"fd-compat","tx_count":2,"fd_class":"B","section":"EPA","power":"Low","wfd_class":null}"#;
+        fs::write(dir.path().join("fd-compat.jsonl"), format!("{json}\n")).unwrap();
+        let manager2 = LogManager::with_path(dir.path()).unwrap();
+        let loaded = manager2.load_log("fd-compat").unwrap();
+        assert!(matches!(loaded, Log::FieldDay(_)));
+        assert!(
+            !dir.path().join("fd-compat.jsonl").exists(),
+            "JSONL should be removed after migration"
+        );
+    }
+
+    #[test]
+    fn fd_jsonl_with_empty_section_is_not_migrated() {
+        // A JSONL with section="" is corrupt; migration should fail silently, leaving JSONL in place.
+        let (dir, _manager) = make_manager();
+        let json = r#"{"log_type":"FieldDay","station_callsign":"W1AW","operator":null,"park_ref":null,"grid_square":"","created_at":"2026-06-21T12:00:00Z","log_id":"fd-bad-sec","tx_count":2,"fd_class":"B","section":"","power":"Low","wfd_class":null}"#;
+        fs::write(dir.path().join("fd-bad-sec.jsonl"), format!("{json}\n")).unwrap();
+        let _manager2 = LogManager::with_path(dir.path()).unwrap();
+        // Migration should fail (empty section); JSONL stays, no ADIF created
+        assert!(
+            dir.path().join("fd-bad-sec.jsonl").exists(),
+            "JSONL should remain when migration fails"
+        );
+        assert!(
+            !dir.path().join("fd-bad-sec.adif").exists(),
+            "ADIF should not be created for corrupt JSONL"
+        );
     }
 
     // --- create_log duplicate prevention ---
