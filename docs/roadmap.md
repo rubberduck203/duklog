@@ -142,6 +142,16 @@ For General/POTA: last column shows their park for POTA (empty for General witho
 
 **Files**: `src/tui/screens/*.rs`, `docs/user-guide.md`
 
+### Phase 5.5 — ADIF native storage
+
+**Priority: High | Effort: Medium | Depends on: — | Required before 1.0**
+
+**Why**: duklog currently stores QSOs as JSON Lines (`.jsonl`) internally and separately exports to ADIF. This is accidental complexity — ADIF is the canonical ham radio exchange format and simple enough to serve as the primary storage format. After this change, internal storage files are immediately usable by external tools without an explicit export step. This is a breaking change to the storage format; it must land before the user base grows.
+
+**What changes**: Internal storage switches from `.jsonl` to `.adif`. Log metadata moves to the ADIF header using standard fields where available and `APP_DUKLOG_*` app-specific extension fields otherwise. QSO appends remain O(1) pure-append file writes (no reading). Reading uses difa's async `RecordStream` via a tokio runtime held by `LogManager`. Export simplifies to a file copy. `serde_json` is removed; `tokio` is added as a direct dependency.
+
+See `docs/adif-native-storage.md` for the full design and implementation plan.
+
 ### Phase 5 dependency order
 
 ```
