@@ -14,7 +14,7 @@ Three categories of data:
 ### Per-Log (set at log creation, rarely changes)
 - `station_callsign` — callsign used on air
 - `operator` — individual operator callsign (may equal station_callsign)
-- `park_ref` — optional POTA park reference (format: `[A-Z]{1,3}-\d{4,5}`, e.g. `K-0001`)
+- `park_ref` — POTA park reference (format: `[A-Z]{1,3}-\d{4,5}`, e.g. `K-0001`); `String` on `PotaLog`, not `Option`
 - `grid_square` — Maidenhead locator
 - `log_id` — unique identifier
 - `created_at` — UTC timestamp
@@ -29,6 +29,22 @@ Three categories of data:
 - `comments` — optional notes
 - `their_park` — other station's park reference (P2P contacts)
 - `timestamp` — UTC date/time of contact
+
+## Log Enum Model (ADR-0001)
+
+```
+LogHeader    — station_callsign, operator, grid_square, qsos, created_at, log_id  (all pub(crate))
+GeneralLog   — header: LogHeader
+PotaLog      — header: LogHeader, park_ref: String
+FieldDayLog  — header: LogHeader, tx_count: u8, class: FdClass, section: String, power: FdPowerCategory
+WfdLog       — header: LogHeader, tx_count: u8, class: WfdClass, section: String
+Log enum     — General(GeneralLog) | Pota(PotaLog) | FieldDay(FieldDayLog) | WinterFieldDay(WfdLog)
+```
+
+Access shared fields via `log.header()` / `log.header_mut()`. Type-specific fields via pattern match.
+`Log` does not derive `Serialize`/`Deserialize` — storage is ADIF. See [ADR-0001](../../docs/adr/0001-log-enum-model.md).
+
+`Qso` carries: `exchange_rcvd: Option<String>` (received contest exchange, contest logs only) and `frequency: Option<u32>` (kHz; required for FD/WFD, optional otherwise). Both default to `None`.
 
 ## ADIF Reference
 
@@ -54,20 +70,9 @@ Where `length` is the byte length of `value`.
 
 ## Storage
 
-- XDG path: `~/.local/share/duklog/logs/` with one `.adif` file per log (ADIF is the single storage format)
-- Export is a file copy (`std::fs::copy`) — no reformatting; the internal file is already valid ADIF
+- XDG path: `~/.local/share/duklog/logs/` with one `.adif` file per log
+- Export is a file copy (`std::fs::copy`) — no reformatting
 - Auto-save after every mutation
-
-## ADIF Header Field Taxonomy
-
-True ADIF header fields (per spec): `ADIF_VER`, `CREATED_TIMESTAMP`, `PROGRAMID`, `PROGRAMVERSION`.
-
-Fields placed in the header for convenience (defined as QSO record fields in spec, but valid anywhere):
-`STATION_CALLSIGN`, `OPERATOR`, `MY_GRIDSQUARE` — apply uniformly to every QSO; no need to repeat per record.
-
-App-extension fields (`APP_DUKLOG_*`): encode log metadata not expressible in standard fields
-(`APP_DUKLOG_LOG_TYPE`, `APP_DUKLOG_LOG_ID`, `APP_DUKLOG_PARK_REF`, `APP_DUKLOG_FD_CLASS`,
-`APP_DUKLOG_SECTION`, `APP_DUKLOG_POWER`, `APP_DUKLOG_TX_COUNT`, `APP_DUKLOG_WFD_CLASS`).
 
 ## Offline References
 
