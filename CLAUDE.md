@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**duklog** is an offline ham radio logging TUI for POTA (Parks on the Air) activations. No network access, ever. Built with Rust, Ratatui, and Crossterm.
+**duklog** is an offline ham radio logging TUI for general, POTA, and contest (Field Day / WFD) operation. No network access, ever. Built with Rust, Ratatui, and Crossterm.
 
 ## Module Structure
 
@@ -12,7 +12,7 @@ src/
   lib.rs               # Re-exports modules
   model/               # Log, Qso, Band, Mode, ValidationError
   adif/                # ADIF writer — pure formatting functions, no I/O
-  storage/             # JSON persistence (XDG), ADIF file export
+  storage/             # ADIF persistence (XDG), file-copy export
   tui/                 # App state, event loop
     screens/           # log_select, log_create, qso_entry, qso_list, export, help
     widgets/           # status_bar, form
@@ -51,7 +51,8 @@ Each module defines its own error type using `thiserror`. Errors propagate with 
 - Rustdoc (`///`) on all `pub` items
 - No feature is complete without documentation updates — update these as part of every feature:
   - `docs/user-guide.md` — screen descriptions, keybindings, user-facing workflows
-  - `docs/architecture.md` — Action enum, module layout, design decisions
+  - `docs/architecture.md` — module layout, design principles, ADR index
+  - `docs/adr/` — add a new ADR when making a non-obvious structural decision; update existing ADRs when decisions evolve
   - `docs/roadmap.md` — move completed phases, update remaining work
   - `docs/adif-format.md` — if ADIF fields or export format changes
 
