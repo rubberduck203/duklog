@@ -59,6 +59,39 @@ Phase 6 ──► (future) Geographic QSO analysis / county/state tallies
 
 ---
 
+### Phase 5.6 — Log-type-aware Recent QSOs display
+
+**Priority: High | Effort: Small | Depends on: Phase 5.3 (done)**
+
+**Why**: Three issues were filed after Phase 5.3 shipped:
+
+- **(#37 Bug)** When a POTA contact has no Their Park set, the frequency value falls into the park column — visually ambiguous and confusing. The root cause is that the current rendering falls back to frequency in the same slot as the park ref rather than rendering each log type's distinct column set.
+- **(#39)** Operators want to see the logged frequency in the Recent QSOs panel so they can tell whether a station was already worked on a different frequency before committing to a duplicate-detection lookup.
+- **(#40)** The panel is hard-coded to 3 rows even when the terminal is tall enough to show more. The row count should adapt to available height.
+
+**Scope**:
+- Fully branch `draw_recent_qsos` on `QsoFormType` so each log type renders its own fixed column set with no fallback mixing. Column order: **band | freq | mode | callsign | [log-specific fields]**:
+  - **General**: band | freq | mode | callsign | RST sent/rcvd
+  - **POTA**: band | freq | mode | callsign | RST sent/rcvd | their_park
+  - **FD/WFD**: band | freq | mode | callsign | exchange_rcvd
+- Make the row count dynamic: derive it from the area height passed to `draw_recent_qsos` rather than a hard-coded constant.
+
+**Files**: `src/tui/screens/qso_entry/` (draw functions, recent-QSO rendering).
+
+---
+
+### Phase 5.7 — RST entry UX
+
+**Priority: Medium | Effort: Small | Depends on: —**
+
+**Why**: RST fields are pre-populated with "59" as a convenience, but the cursor lands at the end of the text. Operators who give real signal reports must backspace twice before typing, which is clunky. (#38)
+
+**Scope**: Either (a) place the cursor at the start of the field in overwrite mode so the first keystroke replaces the default, or (b) leave fields empty and rely on the "59" default only at submit time. Evaluate both options when starting the phase; the goal is to make changing the default fast without penalising operators who accept "59" as-is.
+
+**Files**: `src/tui/screens/qso_entry/` (field initialisation).
+
+---
+
 ### Phase 6 — POTA park database
 
 **Priority: High | Effort: Large | Depends on: —**
