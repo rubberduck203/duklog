@@ -114,6 +114,12 @@ Park and Freq are always separate columns in POTA — never conflated via fallba
 (not a hard-coded 3). `draw_recent_qsos` renders all of them into the `Constraint::Min(3)`
 area; the Table widget clips naturally at the area boundary.
 
+## Snapshot Files as UI Reference
+
+Snapshot files in `src/tui/screens/snapshots/` are human-readable text renderings of each screen. **Read them before editing a `draw_*` function** to understand the current column layout, widths, and labels. They are the fastest way to "see" the UI without running the app.
+
+Naming convention: `duklog__tui__screens__<module>__tests__rendering__<test_name>.snap`
+
 ## Key ADRs
 
 - [ADR-0002](../../docs/adr/0002-explicit-screen-dispatch.md) — Why explicit match dispatch over ScreenState trait

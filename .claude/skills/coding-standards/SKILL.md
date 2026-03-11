@@ -35,6 +35,15 @@ description: duklog coding standards, testing requirements, and review checklist
 - Keep `#[mutants::skip]` on draw functions (mutation testing visual layout isn't productive)
 - Never exclude: `src/model/`, `src/adif/`, `src/storage/`, `handle_key()` methods
 
+## TUI: draw_* Function Structure
+
+- High-level `draw_*` functions should **read like prose** — delegate formatting and row-building to small private helpers; the top-level function orchestrates, it does not inline per-cell logic
+- When a `match` arm inside a `draw_*` function contains more than ~3 lines of data transformation (e.g., `.iter().take(n).map(|qso| Row::new(vec![...]))` with 5+ fields), extract a private helper:
+  - `fn format_rst(qso: &Qso) -> String` for repeated `format!("{}/{}", qso.rst_sent, qso.rst_rcvd)`
+  - `fn format_timestamp(qso: &Qso) -> String` for repeated `.format("%H:%M").to_string()`
+  - `fn qso_to_row_general(qso: &Qso) -> Row` / `fn qso_to_row_pota(qso: &Qso) -> Row` per type — or a trait if the dispatch pattern warrants it
+- Consider a `ToRecentRow` / similar trait with per-variant impls when the same "build a Row from a Qso" logic branches on `QsoFormType` across more than one function
+
 ## When Touching a File (Boy Scout Rule)
 
 Before finishing any change, scan the files you modified for:

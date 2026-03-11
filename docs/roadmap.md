@@ -60,6 +60,18 @@ Phase 6 ──► (future) Geographic QSO analysis / county/state tallies
 
 ---
 
+### Snapshot coverage expansion
+
+**Priority: Low | Effort: Small | Depends on: Phase 5.6 (done)**
+
+**Why**: Phase 5.6 introduced `insta` snapshot tests for `draw_recent_qsos`, demonstrating that `.snap` files are human-readable text renderings that make layout regressions immediately visible as diffs. The same coverage should extend to all `draw_*` functions in `src/tui/screens/`. Currently only `qso_entry`'s recent-QSOs panel has snapshots; the log select table, log create form, QSO list, export screen, and help screen have render tests using only `.contains()` assertions.
+
+**Scope**: For each `src/tui/screens/*/` screen, add at least one `assert_snapshot!(terminal.backend())` test at 80×24. Screens with multiple variants (log types, states) need one snapshot per variant. The `.snap` files serve as a living visual reference for the current UI layout — inspect them by reading the snapshot files directly.
+
+**Files**: `src/tui/screens/` (all screen modules), `src/tui/screens/snapshots/`.
+
+---
+
 ### Phase 5.7 — RST entry UX
 
 **Priority: Medium | Effort: Small | Depends on: —**

@@ -806,6 +806,69 @@ fn draw_header(state: &QsoEntryState, log: Option<&Log>, frame: &mut Frame, area
 /// Column sets are fully branched on log type; park and frequency are always
 /// separate columns so there is never any ambiguity about which value is shown.
 #[mutants::skip]
+fn format_timestamp(qso: &Qso) -> String {
+    qso.timestamp.format("%H:%M").to_string()
+}
+
+fn format_rst(qso: &Qso) -> String {
+    format!("{}/{}", qso.rst_sent, qso.rst_rcvd)
+}
+
+fn format_frequency(qso: &Qso) -> String {
+    qso.frequency.map(|f| f.to_string()).unwrap_or_default()
+}
+
+fn recent_qso_row_general(qso: &Qso) -> Row<'static> {
+    // Time | Call | Band | Mode | RST | Freq
+    Row::new(vec![
+        format_timestamp(qso),
+        qso.their_call.clone(),
+        qso.band.to_string(),
+        qso.mode.to_string(),
+        format_rst(qso),
+        format_frequency(qso),
+    ])
+}
+
+fn recent_qso_row_pota(qso: &Qso) -> Row<'static> {
+    // Time | Call | Band | Mode | RST | Park | Freq
+    // Park and Freq are always distinct columns — no fallback mixing.
+    Row::new(vec![
+        format_timestamp(qso),
+        qso.their_call.clone(),
+        qso.band.to_string(),
+        qso.mode.to_string(),
+        format_rst(qso),
+        qso.their_park.clone().unwrap_or_default(),
+        format_frequency(qso),
+    ])
+}
+
+fn recent_qso_row_contest(qso: &Qso) -> Row<'static> {
+    // Time | Call | Band | Mode | Exchange | Freq
+    Row::new(vec![
+        format_timestamp(qso),
+        qso.their_call.clone(),
+        qso.band.to_string(),
+        qso.mode.to_string(),
+        qso.exchange_rcvd.clone().unwrap_or_default(),
+        format_frequency(qso),
+    ])
+}
+
+fn build_recent_rows<F: Fn(&Qso) -> Row<'static>>(
+    state: &QsoEntryState,
+    max_rows: usize,
+    to_row: F,
+) -> Vec<Row<'static>> {
+    state
+        .recent_qsos()
+        .iter()
+        .take(max_rows)
+        .map(to_row)
+        .collect()
+}
+
 fn draw_recent_qsos(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
     let recent_block = Block::default()
         .title(" Recent QSOs ")
@@ -824,22 +887,6 @@ fn draw_recent_qsos(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
 
     match state.form_type {
         QsoFormType::General => {
-            // Time | Call | Band | Mode | RST | Freq
-            let rows: Vec<Row> = state
-                .recent_qsos()
-                .iter()
-                .take(max_rows)
-                .map(|qso| {
-                    Row::new(vec![
-                        qso.timestamp.format("%H:%M").to_string(),
-                        qso.their_call.clone(),
-                        qso.band.to_string(),
-                        qso.mode.to_string(),
-                        format!("{}/{}", qso.rst_sent, qso.rst_rcvd),
-                        qso.frequency.map(|f| f.to_string()).unwrap_or_default(),
-                    ])
-                })
-                .collect();
             let widths = [
                 Constraint::Length(6),
                 Constraint::Length(10),
@@ -848,27 +895,15 @@ fn draw_recent_qsos(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
                 Constraint::Length(8),
                 Constraint::Min(10),
             ];
-            frame.render_widget(Table::new(rows, widths), recent_inner);
+            frame.render_widget(
+                Table::new(
+                    build_recent_rows(state, max_rows, recent_qso_row_general),
+                    widths,
+                ),
+                recent_inner,
+            );
         }
         QsoFormType::Pota => {
-            // Time | Call | Band | Mode | RST | Park | Freq
-            // Park and Freq are always distinct columns — no fallback mixing.
-            let rows: Vec<Row> = state
-                .recent_qsos()
-                .iter()
-                .take(max_rows)
-                .map(|qso| {
-                    Row::new(vec![
-                        qso.timestamp.format("%H:%M").to_string(),
-                        qso.their_call.clone(),
-                        qso.band.to_string(),
-                        qso.mode.to_string(),
-                        format!("{}/{}", qso.rst_sent, qso.rst_rcvd),
-                        qso.their_park.clone().unwrap_or_default(),
-                        qso.frequency.map(|f| f.to_string()).unwrap_or_default(),
-                    ])
-                })
-                .collect();
             let widths = [
                 Constraint::Length(6),
                 Constraint::Length(10),
@@ -878,25 +913,15 @@ fn draw_recent_qsos(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
                 Constraint::Length(12),
                 Constraint::Min(8),
             ];
-            frame.render_widget(Table::new(rows, widths), recent_inner);
+            frame.render_widget(
+                Table::new(
+                    build_recent_rows(state, max_rows, recent_qso_row_pota),
+                    widths,
+                ),
+                recent_inner,
+            );
         }
         QsoFormType::FieldDay | QsoFormType::WinterFieldDay => {
-            // Time | Call | Band | Mode | Exchange | Freq
-            let rows: Vec<Row> = state
-                .recent_qsos()
-                .iter()
-                .take(max_rows)
-                .map(|qso| {
-                    Row::new(vec![
-                        qso.timestamp.format("%H:%M").to_string(),
-                        qso.their_call.clone(),
-                        qso.band.to_string(),
-                        qso.mode.to_string(),
-                        qso.exchange_rcvd.clone().unwrap_or_default(),
-                        qso.frequency.map(|f| f.to_string()).unwrap_or_default(),
-                    ])
-                })
-                .collect();
             let widths = [
                 Constraint::Length(6),
                 Constraint::Length(10),
@@ -905,7 +930,13 @@ fn draw_recent_qsos(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
                 Constraint::Length(10),
                 Constraint::Min(10),
             ];
-            frame.render_widget(Table::new(rows, widths), recent_inner);
+            frame.render_widget(
+                Table::new(
+                    build_recent_rows(state, max_rows, recent_qso_row_contest),
+                    widths,
+                ),
+                recent_inner,
+            );
         }
     }
 }
