@@ -31,7 +31,8 @@
 - **Phase 4: Multiple Logbook Types** — Done
 - **Export to Documents dir + log-type-aware filenames** (`feature/export-to-documents-dir`) — Done: ADIF exports written to `~/Documents/duklog/` (auto-created); filenames are log-type-specific: POTA → `{CALL}@{PARK}-{DATE}.adif`; General → `{CALL}-{DATE}.adif`; FD → `{CALL}-FD-{DATE}.adif`; WFD → `{CALL}-WFD-{DATE}.adif`; `/` in callsigns replaced with `_`; export path is editable on the export screen; `park_ref` made required on `PotaLog`; `DefaultFilename` trait added
 - **Phase 5.1 — Optional frequency for General and POTA logs** — Done
-- **Phase 5.3 — Log-type-aware recent QSO display** — Done: `draw_recent_qsos` branches on form type; General shows RST + freq; POTA shows RST + their_park (park takes priority over freq when both set); FD/WFD show exchange_rcvd + freq
+- **Phase 5.3 — Log-type-aware recent QSO display** — Done: `draw_recent_qsos` branches on form type (superseded by Phase 5.6 column layout)
+- **Phase 5.6 — Log-type-aware Recent QSOs display** — Done: fully branched column sets per log type; POTA has separate Their Park and Frequency columns (no fallback mixing, fixes #37/#39); row count adapts to `Rect` height (fixes #40); `insta` snapshot tests added; `buffer_to_string` consolidated into `src/tui/test_utils.rs`; ADR-0005 added for rendering test strategy
 - **Phase 5.4 — `q`-key / `Esc` consistency audit** — Done: removed `q` as navigation key from Log Select, QSO List, and Help screens; `Esc` is the sole navigation/quit key everywhere
 - **Phase 5.5 — ADIF native storage** — Done: internal storage switched from `.jsonl` to `.adif`; log metadata encoded in ADIF header via standard and `APP_DUKLOG_*` fields; QSO appends remain O(1) file appends; reads use `difa::RecordStream` via a current-thread tokio runtime held by `LogManager`; export simplified to `std::fs::copy`; legacy `.jsonl` files auto-migrated on startup; `tokio` and `futures` added as direct dependencies
 
@@ -56,27 +57,6 @@ Phase 6 ──► (future) Geographic QSO analysis / county/state tallies
 **Why**: The JSONL-to-ADIF migration code in `src/storage/manager.rs` (`load_jsonl_from_path`, `reconstruct_field_day`, `reconstruct_wfd`, `LogMetadata`, `StoredLogType`, `migrate_jsonl_files`) is marked `// Migration only — delete after 1.0`. Once 1.0 ships, it is safe to assume all users have migrated. Remove the dead code, the `serde_json` dependency, and the `Serialize`/`Deserialize` derives on model types that were only needed for JSONL.
 
 **Files**: `src/storage/manager.rs`, `Cargo.toml`, model derive annotations.
-
----
-
-### Phase 5.6 — Log-type-aware Recent QSOs display
-
-**Priority: High | Effort: Small | Depends on: Phase 5.3 (done)**
-
-**Why**: Three issues were filed after Phase 5.3 shipped:
-
-- **(#37 Bug)** When a POTA contact has no Their Park set, the frequency value falls into the park column — visually ambiguous and confusing. The root cause is that the current rendering falls back to frequency in the same slot as the park ref rather than rendering each log type's distinct column set.
-- **(#39)** Operators want to see the logged frequency in the Recent QSOs panel so they can tell whether a station was already worked on a different frequency before committing to a duplicate-detection lookup.
-- **(#40)** The panel is hard-coded to 3 rows even when the terminal is tall enough to show more. The row count should adapt to available height.
-
-**Scope**:
-- Fully branch `draw_recent_qsos` on `QsoFormType` so each log type renders its own fixed column set with no fallback mixing. Column order: **band | freq | mode | callsign | [log-specific fields]**:
-  - **General**: band | freq | mode | callsign | RST sent/rcvd
-  - **POTA**: band | freq | mode | callsign | RST sent/rcvd | their_park
-  - **FD/WFD**: band | freq | mode | callsign | exchange_rcvd
-- Make the row count dynamic: derive it from the area height passed to `draw_recent_qsos` rather than a hard-coded constant.
-
-**Files**: `src/tui/screens/qso_entry/` (draw functions, recent-QSO rendering).
 
 ---
 

@@ -1356,16 +1356,7 @@ mod tests {
 
         use super::*;
 
-        fn buffer_to_string(buf: &ratatui::buffer::Buffer) -> String {
-            let mut s = String::new();
-            for y in 0..buf.area.height {
-                for x in 0..buf.area.width {
-                    s.push(buf[(x, y)].symbol().chars().next().unwrap_or(' '));
-                }
-                s.push('\n');
-            }
-            s
-        }
+        use crate::tui::test_utils::buffer_to_string;
 
         fn render_log_create(state: &LogCreateState, width: u16, height: u16) -> String {
             let backend = TestBackend::new(width, height);

@@ -20,17 +20,20 @@ paths:
 - Tests must be deterministic and fast
 - **Organize tests with submodules** (`mod typing { ... }`, `mod validation { ... }`), not section comments (`// --- Typing ---`)
 - **Tests that exercise only one enum variant belong in that variant's submodule file.** If a test creates only a `Log::FieldDay(...)` and asserts on `Log`-level behaviour specific to that variant, move it to `field_day.rs`, not `mod.rs`. Tests that compare multiple variants or test shared/generic behaviour stay in the enum's module.
-- **Extract test helpers** to reduce repetition — tests are code too; refactor shared setup into helper functions
+- **Extract test helpers** to reduce repetition — tests are code too; refactor shared setup into helper functions. When touching a file that has duplicated helpers (render helpers, fixture builders, common setup), move them to `src/tui/test_utils.rs` or a module-local shared helper as part of that same PR — don't defer it.
 - Prefer `.expect("descriptive message")` over bare `.unwrap()` in tests — the message surfaces in failure output and makes failures easier to diagnose
 - Minimum 90% line coverage enforced by `make coverage`
 
 ## TUI Render Testing
 
-Test `draw_*` functions by rendering into a `TestBackend` buffer and asserting key content appears:
+Two approaches are in active use — see **ADR-0005** for the ongoing decision.
+
+### Pattern A — `buffer_to_string` + `.contains()` (baseline)
 
 ```rust
 use ratatui::backend::TestBackend;
 use ratatui::Terminal;
+use crate::tui::test_utils::buffer_to_string; // shared — do NOT redefine locally
 
 let backend = TestBackend::new(80, 24);
 let mut terminal = Terminal::new(backend).unwrap();
@@ -41,7 +44,29 @@ let content = buffer_to_string(terminal.backend().buffer());
 assert!(content.contains("expected text"));
 ```
 
-Use a `buffer_to_string` helper (in `mod rendering` test submodules) to extract text from `Buffer`.
+`buffer_to_string` is defined once in `src/tui/test_utils.rs`. Do not copy-paste it into individual test modules.
+
+Tests semantic presence; cannot distinguish correct vs. incorrect column position.
+
+### Pattern B — `insta` snapshots (introduced Phase 5.6, experimental)
+
+```rust
+use insta::assert_snapshot;
+
+#[test]
+fn recent_qsos_pota_no_park() {
+    let mut terminal = Terminal::new(TestBackend::new(80, 10)).unwrap();
+    terminal.draw(|frame| draw_recent_qsos(&state, frame, frame.area())).unwrap();
+    assert_snapshot!(terminal.backend()); // stores .snap file — a literal picture of the layout
+}
+```
+
+First run writes a `.snap` file in a `snapshots/` directory adjacent to the test file.
+Update after intentional layout changes: `cargo insta review`.
+
+Use snapshots for **layout components where column/row position matters** — they catch
+positional bugs that `.contains()` cannot. Use `.contains()` for **semantic assertions**
+(field present/absent by log type, specific text visible).
 
 Keep `#[mutants::skip]` on draw functions — mutation testing visual layout isn't productive.
 
