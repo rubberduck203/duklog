@@ -818,54 +818,85 @@ fn format_frequency(qso: &Qso) -> String {
     qso.frequency.map(|f| f.to_string()).unwrap_or_default()
 }
 
-fn recent_qso_row_general(qso: &Qso) -> Row<'static> {
-    // Time | Call | Band | Mode | RST | Freq
-    Row::new(vec![
-        format_timestamp(qso),
-        qso.their_call.clone(),
-        qso.band.to_string(),
-        qso.mode.to_string(),
-        format_rst(qso),
-        format_frequency(qso),
-    ])
+/// Drives the Recent QSOs table layout for a given log type.
+/// The impl lives here in the TUI layer so `QsoFormType` stays free of ratatui types.
+trait RecentQsoDisplay {
+    fn recent_row(&self, qso: &Qso) -> Row<'static>;
+    fn column_widths(&self) -> Vec<Constraint>;
 }
 
-fn recent_qso_row_pota(qso: &Qso) -> Row<'static> {
-    // Time | Call | Band | Mode | RST | Park | Freq
-    // Park and Freq are always distinct columns — no fallback mixing.
-    Row::new(vec![
-        format_timestamp(qso),
-        qso.their_call.clone(),
-        qso.band.to_string(),
-        qso.mode.to_string(),
-        format_rst(qso),
-        qso.their_park.clone().unwrap_or_default(),
-        format_frequency(qso),
-    ])
+impl RecentQsoDisplay for QsoFormType {
+    fn recent_row(&self, qso: &Qso) -> Row<'static> {
+        match self {
+            QsoFormType::General => Row::new(vec![
+                // Time | Call | Band | Mode | RST | Freq
+                format_timestamp(qso),
+                qso.their_call.clone(),
+                qso.band.to_string(),
+                qso.mode.to_string(),
+                format_rst(qso),
+                format_frequency(qso),
+            ]),
+            QsoFormType::Pota => Row::new(vec![
+                // Time | Call | Band | Mode | RST | Park | Freq
+                // Park and Freq are always distinct columns — no fallback mixing.
+                format_timestamp(qso),
+                qso.their_call.clone(),
+                qso.band.to_string(),
+                qso.mode.to_string(),
+                format_rst(qso),
+                qso.their_park.clone().unwrap_or_default(),
+                format_frequency(qso),
+            ]),
+            QsoFormType::FieldDay | QsoFormType::WinterFieldDay => Row::new(vec![
+                // Time | Call | Band | Mode | Exchange | Freq
+                format_timestamp(qso),
+                qso.their_call.clone(),
+                qso.band.to_string(),
+                qso.mode.to_string(),
+                qso.exchange_rcvd.clone().unwrap_or_default(),
+                format_frequency(qso),
+            ]),
+        }
+    }
+
+    fn column_widths(&self) -> Vec<Constraint> {
+        let common = [
+            Constraint::Length(6),
+            Constraint::Length(10),
+            Constraint::Length(5),
+            Constraint::Length(5),
+        ];
+        match self {
+            QsoFormType::General => {
+                [&common[..], &[Constraint::Length(8), Constraint::Min(10)]].concat()
+            }
+            QsoFormType::Pota => [
+                &common[..],
+                &[
+                    Constraint::Length(8),
+                    Constraint::Length(12),
+                    Constraint::Min(8),
+                ],
+            ]
+            .concat(),
+            QsoFormType::FieldDay | QsoFormType::WinterFieldDay => {
+                [&common[..], &[Constraint::Length(10), Constraint::Min(10)]].concat()
+            }
+        }
+    }
 }
 
-fn recent_qso_row_contest(qso: &Qso) -> Row<'static> {
-    // Time | Call | Band | Mode | Exchange | Freq
-    Row::new(vec![
-        format_timestamp(qso),
-        qso.their_call.clone(),
-        qso.band.to_string(),
-        qso.mode.to_string(),
-        qso.exchange_rcvd.clone().unwrap_or_default(),
-        format_frequency(qso),
-    ])
-}
-
-fn build_recent_rows<F: Fn(&Qso) -> Row<'static>>(
+fn build_recent_rows(
     state: &QsoEntryState,
     max_rows: usize,
-    to_row: F,
+    display: &impl RecentQsoDisplay,
 ) -> Vec<Row<'static>> {
     state
         .recent_qsos()
         .iter()
         .take(max_rows)
-        .map(to_row)
+        .map(|qso| display.recent_row(qso))
         .collect()
 }
 
@@ -884,61 +915,11 @@ fn draw_recent_qsos(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
 
     // Limit rows to what actually fits — Rect height is the source of truth.
     let max_rows = recent_inner.height as usize;
-
-    match state.form_type {
-        QsoFormType::General => {
-            let widths = [
-                Constraint::Length(6),
-                Constraint::Length(10),
-                Constraint::Length(5),
-                Constraint::Length(5),
-                Constraint::Length(8),
-                Constraint::Min(10),
-            ];
-            frame.render_widget(
-                Table::new(
-                    build_recent_rows(state, max_rows, recent_qso_row_general),
-                    widths,
-                ),
-                recent_inner,
-            );
-        }
-        QsoFormType::Pota => {
-            let widths = [
-                Constraint::Length(6),
-                Constraint::Length(10),
-                Constraint::Length(5),
-                Constraint::Length(5),
-                Constraint::Length(8),
-                Constraint::Length(12),
-                Constraint::Min(8),
-            ];
-            frame.render_widget(
-                Table::new(
-                    build_recent_rows(state, max_rows, recent_qso_row_pota),
-                    widths,
-                ),
-                recent_inner,
-            );
-        }
-        QsoFormType::FieldDay | QsoFormType::WinterFieldDay => {
-            let widths = [
-                Constraint::Length(6),
-                Constraint::Length(10),
-                Constraint::Length(5),
-                Constraint::Length(5),
-                Constraint::Length(10),
-                Constraint::Min(10),
-            ];
-            frame.render_widget(
-                Table::new(
-                    build_recent_rows(state, max_rows, recent_qso_row_contest),
-                    widths,
-                ),
-                recent_inner,
-            );
-        }
-    }
+    let rows = build_recent_rows(state, max_rows, &state.form_type);
+    frame.render_widget(
+        Table::new(rows, state.form_type.column_widths()),
+        recent_inner,
+    );
 }
 
 #[cfg(test)]

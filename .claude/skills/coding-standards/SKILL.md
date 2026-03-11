@@ -38,11 +38,11 @@ description: duklog coding standards, testing requirements, and review checklist
 ## TUI: draw_* Function Structure
 
 - High-level `draw_*` functions should **read like prose** — delegate formatting and row-building to small private helpers; the top-level function orchestrates, it does not inline per-cell logic
-- When a `match` arm inside a `draw_*` function contains more than ~3 lines of data transformation (e.g., `.iter().take(n).map(|qso| Row::new(vec![...]))` with 5+ fields), extract a private helper:
-  - `fn format_rst(qso: &Qso) -> String` for repeated `format!("{}/{}", qso.rst_sent, qso.rst_rcvd)`
-  - `fn format_timestamp(qso: &Qso) -> String` for repeated `.format("%H:%M").to_string()`
-  - `fn qso_to_row_general(qso: &Qso) -> Row` / `fn qso_to_row_pota(qso: &Qso) -> Row` per type — or a trait if the dispatch pattern warrants it
-- Consider a `ToRecentRow` / similar trait with per-variant impls when the same "build a Row from a Qso" logic branches on `QsoFormType` across more than one function
+- When a `match` arms inside a `draw_*` function repeats boilerplate across variants (e.g., same `.iter().take(n).map(...)` with different row content and widths per variant), **use a trait**:
+  - Define the trait and `impl` in the same TUI file — the type being implemented for (`QsoFormType`, etc.) stays clean of ratatui types; the impl lives where the ratatui code lives
+  - The trait bundles all per-variant rendering concerns (row builder + column widths), so the `draw_*` function contains no `match` at all
+  - Example: `trait RecentQsoDisplay { fn recent_row(&self, qso: &Qso) -> Row<'static>; fn column_widths(&self) -> Vec<Constraint>; }`
+- Extract format helpers for repeated cell formatting: `fn format_rst(qso: &Qso) -> String`, `fn format_timestamp(qso: &Qso) -> String`
 
 ## When Touching a File (Boy Scout Rule)
 
