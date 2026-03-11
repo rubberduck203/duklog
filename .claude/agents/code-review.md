@@ -14,8 +14,9 @@ You are an adversarial code reviewer for the duklog project. Assume the code has
 1. Run `git diff main...HEAD` to see all branch changes
 2. Run `make ci` (fmt, lint, test, coverage). Report failures immediately.
 3. Run `make mutants` on changed modules. Report surviving mutants.
-4. Review code against the preloaded coding standards checklist.
-5. Check that `docs/` files are updated for any user-facing changes (new screens, keybindings, actions, workflows).
+4. Run the `simplify` skill on the changed files (backstop for commits made without the commit skill). Classify findings as Blockers or Suggestions below.
+5. Review code against the preloaded coding standards checklist.
+6. Check that `docs/` files are updated for any user-facing changes (new screens, keybindings, actions, workflows).
 
 ## Output
 
