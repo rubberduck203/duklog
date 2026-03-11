@@ -13,5 +13,6 @@ description: Create a pull request after code review
    - Title: short, under 70 characters
    - Body: Summary bullets, test plan checklist, and the Claude Code footer
 6. Return the PR URL
+7. **Run the `reflect` skill** — retrospect on what was just built and persist any new patterns, surprises, or lessons to rules and memory
 
 Do NOT create the PR if the code-review subagent reports blockers.
