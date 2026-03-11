@@ -38,12 +38,11 @@ description: duklog coding standards, testing requirements, and review checklist
 ## TUI: draw_* Function Structure
 
 - High-level `draw_*` functions should **read like prose** — delegate formatting and row-building to small private helpers; the top-level function orchestrates, it does not inline per-cell logic
-- When a `draw_*` function dispatches on a type variant and each variant needs its own row layout and column widths, **use a trait with one dedicated struct per variant** — not `impl Trait for SomeEnum`:
-  - `impl Trait for SomeEnum` just moves the `match` inside the trait methods — the compiler enforces nothing per variant
-  - Dedicated structs (`struct GeneralDisplay; struct PotaDisplay; struct ContestDisplay;`) each have their own `impl` block; `recent_row` and `column_widths` are always defined together; the compiler rejects incomplete impls
-  - The trait impl lives in the same TUI file — the original enum (`QsoFormType`) stays clean of ratatui types; in Rust, impl blocks are separate from type definitions and live wherever the dependency already exists
-  - `draw_*` has **one** `match` at the boundary to convert the enum to a `&dyn Trait`, then calls no further `match`
-- Extract format helpers for repeated cell formatting: `fn format_rst(qso: &Qso) -> String`, `fn format_timestamp(qso: &Qso) -> String`
+- When a `match` arm inside a `draw_*` function contains more than ~3 lines of data transformation (e.g., `.iter().take(n).map(|qso| Row::new(vec![...]))` with 5+ fields), extract a private helper:
+  - `fn format_rst(qso: &Qso) -> String` for repeated `format!("{}/{}", qso.rst_sent, qso.rst_rcvd)`
+  - `fn format_timestamp(qso: &Qso) -> String` for repeated `.format("%H:%M").to_string()`
+  - `fn qso_to_row_general(qso: &Qso) -> Row` / `fn qso_to_row_pota(qso: &Qso) -> Row` per type — or a trait if the dispatch pattern warrants it
+- Consider a `ToRecentRow` / similar trait with per-variant impls when the same "build a Row from a Qso" logic branches on `QsoFormType` across more than one function
 
 ## When Touching a File (Boy Scout Rule)
 

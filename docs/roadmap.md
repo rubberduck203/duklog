@@ -60,6 +60,29 @@ Phase 6 ──► (future) Geographic QSO analysis / county/state tallies
 
 ---
 
+### Refactor: QsoFormType enum variants carrying display types
+
+**Priority: Low | Effort: Small | Depends on: —**
+
+**Why**: The `RecentQsoDisplay` trait in `draw_recent_qsos` is currently implemented via free functions (`recent_qso_row_general`, etc.) and a `build_recent_rows` helper. A more idiomatic Rust design would embed the display struct into each `QsoFormType` variant:
+
+```rust
+enum QsoFormType {
+    General(GeneralDisplay),
+    Pota(PotaDisplay),
+    FieldDay(ContestDisplay),
+    WinterFieldDay(ContestDisplay),
+}
+```
+
+This would let `draw_recent_qsos` extract the `&dyn RecentQsoDisplay` directly from the variant without a separate conversion match — the association between variant and display type is encoded in the enum itself. Each display type's `impl RecentQsoDisplay` groups `recent_row` and `column_widths` together, and the compiler enforces completeness per type.
+
+**Trade-off**: `QsoFormType` is constructed and matched throughout `qso_entry.rs` (form building, submit handlers, key handlers). All construction sites become `QsoFormType::General(GeneralDisplay)` and matches use `QsoFormType::General(_)`. Mechanical but broad. Worth revisiting once there is a second `draw_*` function with a similar branching pattern — that's when the shared display-type infrastructure starts to pay for itself.
+
+**Files**: `src/tui/screens/qso_entry.rs`.
+
+---
+
 ### Snapshot coverage expansion
 
 **Priority: Low | Effort: Small | Depends on: Phase 5.6 (done)**
