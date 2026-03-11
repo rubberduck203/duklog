@@ -1,15 +1,17 @@
 ---
 name: learn-from-feedback
-description: Process PR feedback, user corrections, or code review findings and update project memory, rules, and standards accordingly. Use proactively after receiving PR review comments, user corrections, or when patterns emerge from code review.
+description: Process PR feedback, user corrections, code review findings, or self-observed patterns and update project memory, rules, and standards accordingly. Use proactively after receiving PR review comments, user corrections, or when patterns emerge from code review or self-reflection.
 ---
 
 # Learn from Feedback
 
-When receiving feedback (PR comments, user corrections, code review findings), update the project's knowledge base so the same issues don't recur.
+When receiving feedback (PR comments, user corrections, code review findings) or observing patterns yourself during implementation, update the project's knowledge base so the same issues don't recur.
 
 ## Process
 
-1. **Identify the feedback**: Read the PR comments (`gh pr view $ARGUMENTS --comments`), or parse the user's correction from context
+1. **Identify the source**:
+   - *User feedback*: read PR comments (`gh pr view $ARGUMENTS --comments`) or parse the correction from context
+   - *Self-observation*: findings from the `reflect` skill, or patterns noticed during implementation
 2. **Classify the learning**:
    - **Coding standard** → update `.claude/skills/coding-standards/SKILL.md`
    - **Domain knowledge** → update `.claude/rules/domain.md`
