@@ -16,6 +16,7 @@ When receiving feedback (PR comments, user corrections, code review findings), u
    - **Testing practice** → update `.claude/rules/testing.md`
    - **Workflow/process** → update `CLAUDE.md` (Git Workflow section) or relevant skill
    - **Project-specific pattern** → update auto memory (`MEMORY.md`)
+   - **Missed refactoring** → add to the "When Touching a File" checklist in `.claude/rules/testing.md` (test helpers) or `.claude/skills/coding-standards/SKILL.md` (code patterns) so the pattern fires proactively next time
 3. **Apply the fix**: If the feedback points to a code issue, fix it
 4. **Update the knowledge base**: Write the learning to the appropriate file so it persists
 5. **Summarize**: Report what was learned and where it was saved

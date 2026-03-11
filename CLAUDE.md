@@ -69,9 +69,19 @@ Offline domain and framework research in `docs/reference/` — consult these ins
 - `ratatui-notes.md` — Ratatui architecture, widget inventory, crossterm integration, terminal setup/teardown pattern
 - `testing-tools-notes.md` — cargo-llvm-cov and cargo-mutants setup, commands, test writing guidance
 
+## Implementation Workflow
+
+When a plan touches existing files, before writing any new code:
+1. Read each file to be modified
+2. Note visible refactoring opportunities — dead code, duplicated helpers, style violations
+3. Include those as explicit tasks in the implementation plan (labeled "cleanup")
+
+This scopes refactoring during planning rather than discovering it late.
+
 ## Git Workflow
 
 - Feature branches off `main`, one per implementation step
 - Run `make ci` before every commit
+- Run the `simplify` skill on changed files before staging (the `/commit` skill does this automatically)
 - Run the `code-review` subagent before creating PRs
 - PRs to `main` with descriptive titles and summaries

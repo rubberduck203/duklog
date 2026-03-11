@@ -75,6 +75,15 @@ Keep `#[mutants::skip]` on draw functions — mutation testing visual layout isn
 - For screens with multiple variants (e.g. log types, states), add one render test per variant — the test renders at 80×24 and asserts the variant-specific label appears. This prevents truncation/overflow bugs that only appear at wide or narrow terminal widths.
 - Form-based screens must constrain form area width with `Constraint::Max(N)` centered via `Constraint::Fill(1)` on each side so fields don't span the full terminal width on wide displays. 60–80 chars is appropriate for short-label forms.
 
+## When Touching a Test File (Boy Scout Rule)
+
+The canonical boy scout checklist is in `coding-standards/SKILL.md`. For test files, also check:
+
+- **Extract duplicated test helpers** — if the same fixture builder, render helper, or setup block appears more than once, move it to `test_utils.rs` or the appropriate shared location
+- **Submodule structure** — if tests added belong to a specific enum variant, move them to that variant's file, not `mod.rs`
+
+This is not optional polish — it is part of completing the change.
+
 ## Coverage Exclusions
 
 Use `#[cfg_attr(coverage_nightly, coverage(off))]` only for:
