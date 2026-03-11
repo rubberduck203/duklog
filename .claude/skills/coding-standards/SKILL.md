@@ -35,6 +35,17 @@ description: duklog coding standards, testing requirements, and review checklist
 - Keep `#[mutants::skip]` on draw functions (mutation testing visual layout isn't productive)
 - Never exclude: `src/model/`, `src/adif/`, `src/storage/`, `handle_key()` methods
 
+## When Touching a File (Boy Scout Rule)
+
+Before finishing any change, scan the files you modified for:
+
+- **Dead code** — unused imports, unreachable branches, or stale comments in your diff
+- **Style violations** — loops that should be iterators, `if let` chains that should be `match`, explicit `return` that should be a tail expression, in the code you touched
+- **Duplicated helpers** — if the same logic appears twice in the same file, extract a shared function
+- **Oversized functions** — if a function grew during this change, check whether it should be split
+
+If you find something outside the direct scope of the task, fix it in the same PR as a clearly labeled "cleanup" commit. Do not defer cleanup to a future PR that may never come.
+
 ## ADIF/POTA Correctness
 - Field format: `<FIELDNAME:length>value` (length = byte length)
 - Required: `STATION_CALLSIGN`, `CALL`, `QSO_DATE` (YYYYMMDD), `TIME_ON` (HHMMSS), `BAND`, `MODE`
@@ -47,6 +58,6 @@ description: duklog coding standards, testing requirements, and review checklist
 - Update `docs/` when implementing or changing features:
   - `docs/user-guide.md` — screen descriptions, keybindings, workflows
   - `docs/architecture.md` — module layout, Action enum, design decisions
-  - `docs/implementation-plan.md` — move completed phases, update remaining work
+  - `docs/roadmap.md` — move completed phases, update remaining work
   - `docs/adif-format.md` — if ADIF fields or format changes
 - No feature is complete without documentation updates

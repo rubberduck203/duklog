@@ -1,21 +1,24 @@
 ---
 name: learn-from-feedback
-description: Process PR feedback, user corrections, or code review findings and update project memory, rules, and standards accordingly. Use proactively after receiving PR review comments, user corrections, or when patterns emerge from code review.
+description: Process PR feedback, user corrections, code review findings, or self-observed patterns and update project memory, rules, and standards accordingly. Use proactively after receiving PR review comments, user corrections, or when patterns emerge from code review or self-reflection.
 ---
 
 # Learn from Feedback
 
-When receiving feedback (PR comments, user corrections, code review findings), update the project's knowledge base so the same issues don't recur.
+When receiving feedback (PR comments, user corrections, code review findings) or observing patterns yourself during implementation, update the project's knowledge base so the same issues don't recur.
 
 ## Process
 
-1. **Identify the feedback**: Read the PR comments (`gh pr view $ARGUMENTS --comments`), or parse the user's correction from context
+1. **Identify the source**:
+   - *User feedback*: read PR comments (`gh pr view $ARGUMENTS --comments`) or parse the correction from context
+   - *Self-observation*: findings from the `reflect` skill, or patterns noticed during implementation
 2. **Classify the learning**:
    - **Coding standard** → update `.claude/skills/coding-standards/SKILL.md`
    - **Domain knowledge** → update `.claude/rules/domain.md`
    - **Testing practice** → update `.claude/rules/testing.md`
    - **Workflow/process** → update `CLAUDE.md` (Git Workflow section) or relevant skill
    - **Project-specific pattern** → update auto memory (`MEMORY.md`)
+   - **Missed refactoring** → add to the "When Touching a File" checklist in `.claude/rules/testing.md` (test helpers) or `.claude/skills/coding-standards/SKILL.md` (code patterns) so the pattern fires proactively next time
 3. **Apply the fix**: If the feedback points to a code issue, fix it
 4. **Update the knowledge base**: Write the learning to the appropriate file so it persists
 5. **Summarize**: Report what was learned and where it was saved
