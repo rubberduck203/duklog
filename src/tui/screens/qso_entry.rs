@@ -818,79 +818,101 @@ fn format_frequency(qso: &Qso) -> String {
     qso.frequency.map(|f| f.to_string()).unwrap_or_default()
 }
 
-/// Drives the Recent QSOs table layout for a given log type.
-/// The impl lives here in the TUI layer so `QsoFormType` stays free of ratatui types.
+/// Drives the Recent QSOs table layout for one log type.
+/// Implement this for a dedicated display struct per log type — not on `QsoFormType` directly —
+/// so that `recent_row` and `column_widths` for the same variant are always defined together
+/// and the compiler enforces completeness when a new type is added.
 trait RecentQsoDisplay {
     fn recent_row(&self, qso: &Qso) -> Row<'static>;
     fn column_widths(&self) -> Vec<Constraint>;
 }
 
-impl RecentQsoDisplay for QsoFormType {
+struct GeneralDisplay;
+struct PotaDisplay;
+struct ContestDisplay;
+
+impl RecentQsoDisplay for GeneralDisplay {
     fn recent_row(&self, qso: &Qso) -> Row<'static> {
-        match self {
-            QsoFormType::General => Row::new(vec![
-                // Time | Call | Band | Mode | RST | Freq
-                format_timestamp(qso),
-                qso.their_call.clone(),
-                qso.band.to_string(),
-                qso.mode.to_string(),
-                format_rst(qso),
-                format_frequency(qso),
-            ]),
-            QsoFormType::Pota => Row::new(vec![
-                // Time | Call | Band | Mode | RST | Park | Freq
-                // Park and Freq are always distinct columns — no fallback mixing.
-                format_timestamp(qso),
-                qso.their_call.clone(),
-                qso.band.to_string(),
-                qso.mode.to_string(),
-                format_rst(qso),
-                qso.their_park.clone().unwrap_or_default(),
-                format_frequency(qso),
-            ]),
-            QsoFormType::FieldDay | QsoFormType::WinterFieldDay => Row::new(vec![
-                // Time | Call | Band | Mode | Exchange | Freq
-                format_timestamp(qso),
-                qso.their_call.clone(),
-                qso.band.to_string(),
-                qso.mode.to_string(),
-                qso.exchange_rcvd.clone().unwrap_or_default(),
-                format_frequency(qso),
-            ]),
-        }
+        // Time | Call | Band | Mode | RST | Freq
+        Row::new(vec![
+            format_timestamp(qso),
+            qso.their_call.clone(),
+            qso.band.to_string(),
+            qso.mode.to_string(),
+            format_rst(qso),
+            format_frequency(qso),
+        ])
     }
 
     fn column_widths(&self) -> Vec<Constraint> {
-        let common = [
+        vec![
             Constraint::Length(6),
             Constraint::Length(10),
             Constraint::Length(5),
             Constraint::Length(5),
-        ];
-        match self {
-            QsoFormType::General => {
-                [&common[..], &[Constraint::Length(8), Constraint::Min(10)]].concat()
-            }
-            QsoFormType::Pota => [
-                &common[..],
-                &[
-                    Constraint::Length(8),
-                    Constraint::Length(12),
-                    Constraint::Min(8),
-                ],
-            ]
-            .concat(),
-            QsoFormType::FieldDay | QsoFormType::WinterFieldDay => {
-                [&common[..], &[Constraint::Length(10), Constraint::Min(10)]].concat()
-            }
-        }
+            Constraint::Length(8),
+            Constraint::Min(10),
+        ]
+    }
+}
+
+impl RecentQsoDisplay for PotaDisplay {
+    fn recent_row(&self, qso: &Qso) -> Row<'static> {
+        // Time | Call | Band | Mode | RST | Park | Freq
+        // Park and Freq are always distinct columns — no fallback mixing.
+        Row::new(vec![
+            format_timestamp(qso),
+            qso.their_call.clone(),
+            qso.band.to_string(),
+            qso.mode.to_string(),
+            format_rst(qso),
+            qso.their_park.clone().unwrap_or_default(),
+            format_frequency(qso),
+        ])
+    }
+
+    fn column_widths(&self) -> Vec<Constraint> {
+        vec![
+            Constraint::Length(6),
+            Constraint::Length(10),
+            Constraint::Length(5),
+            Constraint::Length(5),
+            Constraint::Length(8),
+            Constraint::Length(12),
+            Constraint::Min(8),
+        ]
+    }
+}
+
+impl RecentQsoDisplay for ContestDisplay {
+    fn recent_row(&self, qso: &Qso) -> Row<'static> {
+        // Time | Call | Band | Mode | Exchange | Freq
+        Row::new(vec![
+            format_timestamp(qso),
+            qso.their_call.clone(),
+            qso.band.to_string(),
+            qso.mode.to_string(),
+            qso.exchange_rcvd.clone().unwrap_or_default(),
+            format_frequency(qso),
+        ])
+    }
+
+    fn column_widths(&self) -> Vec<Constraint> {
+        vec![
+            Constraint::Length(6),
+            Constraint::Length(10),
+            Constraint::Length(5),
+            Constraint::Length(5),
+            Constraint::Length(10),
+            Constraint::Min(10),
+        ]
     }
 }
 
 fn build_recent_rows(
     state: &QsoEntryState,
     max_rows: usize,
-    display: &impl RecentQsoDisplay,
+    display: &dyn RecentQsoDisplay,
 ) -> Vec<Row<'static>> {
     state
         .recent_qsos()
@@ -915,11 +937,13 @@ fn draw_recent_qsos(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
 
     // Limit rows to what actually fits — Rect height is the source of truth.
     let max_rows = recent_inner.height as usize;
-    let rows = build_recent_rows(state, max_rows, &state.form_type);
-    frame.render_widget(
-        Table::new(rows, state.form_type.column_widths()),
-        recent_inner,
-    );
+    let display: &dyn RecentQsoDisplay = match state.form_type {
+        QsoFormType::General => &GeneralDisplay,
+        QsoFormType::Pota => &PotaDisplay,
+        QsoFormType::FieldDay | QsoFormType::WinterFieldDay => &ContestDisplay,
+    };
+    let rows = build_recent_rows(state, max_rows, display);
+    frame.render_widget(Table::new(rows, display.column_widths()), recent_inner);
 }
 
 #[cfg(test)]
