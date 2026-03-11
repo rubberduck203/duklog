@@ -38,10 +38,11 @@ description: duklog coding standards, testing requirements, and review checklist
 ## TUI: draw_* Function Structure
 
 - High-level `draw_*` functions should **read like prose** — delegate formatting and row-building to small private helpers; the top-level function orchestrates, it does not inline per-cell logic
-- When a `match` arms inside a `draw_*` function repeats boilerplate across variants (e.g., same `.iter().take(n).map(...)` with different row content and widths per variant), **use a trait**:
-  - Define the trait and `impl` in the same TUI file — the type being implemented for (`QsoFormType`, etc.) stays clean of ratatui types; the impl lives where the ratatui code lives
-  - The trait bundles all per-variant rendering concerns (row builder + column widths), so the `draw_*` function contains no `match` at all
-  - Example: `trait RecentQsoDisplay { fn recent_row(&self, qso: &Qso) -> Row<'static>; fn column_widths(&self) -> Vec<Constraint>; }`
+- When a `draw_*` function dispatches on a type variant and each variant needs its own row layout and column widths, **use a trait with one dedicated struct per variant** — not `impl Trait for SomeEnum`:
+  - `impl Trait for SomeEnum` just moves the `match` inside the trait methods — the compiler enforces nothing per variant
+  - Dedicated structs (`struct GeneralDisplay; struct PotaDisplay; struct ContestDisplay;`) each have their own `impl` block; `recent_row` and `column_widths` are always defined together; the compiler rejects incomplete impls
+  - The trait impl lives in the same TUI file — the original enum (`QsoFormType`) stays clean of ratatui types; in Rust, impl blocks are separate from type definitions and live wherever the dependency already exists
+  - `draw_*` has **one** `match` at the boundary to convert the enum to a `&dyn Trait`, then calls no further `match`
 - Extract format helpers for repeated cell formatting: `fn format_rst(qso: &Qso) -> String`, `fn format_timestamp(qso: &Qso) -> String`
 
 ## When Touching a File (Boy Scout Rule)
