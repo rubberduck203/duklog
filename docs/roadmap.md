@@ -35,6 +35,7 @@
 - **Phase 5.6 — Log-type-aware Recent QSOs display** — Done: fully branched column sets per log type; POTA has separate Their Park and Frequency columns (no fallback mixing, fixes #37/#39); row count adapts to `Rect` height (fixes #40); `insta` snapshot tests added; `buffer_to_string` consolidated into `src/tui/test_utils.rs`; ADR-0005 added for rendering test strategy
 - **Phase 5.4 — `q`-key / `Esc` consistency audit** — Done: removed `q` as navigation key from Log Select, QSO List, and Help screens; `Esc` is the sole navigation/quit key everywhere
 - **Phase 5.5 — ADIF native storage** — Done: internal storage switched from `.jsonl` to `.adif`; log metadata encoded in ADIF header via standard and `APP_DUKLOG_*` fields; QSO appends remain O(1) file appends; reads use `difa::RecordStream` via a current-thread tokio runtime held by `LogManager`; export simplified to `std::fs::copy`; legacy `.jsonl` files auto-migrated on startup; `tokio` and `futures` added as direct dependencies
+- **Phase 5.7 — RST entry UX** — Done: `clear_on_first_input` flag added to `FormField`; `Form::set_default` arms the flag; first keystroke (insert or backspace) on an armed RST field replaces the default entirely; flag re-armed on mode change and `clear_fast_fields`; operators who accept "59" Tab past without typing and the default is preserved
 
 ---
 
@@ -92,18 +93,6 @@ This would let `draw_recent_qsos` extract the `&dyn RecentQsoDisplay` directly f
 **Scope**: For each `src/tui/screens/*/` screen, add at least one `assert_snapshot!(terminal.backend())` test at 80×24. Screens with multiple variants (log types, states) need one snapshot per variant. The `.snap` files serve as a living visual reference for the current UI layout — inspect them by reading the snapshot files directly.
 
 **Files**: `src/tui/screens/` (all screen modules), `src/tui/screens/snapshots/`.
-
----
-
-### Phase 5.7 — RST entry UX
-
-**Priority: Medium | Effort: Small | Depends on: —**
-
-**Why**: RST fields are pre-populated with "59" as a convenience, but the cursor lands at the end of the text. Operators who give real signal reports must backspace twice before typing, which is clunky. (#38)
-
-**Scope**: Either (a) place the cursor at the start of the field in overwrite mode so the first keystroke replaces the default, or (b) leave fields empty and rely on the "59" default only at submit time. Evaluate both options when starting the phase; the goal is to make changing the default fast without penalising operators who accept "59" as-is.
-
-**Files**: `src/tui/screens/qso_entry/` (field initialisation).
 
 ---
 

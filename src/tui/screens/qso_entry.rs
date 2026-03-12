@@ -133,8 +133,8 @@ impl QsoEntryState {
                     FormField::new("Frequency (kHz)", false),
                     FormField::new("Comments", false),
                 ]);
-                form.set_value(RST_SENT, rst);
-                form.set_value(RST_RCVD, rst);
+                form.set_default(RST_SENT, rst);
+                form.set_default(RST_RCVD, rst);
                 form
             }
             QsoFormType::Pota => {
@@ -147,8 +147,8 @@ impl QsoEntryState {
                     FormField::new("Frequency (kHz)", false),
                     FormField::new("Comments", false),
                 ]);
-                form.set_value(RST_SENT, rst);
-                form.set_value(RST_RCVD, rst);
+                form.set_default(RST_SENT, rst);
+                form.set_default(RST_RCVD, rst);
                 form
             }
             QsoFormType::FieldDay => Form::new(vec![
@@ -369,8 +369,8 @@ impl QsoEntryState {
         self.form.clear_value(THEIR_CALL);
         if self.form_type.has_rst() {
             let rst = self.mode.default_rst();
-            self.form.set_value(RST_SENT, rst);
-            self.form.set_value(RST_RCVD, rst);
+            self.form.set_default(RST_SENT, rst);
+            self.form.set_default(RST_RCVD, rst);
             match self.form_type {
                 QsoFormType::General => {
                     self.form.clear_value(GENERAL_FREQUENCY);
@@ -444,10 +444,10 @@ impl QsoEntryState {
 
         if self.form_type.has_rst() {
             if self.form.value(RST_SENT) == old_rst {
-                self.form.set_value(RST_SENT, new_rst);
+                self.form.set_default(RST_SENT, new_rst);
             }
             if self.form.value(RST_RCVD) == old_rst {
-                self.form.set_value(RST_RCVD, new_rst);
+                self.form.set_default(RST_RCVD, new_rst);
             }
         }
     }
@@ -2726,12 +2726,12 @@ mod tests {
 
         use crate::tui::test_utils::buffer_to_string;
 
-        fn render_qso_entry(
+        fn render_qso_entry_terminal(
             state: &QsoEntryState,
             log: Option<&Log>,
             width: u16,
             height: u16,
-        ) -> String {
+        ) -> Terminal<TestBackend> {
             let backend = TestBackend::new(width, height);
             let mut terminal = Terminal::new(backend).unwrap();
             terminal
@@ -2739,7 +2739,20 @@ mod tests {
                     draw_qso_entry(state, log, frame, frame.area());
                 })
                 .unwrap();
-            buffer_to_string(terminal.backend().buffer())
+            terminal
+        }
+
+        fn render_qso_entry(
+            state: &QsoEntryState,
+            log: Option<&Log>,
+            width: u16,
+            height: u16,
+        ) -> String {
+            buffer_to_string(
+                render_qso_entry_terminal(state, log, width, height)
+                    .backend()
+                    .buffer(),
+            )
         }
 
         fn make_log() -> Log {
@@ -3122,6 +3135,76 @@ mod tests {
                 !output.contains("Their Exchange"),
                 "default has no Their Exchange"
             );
+        }
+
+        // Snapshot tests for the full QSO entry screen (draw_qso_entry) at 80×24.
+        //
+        // These capture the complete layout — title, header, form fields, footer — so
+        // that Phase 5.7 RST UX changes don't introduce silent regressions.
+        mod snap_full_screen {
+            use insta::assert_snapshot;
+
+            use super::*;
+
+            fn render_full(state: &QsoEntryState, log: Option<&Log>) -> Terminal<TestBackend> {
+                render_qso_entry_terminal(state, log, 80, 24)
+            }
+
+            #[test]
+            fn snap_general_default() {
+                let state = QsoEntryState::new();
+                let log = make_general_log();
+                let terminal = render_full(&state, Some(&log));
+                assert_snapshot!(terminal.backend());
+            }
+
+            #[test]
+            fn snap_pota_default() {
+                let mut state = QsoEntryState::new();
+                let log = make_log();
+                state.set_log_context(&log);
+                let terminal = render_full(&state, Some(&log));
+                assert_snapshot!(terminal.backend());
+            }
+
+            #[test]
+            fn snap_fd_default() {
+                let mut state = QsoEntryState::new();
+                let log = make_fd_log();
+                state.set_log_context(&log);
+                let terminal = render_full(&state, Some(&log));
+                assert_snapshot!(terminal.backend());
+            }
+
+            #[test]
+            fn snap_wfd_default() {
+                let mut state = QsoEntryState::new();
+                let log = make_wfd_log();
+                state.set_log_context(&log);
+                let terminal = render_full(&state, Some(&log));
+                assert_snapshot!(terminal.backend());
+            }
+
+            #[test]
+            fn snap_editing_mode() {
+                let mut state = QsoEntryState::new();
+                let log = make_log();
+                state.set_log_context(&log);
+                let qso = make_qso("W3ABC", Band::M20, Mode::Ssb);
+                state.start_editing(0, &qso);
+                let terminal = render_full(&state, Some(&log));
+                assert_snapshot!(terminal.backend());
+            }
+
+            #[test]
+            fn snap_with_error() {
+                let mut state = QsoEntryState::new();
+                let log = make_log();
+                state.set_log_context(&log);
+                state.set_error("duplicate contact: W3ABC already logged on 20M SSB".into());
+                let terminal = render_full(&state, Some(&log));
+                assert_snapshot!(terminal.backend());
+            }
         }
 
         // Snapshot and targeted tests for draw_recent_qsos column layout.

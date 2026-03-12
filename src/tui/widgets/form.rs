@@ -17,6 +17,9 @@ pub struct FormField {
     pub error: Option<String>,
     /// Whether the field must be non-empty on submit.
     pub required: bool,
+    /// If true, the next `insert_char` or `delete_char` clears the current value before acting.
+    /// Used for pre-populated defaults (e.g. RST "59") that should be replaced on first keystroke.
+    pub clear_on_first_input: bool,
 }
 
 impl FormField {
@@ -27,6 +30,7 @@ impl FormField {
             value: String::new(),
             error: None,
             required,
+            clear_on_first_input: false,
         }
     }
 }
@@ -73,16 +77,31 @@ impl Form {
     }
 
     /// Inserts a character at the end of the focused field.
+    ///
+    /// If `clear_on_first_input` is set on the focused field, the current value is cleared
+    /// before inserting (replacing the pre-populated default on first keystroke).
     pub fn insert_char(&mut self, ch: char) {
         if let Some(field) = self.fields.get_mut(self.focus) {
+            if field.clear_on_first_input {
+                field.value.clear();
+                field.clear_on_first_input = false;
+            }
             field.value.push(ch);
         }
     }
 
     /// Deletes the last character from the focused field.
+    ///
+    /// If `clear_on_first_input` is set, the entire value is cleared instead of popping
+    /// one character (treats the backspace as "replace default").
     pub fn delete_char(&mut self) {
         if let Some(field) = self.fields.get_mut(self.focus) {
-            field.value.pop();
+            if field.clear_on_first_input {
+                field.value.clear();
+                field.clear_on_first_input = false;
+            } else {
+                field.value.pop();
+            }
         }
     }
 
@@ -109,6 +128,20 @@ impl Form {
     pub fn set_value(&mut self, index: usize, value: impl Into<String>) {
         if let Some(field) = self.fields.get_mut(index) {
             field.value = value.into();
+        }
+    }
+
+    /// Sets a pre-populated default value on the field at `index` and arms `clear_on_first_input`.
+    ///
+    /// The value is shown to the operator but the first keystroke (insert or delete) replaces it
+    /// entirely, so changing the default requires no backspacing. Operators who accept the default
+    /// can Tab past the field without typing — the value is preserved as-is.
+    ///
+    /// No-op if `index` is out of bounds.
+    pub fn set_default(&mut self, index: usize, value: impl Into<String>) {
+        if let Some(field) = self.fields.get_mut(index) {
+            field.value = value.into();
+            field.clear_on_first_input = true;
         }
     }
 
@@ -343,6 +376,69 @@ mod tests {
             form.delete_char();
             assert_eq!(form.value(0), "");
         }
+
+        #[test]
+        fn clear_on_first_input_clears_before_insert() {
+            let mut form = make_form();
+            form.set_default(0, "59");
+            assert_eq!(form.value(0), "59");
+            form.insert_char('5');
+            assert_eq!(
+                form.value(0),
+                "5",
+                "first char should replace default, not append"
+            );
+            form.insert_char('7');
+            assert_eq!(form.value(0), "57");
+        }
+
+        #[test]
+        fn delete_char_on_default_clears_value() {
+            let mut form = make_form();
+            form.set_default(0, "59");
+            form.delete_char();
+            assert_eq!(
+                form.value(0),
+                "",
+                "backspace on default should clear entirely"
+            );
+        }
+
+        #[test]
+        fn clear_on_first_input_flag_disarmed_after_insert() {
+            let mut form = make_form();
+            form.set_default(0, "59");
+            form.insert_char('5');
+            // flag is now false; subsequent inserts append normally
+            form.insert_char('9');
+            assert_eq!(form.value(0), "59");
+        }
+
+        #[test]
+        fn clear_on_first_input_rearms_on_set_default() {
+            let mut form = make_form();
+            form.set_default(0, "59");
+            form.insert_char('5'); // disarms flag
+            assert_eq!(form.value(0), "5");
+            form.set_default(0, "59"); // re-arm
+            form.insert_char('7');
+            assert_eq!(
+                form.value(0),
+                "7",
+                "set_default should re-arm the clear flag"
+            );
+        }
+
+        #[test]
+        fn normal_field_unaffected_by_set_default_on_other_field() {
+            let mut form = make_form();
+            form.set_default(1, "59"); // arm field 1
+            // type into field 0 — should not clear anything
+            form.insert_char('A');
+            form.insert_char('B');
+            assert_eq!(form.value(0), "AB");
+            assert_eq!(form.value(1), "59"); // field 1 unchanged, still armed
+        }
     }
 
     mod errors {
@@ -424,6 +520,21 @@ mod tests {
         fn clear_value_out_of_bounds_is_noop() {
             let mut form = make_form();
             form.clear_value(99);
+            assert_eq!(form.values(), vec!["", "", ""]);
+        }
+
+        #[test]
+        fn set_default_sets_value_and_arms_flag() {
+            let mut form = make_form();
+            form.set_default(0, "59");
+            assert_eq!(form.value(0), "59");
+            assert!(form.fields()[0].clear_on_first_input);
+        }
+
+        #[test]
+        fn set_default_out_of_bounds_is_noop() {
+            let mut form = make_form();
+            form.set_default(99, "59");
             assert_eq!(form.values(), vec!["", "", ""]);
         }
     }
