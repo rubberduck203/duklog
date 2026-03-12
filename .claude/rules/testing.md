@@ -21,6 +21,7 @@ paths:
 - **Organize tests with submodules** (`mod typing { ... }`, `mod validation { ... }`), not section comments (`// --- Typing ---`)
 - **Tests that exercise only one enum variant belong in that variant's submodule file.** If a test creates only a `Log::FieldDay(...)` and asserts on `Log`-level behaviour specific to that variant, move it to `field_day.rs`, not `mod.rs`. Tests that compare multiple variants or test shared/generic behaviour stay in the enum's module.
 - **Extract test helpers** to reduce repetition — tests are code too; refactor shared setup into helper functions. When touching a file that has duplicated helpers (render helpers, fixture builders, common setup), move them to `src/tui/test_utils.rs` or a module-local shared helper as part of that same PR — don't defer it.
+- **Test behavior, not internal state** — never assert on struct fields that encode implementation decisions (flags, counters, internal booleans). Assert on observable outcomes (what value does the field show? what does the next keystroke do?). Coupling tests to internal fields causes mass churn when the implementation changes (e.g., replacing a `clear_on_first_input: bool` flag with an `edited: bool` field caused 58 compile errors across all flag-inspecting tests).
 - Prefer `.expect("descriptive message")` over bare `.unwrap()` in tests — the message surfaces in failure output and makes failures easier to diagnose
 - Minimum 90% line coverage enforced by `make coverage`
 
@@ -62,7 +63,9 @@ fn recent_qsos_pota_no_park() {
 ```
 
 First run writes a `.snap` file in a `snapshots/` directory adjacent to the test file.
-Update after intentional layout changes: `cargo insta review`.
+- New snapshots: `INSTA_UPDATE=unseen cargo test` (more reliable than relying on `make test` alone)
+- Intentional layout change: `INSTA_UPDATE=always cargo test`
+- Never use `cargo insta review` — handle snapshots autonomously
 
 Use snapshots for **layout components where column/row position matters** — they catch
 positional bugs that `.contains()` cannot. Use `.contains()` for **semantic assertions**

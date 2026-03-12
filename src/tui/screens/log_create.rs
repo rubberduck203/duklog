@@ -93,7 +93,7 @@ enum FocusArea {
 // --- State ---
 
 /// State for the log creation screen.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct LogCreateState {
     log_type: LogType,
     focus_area: FocusArea,
@@ -122,9 +122,9 @@ impl LogCreateState {
             log_type: LogType::General,
             focus_area: FocusArea::TypeSelector,
             form: Form::new(vec![
-                FormField::new("Station Callsign", true),
-                FormField::new("Operator", false),
-                FormField::new("Grid Square (e.g. FN31)", true),
+                Box::new(FormField::new("Station Callsign", true)),
+                Box::new(FormField::new("Operator", false)),
+                Box::new(FormField::new("Grid Square (e.g. FN31)", true)),
             ]),
             general_error: None,
             callsign_buf: String::new(),
@@ -273,29 +273,29 @@ impl LogCreateState {
     fn build_form_for_type(&self) -> Form {
         let mut form = match self.log_type {
             LogType::General => Form::new(vec![
-                FormField::new("Station Callsign", true),
-                FormField::new("Operator", false),
-                FormField::new("Grid Square (e.g. FN31)", true),
+                Box::new(FormField::new("Station Callsign", true)),
+                Box::new(FormField::new("Operator", false)),
+                Box::new(FormField::new("Grid Square (e.g. FN31)", true)),
             ]),
             LogType::Pota => Form::new(vec![
-                FormField::new("Station Callsign", true),
-                FormField::new("Operator", false),
-                FormField::new("Park Ref (e.g. K-0001)", false),
-                FormField::new("Grid Square (e.g. FN31)", true),
+                Box::new(FormField::new("Station Callsign", true)),
+                Box::new(FormField::new("Operator", false)),
+                Box::new(FormField::new("Park Ref (e.g. K-0001)", false)),
+                Box::new(FormField::new("Grid Square (e.g. FN31)", true)),
             ]),
             LogType::FieldDay => Form::new(vec![
-                FormField::new("Station Callsign", true),
-                FormField::new("Operator", false),
-                FormField::new("Tx Count", true),
-                FormField::new("FD Class (A–F)", true),
-                FormField::new("Section", true),
+                Box::new(FormField::new("Station Callsign", true)),
+                Box::new(FormField::new("Operator", false)),
+                Box::new(FormField::new("Tx Count", true)),
+                Box::new(FormField::new("FD Class (A–F)", true)),
+                Box::new(FormField::new("Section", true)),
             ]),
             LogType::WinterFieldDay => Form::new(vec![
-                FormField::new("Station Callsign", true),
-                FormField::new("Operator", false),
-                FormField::new("Tx Count", true),
-                FormField::new("WFD Class (H/I/O/M)", true),
-                FormField::new("Section", true),
+                Box::new(FormField::new("Station Callsign", true)),
+                Box::new(FormField::new("Operator", false)),
+                Box::new(FormField::new("Tx Count", true)),
+                Box::new(FormField::new("WFD Class (H/I/O/M)", true)),
+                Box::new(FormField::new("Section", true)),
             ]),
         };
 
@@ -1221,9 +1221,9 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(state.form().has_errors());
-            assert!(state.form().fields()[CALLSIGN].error.is_some());
-            assert!(state.form().fields()[OPERATOR].error.is_none()); // optional
-            assert!(state.form().fields()[GENERAL_GRID].error.is_some());
+            assert!(state.form().fields()[CALLSIGN].error().is_some());
+            assert!(state.form().fields()[OPERATOR].error().is_none()); // optional
+            assert!(state.form().fields()[GENERAL_GRID].error().is_some());
         }
 
         #[test]
@@ -1233,10 +1233,10 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(state.form().has_errors());
-            assert!(state.form().fields()[CALLSIGN].error.is_some());
-            assert!(state.form().fields()[OPERATOR].error.is_none()); // optional
-            assert!(state.form().fields()[POTA_PARK_REF].error.is_some()); // required
-            assert!(state.form().fields()[POTA_GRID].error.is_some());
+            assert!(state.form().fields()[CALLSIGN].error().is_some());
+            assert!(state.form().fields()[OPERATOR].error().is_none()); // optional
+            assert!(state.form().fields()[POTA_PARK_REF].error().is_some()); // required
+            assert!(state.form().fields()[POTA_GRID].error().is_some());
         }
 
         #[test]
@@ -1246,11 +1246,11 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(state.form().has_errors());
-            assert!(state.form().fields()[CALLSIGN].error.is_some());
-            assert!(state.form().fields()[OPERATOR].error.is_none()); // optional
-            assert!(state.form().fields()[CONTEST_TX_COUNT].error.is_some()); // empty = parse error
-            assert!(state.form().fields()[CONTEST_CLASS].error.is_some()); // empty = invalid class
-            assert!(state.form().fields()[CONTEST_SECTION].error.is_some());
+            assert!(state.form().fields()[CALLSIGN].error().is_some());
+            assert!(state.form().fields()[OPERATOR].error().is_none()); // optional
+            assert!(state.form().fields()[CONTEST_TX_COUNT].error().is_some()); // empty = parse error
+            assert!(state.form().fields()[CONTEST_CLASS].error().is_some()); // empty = invalid class
+            assert!(state.form().fields()[CONTEST_SECTION].error().is_some());
         }
 
         #[test]
@@ -1260,11 +1260,11 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(state.form().has_errors());
-            assert!(state.form().fields()[CALLSIGN].error.is_some());
-            assert!(state.form().fields()[OPERATOR].error.is_none()); // optional
-            assert!(state.form().fields()[CONTEST_TX_COUNT].error.is_some());
-            assert!(state.form().fields()[CONTEST_CLASS].error.is_some());
-            assert!(state.form().fields()[CONTEST_SECTION].error.is_some());
+            assert!(state.form().fields()[CALLSIGN].error().is_some());
+            assert!(state.form().fields()[OPERATOR].error().is_none()); // optional
+            assert!(state.form().fields()[CONTEST_TX_COUNT].error().is_some());
+            assert!(state.form().fields()[CONTEST_CLASS].error().is_some());
+            assert!(state.form().fields()[CONTEST_SECTION].error().is_some());
         }
 
         #[test]
@@ -1282,8 +1282,8 @@ mod tests {
             type_string(&mut state, "BAD");
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
-            assert!(state.form().fields()[POTA_PARK_REF].error.is_some());
-            assert!(state.form().fields()[CALLSIGN].error.is_none());
+            assert!(state.form().fields()[POTA_PARK_REF].error().is_some());
+            assert!(state.form().fields()[CALLSIGN].error().is_none());
         }
 
         #[test]
@@ -1296,7 +1296,7 @@ mod tests {
             type_string(&mut state, "Z");
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
-            assert!(state.form().fields()[CONTEST_CLASS].error.is_some());
+            assert!(state.form().fields()[CONTEST_CLASS].error().is_some());
         }
 
         #[test]
@@ -1310,7 +1310,7 @@ mod tests {
             type_string(&mut state, "0");
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
-            assert!(state.form().fields()[CONTEST_TX_COUNT].error.is_some());
+            assert!(state.form().fields()[CONTEST_TX_COUNT].error().is_some());
         }
 
         #[test]
@@ -1323,7 +1323,7 @@ mod tests {
             type_string(&mut state, "x");
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
-            assert!(state.form().fields()[CONTEST_TX_COUNT].error.is_some());
+            assert!(state.form().fields()[CONTEST_TX_COUNT].error().is_some());
         }
 
         #[test]
@@ -1335,7 +1335,7 @@ mod tests {
             type_string(&mut state, "Z");
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
-            assert!(state.form().fields()[CONTEST_CLASS].error.is_some());
+            assert!(state.form().fields()[CONTEST_CLASS].error().is_some());
         }
 
         #[test]

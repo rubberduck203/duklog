@@ -14,7 +14,7 @@ use crate::model::{
 };
 use crate::tui::action::Action;
 use crate::tui::app::Screen;
-use crate::tui::widgets::form::{Form, FormField, draw_form_field};
+use crate::tui::widgets::form::{Form, FormField, RstField, draw_form_field};
 use crate::tui::widgets::{StatusBarContext, draw_status_bar};
 
 /// Field index for the other station's callsign (all form types).
@@ -25,6 +25,8 @@ const THEIR_CALL: usize = 0;
 const RST_SENT: usize = 1;
 /// Field index for RST received (General and POTA only).
 const RST_RCVD: usize = 2;
+/// Field index for the other station's park reference (POTA form).
+const POTA_THEIR_PARK: usize = 3;
 /// Field index for optional frequency in kHz (General form).
 const GENERAL_FREQUENCY: usize = 3;
 /// Field index for optional frequency in kHz (POTA form; after Their Park).
@@ -82,7 +84,7 @@ impl QsoFormType {
 }
 
 /// State for the QSO entry screen.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct QsoEntryState {
     form: Form,
     form_type: QsoFormType,
@@ -123,47 +125,36 @@ impl QsoEntryState {
     /// - POTA: Their Callsign | RST Sent | RST Rcvd | Their Park | Frequency (kHz) | Comments
     /// - FD / WFD: Their Callsign | Their Class | Their Section | Frequency | Comments  (no RST)
     fn build_form_for_type(form_type: QsoFormType, mode: Mode) -> Form {
+        let rst = mode.default_rst();
         match form_type {
-            QsoFormType::General => {
-                let rst = mode.default_rst();
-                let mut form = Form::new(vec![
-                    FormField::new("Their Callsign", true),
-                    FormField::new("RST Sent", true),
-                    FormField::new("RST Rcvd", true),
-                    FormField::new("Frequency (kHz)", false),
-                    FormField::new("Comments", false),
-                ]);
-                form.set_default(RST_SENT, rst);
-                form.set_default(RST_RCVD, rst);
-                form
-            }
-            QsoFormType::Pota => {
-                let rst = mode.default_rst();
-                let mut form = Form::new(vec![
-                    FormField::new("Their Callsign", true),
-                    FormField::new("RST Sent", true),
-                    FormField::new("RST Rcvd", true),
-                    FormField::new("Their Park", false),
-                    FormField::new("Frequency (kHz)", false),
-                    FormField::new("Comments", false),
-                ]);
-                form.set_default(RST_SENT, rst);
-                form.set_default(RST_RCVD, rst);
-                form
-            }
+            QsoFormType::General => Form::new(vec![
+                Box::new(FormField::new("Their Callsign", true)),
+                Box::new(RstField::new("RST Sent", rst)),
+                Box::new(RstField::new("RST Rcvd", rst)),
+                Box::new(FormField::new("Frequency (kHz)", false)),
+                Box::new(FormField::new("Comments", false)),
+            ]),
+            QsoFormType::Pota => Form::new(vec![
+                Box::new(FormField::new("Their Callsign", true)),
+                Box::new(RstField::new("RST Sent", rst)),
+                Box::new(RstField::new("RST Rcvd", rst)),
+                Box::new(FormField::new("Their Park", false)),
+                Box::new(FormField::new("Frequency (kHz)", false)),
+                Box::new(FormField::new("Comments", false)),
+            ]),
             QsoFormType::FieldDay => Form::new(vec![
-                FormField::new("Their Callsign", true),
-                FormField::new("Their Class (e.g. 3A)", true),
-                FormField::new("Their Section", true),
-                FormField::new("Frequency (kHz)", true),
-                FormField::new("Comments", false),
+                Box::new(FormField::new("Their Callsign", true)),
+                Box::new(FormField::new("Their Class (e.g. 3A)", true)),
+                Box::new(FormField::new("Their Section", true)),
+                Box::new(FormField::new("Frequency (kHz)", true)),
+                Box::new(FormField::new("Comments", false)),
             ]),
             QsoFormType::WinterFieldDay => Form::new(vec![
-                FormField::new("Their Callsign", true),
-                FormField::new("Their Class (e.g. 2H)", true),
-                FormField::new("Their Section", true),
-                FormField::new("Frequency (kHz)", true),
-                FormField::new("Comments", false),
+                Box::new(FormField::new("Their Callsign", true)),
+                Box::new(FormField::new("Their Class (e.g. 2H)", true)),
+                Box::new(FormField::new("Their Section", true)),
+                Box::new(FormField::new("Frequency (kHz)", true)),
+                Box::new(FormField::new("Comments", false)),
             ]),
         }
     }
@@ -368,15 +359,14 @@ impl QsoEntryState {
     pub fn clear_fast_fields(&mut self) {
         self.form.clear_value(THEIR_CALL);
         if self.form_type.has_rst() {
-            let rst = self.mode.default_rst();
-            self.form.set_default(RST_SENT, rst);
-            self.form.set_default(RST_RCVD, rst);
+            self.form.reset_field(RST_SENT);
+            self.form.reset_field(RST_RCVD);
             match self.form_type {
                 QsoFormType::General => {
                     self.form.clear_value(GENERAL_FREQUENCY);
                 }
                 QsoFormType::Pota => {
-                    self.form.clear_value(3); // Their Park
+                    self.form.clear_value(POTA_THEIR_PARK);
                     self.form.clear_value(POTA_FREQUENCY);
                 }
                 _ => unreachable!(),
@@ -406,7 +396,7 @@ impl QsoEntryState {
         let should_uppercase = focus == THEIR_CALL
             || (self.form_type.has_contest_exchange()
                 && (focus == CONTEST_THEIR_CLASS || focus == CONTEST_THEIR_SECTION))
-            || (self.form_type == QsoFormType::Pota && focus == 3);
+            || (self.form_type == QsoFormType::Pota && focus == POTA_THEIR_PARK);
         let ch = if should_uppercase {
             ch.to_ascii_uppercase()
         } else {
@@ -438,17 +428,12 @@ impl QsoEntryState {
     /// only if they still contain the previous mode's default.
     /// FD/WFD forms have no RST fields, so RST updates are skipped for those.
     fn cycle_mode(&mut self, forward: bool) {
-        let old_rst = self.mode.default_rst();
         self.mode = cycle(Mode::all(), self.mode, forward);
         let new_rst = self.mode.default_rst();
 
         if self.form_type.has_rst() {
-            if self.form.value(RST_SENT) == old_rst {
-                self.form.set_default(RST_SENT, new_rst);
-            }
-            if self.form.value(RST_RCVD) == old_rst {
-                self.form.set_default(RST_RCVD, new_rst);
-            }
+            self.form.set_mode_default(RST_SENT, new_rst);
+            self.form.set_mode_default(RST_RCVD, new_rst);
         }
     }
 
@@ -1079,12 +1064,12 @@ mod tests {
             assert_eq!(state.form().value(POTA_FREQUENCY), "");
             assert_eq!(state.form().value(5), "");
             assert_eq!(
-                state.form().fields()[3].label,
+                state.form().fields()[3].label(),
                 "Their Park",
                 "index 3 should be Their Park"
             );
             assert_eq!(
-                state.form().fields()[POTA_FREQUENCY].label,
+                state.form().fields()[POTA_FREQUENCY].label(),
                 "Frequency (kHz)",
                 "index 4 should be Frequency"
             );
@@ -1095,11 +1080,11 @@ mod tests {
             let mut state = QsoEntryState::new();
             state.set_log_context(&make_fd_log());
             assert!(
-                state.form().fields()[CONTEST_THEIR_CLASS].required,
+                state.form().fields()[CONTEST_THEIR_CLASS].required(),
                 "Their Class must be required for Field Day"
             );
             assert!(
-                state.form().fields()[CONTEST_THEIR_SECTION].required,
+                state.form().fields()[CONTEST_THEIR_SECTION].required(),
                 "Their Section must be required for Field Day"
             );
         }
@@ -1109,11 +1094,11 @@ mod tests {
             let mut state = QsoEntryState::new();
             state.set_log_context(&make_wfd_log());
             assert!(
-                state.form().fields()[CONTEST_THEIR_CLASS].required,
+                state.form().fields()[CONTEST_THEIR_CLASS].required(),
                 "Their Class must be required for Winter Field Day"
             );
             assert!(
-                state.form().fields()[CONTEST_THEIR_SECTION].required,
+                state.form().fields()[CONTEST_THEIR_SECTION].required(),
                 "Their Section must be required for Winter Field Day"
             );
         }
@@ -1123,11 +1108,11 @@ mod tests {
             let mut state = QsoEntryState::new();
             state.set_log_context(&make_pota_log());
             assert!(
-                !state.form().fields()[3].required,
+                !state.form().fields()[3].required(),
                 "Their Park must be optional for POTA"
             );
             assert!(
-                !state.form().fields()[POTA_FREQUENCY].required,
+                !state.form().fields()[POTA_FREQUENCY].required(),
                 "Frequency must be optional for POTA"
             );
         }
@@ -1440,36 +1425,39 @@ mod tests {
         }
 
         #[test]
-        fn mode_change_rearms_flag_when_rst_updated() {
-            // When a mode change updates an unedited RST field the flag must be
-            // re-armed so the new default can also be replaced on first keystroke.
+        fn mode_change_rearms_rst_replace_behavior_when_unedited() {
+            // When a mode change updates an unedited RST field, the new default
+            // should also be replaceable on first keystroke.
             let mut state = QsoEntryState::new();
-            // Both RST fields start armed (set_default called in build_form_for_type)
-            assert!(state.form().fields()[RST_SENT].clear_on_first_input);
             state.handle_key(alt_press(KeyCode::Char('m'))); // SSB → CW, value "59" → "599"
-            assert!(
-                state.form().fields()[RST_SENT].clear_on_first_input,
-                "flag must be re-armed after mode-change RST update"
-            );
-            assert!(
-                state.form().fields()[RST_RCVD].clear_on_first_input,
-                "flag must be re-armed after mode-change RST update"
+            assert_eq!(state.form().value(RST_SENT), "599");
+            // First keystroke should replace "599", not append to it
+            state.handle_key(press(KeyCode::Tab)); // → RST Sent
+            state.handle_key(press(KeyCode::Char('5')));
+            assert_eq!(
+                state.form().value(RST_SENT),
+                "5",
+                "first key after mode-change must replace new default"
             );
         }
 
         #[test]
-        fn mode_change_does_not_rearm_flag_when_rst_edited() {
-            // When the user has manually edited RST the mode change guard fires
-            // (value != old default) so set_default is never called — flag stays false.
+        fn mode_change_preserves_edited_rst_and_subsequent_input_appends() {
+            // When the user has manually edited RST, a mode change must not overwrite it,
+            // and subsequent input must append (not replace) since the field is "edited".
             let mut state = QsoEntryState::new();
             state.handle_key(press(KeyCode::Tab)); // → RST Sent
             state.handle_key(press(KeyCode::Char('5'))); // first char replaces default → "5"
-            assert!(!state.form().fields()[RST_SENT].clear_on_first_input);
-            state.handle_key(alt_press(KeyCode::Char('m'))); // SSB → CW; guard: "5" != "59", skip
-            assert!(
-                !state.form().fields()[RST_SENT].clear_on_first_input,
-                "flag must remain disarmed for a manually-edited RST field"
+            assert_eq!(state.form().value(RST_SENT), "5");
+            state.handle_key(alt_press(KeyCode::Char('m'))); // SSB → CW
+            assert_eq!(
+                state.form().value(RST_SENT),
+                "5",
+                "mode change must not overwrite manually-edited RST"
             );
+            // subsequent typing appends (not replaces) — the field stays in "edited" state
+            state.handle_key(press(KeyCode::Char('9')));
+            assert_eq!(state.form().value(RST_SENT), "59");
         }
     }
 
@@ -1519,7 +1507,7 @@ mod tests {
             let mut state = QsoEntryState::new();
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
-            assert!(state.form().fields()[THEIR_CALL].error.is_some());
+            assert!(state.form().fields()[THEIR_CALL].error().is_some());
         }
 
         #[test]
@@ -1532,7 +1520,7 @@ mod tests {
             state.handle_key(press(KeyCode::Backspace));
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
-            assert!(state.form().fields()[RST_SENT].error.is_some());
+            assert!(state.form().fields()[RST_SENT].error().is_some());
         }
 
         #[test]
@@ -1546,7 +1534,7 @@ mod tests {
             state.handle_key(press(KeyCode::Backspace));
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
-            assert!(state.form().fields()[RST_RCVD].error.is_some());
+            assert!(state.form().fields()[RST_RCVD].error().is_some());
         }
 
         #[test]
@@ -1561,7 +1549,7 @@ mod tests {
             type_string(&mut state, "BAD");
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
-            assert!(state.form().fields()[3].error.is_some());
+            assert!(state.form().fields()[3].error().is_some());
         }
 
         #[test]
@@ -1664,7 +1652,7 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(
-                state.form().fields()[CONTEST_THEIR_CLASS].error.is_some(),
+                state.form().fields()[CONTEST_THEIR_CLASS].error().is_some(),
                 "empty class should show error"
             );
         }
@@ -1682,7 +1670,7 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(
-                state.form().fields()[CONTEST_THEIR_CLASS].error.is_some(),
+                state.form().fields()[CONTEST_THEIR_CLASS].error().is_some(),
                 "invalid FD class should show error at class field"
             );
         }
@@ -1698,7 +1686,9 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(
-                state.form().fields()[CONTEST_THEIR_SECTION].error.is_some(),
+                state.form().fields()[CONTEST_THEIR_SECTION]
+                    .error()
+                    .is_some(),
                 "empty section should show error at section field"
             );
         }
@@ -1717,11 +1707,13 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(
-                state.form().fields()[CONTEST_THEIR_SECTION].error.is_some(),
+                state.form().fields()[CONTEST_THEIR_SECTION]
+                    .error()
+                    .is_some(),
                 "empty section should show error at section field"
             );
             assert!(
-                state.form().fields()[CONTEST_THEIR_CLASS].error.is_none(),
+                state.form().fields()[CONTEST_THEIR_CLASS].error().is_none(),
                 "class field must not have an error when class is valid"
             );
         }
@@ -1738,11 +1730,13 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(
-                state.form().fields()[CONTEST_THEIR_SECTION].error.is_some(),
+                state.form().fields()[CONTEST_THEIR_SECTION]
+                    .error()
+                    .is_some(),
                 "empty section should show error at section field"
             );
             assert!(
-                state.form().fields()[CONTEST_THEIR_CLASS].error.is_none(),
+                state.form().fields()[CONTEST_THEIR_CLASS].error().is_none(),
                 "class field must not have an error when class is valid"
             );
         }
@@ -1960,7 +1954,7 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(
-                state.form().fields()[CONTEST_FREQUENCY].error.is_some(),
+                state.form().fields()[CONTEST_FREQUENCY].error().is_some(),
                 "invalid frequency should show error at frequency field"
             );
         }
@@ -1979,7 +1973,7 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None, "zero frequency should be rejected");
             assert!(
-                state.form().fields()[CONTEST_FREQUENCY].error.is_some(),
+                state.form().fields()[CONTEST_FREQUENCY].error().is_some(),
                 "frequency field must show an error for 0"
             );
         }
@@ -2001,7 +1995,7 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(
-                state.form().fields()[3].error.is_some(),
+                state.form().fields()[3].error().is_some(),
                 "invalid frequency should show error at frequency field (index 3)"
             );
         }
@@ -2023,7 +2017,7 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None, "zero frequency should be rejected");
             assert!(
-                state.form().fields()[3].error.is_some(),
+                state.form().fields()[3].error().is_some(),
                 "frequency field must show an error for 0"
             );
         }
@@ -2102,7 +2096,7 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(
-                state.form().fields()[GENERAL_FREQUENCY].error.is_some(),
+                state.form().fields()[GENERAL_FREQUENCY].error().is_some(),
                 "invalid general frequency must show error"
             );
         }
@@ -2119,7 +2113,7 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(
-                state.form().fields()[GENERAL_FREQUENCY].error.is_some(),
+                state.form().fields()[GENERAL_FREQUENCY].error().is_some(),
                 "zero general frequency must show error"
             );
         }
@@ -2200,7 +2194,7 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None);
             assert!(
-                state.form().fields()[POTA_FREQUENCY].error.is_some(),
+                state.form().fields()[POTA_FREQUENCY].error().is_some(),
                 "invalid POTA frequency must show error"
             );
         }
@@ -2219,7 +2213,7 @@ mod tests {
             let action = state.handle_key(press(KeyCode::Enter));
             assert_eq!(action, Action::None, "zero frequency should be rejected");
             assert!(
-                state.form().fields()[POTA_FREQUENCY].error.is_some(),
+                state.form().fields()[POTA_FREQUENCY].error().is_some(),
                 "POTA frequency field must show an error for 0"
             );
         }
@@ -2415,19 +2409,22 @@ mod tests {
             // After clear_fast_fields the RST flag must be re-armed so the next QSO's
             // operator can replace the default on first keystroke without backspacing.
             let mut state = QsoEntryState::new();
-            // Disarm the flag by typing into RST Sent
+            // Edit RST Sent so it's no longer the default
             state.handle_key(press(KeyCode::Tab)); // → RST Sent
             state.handle_key(press(KeyCode::Char('5')));
-            assert!(!state.form().fields()[RST_SENT].clear_on_first_input);
+            assert_eq!(state.form().value(RST_SENT), "5");
 
             state.clear_fast_fields();
-            assert!(
-                state.form().fields()[RST_SENT].clear_on_first_input,
-                "clear_fast_fields must re-arm RST Sent"
+            // After clear_fast_fields, RST should be restored to default
+            assert_eq!(
+                state.form().value(RST_SENT),
+                "59",
+                "clear_fast_fields must restore RST Sent default"
             );
-            assert!(
-                state.form().fields()[RST_RCVD].clear_on_first_input,
-                "clear_fast_fields must re-arm RST Rcvd"
+            assert_eq!(
+                state.form().value(RST_RCVD),
+                "59",
+                "clear_fast_fields must restore RST Rcvd default"
             );
         }
 

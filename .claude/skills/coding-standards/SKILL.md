@@ -35,6 +35,20 @@ description: duklog coding standards, testing requirements, and review checklist
 - Keep `#[mutants::skip]` on draw functions (mutation testing visual layout isn't productive)
 - Never exclude: `src/model/`, `src/adif/`, `src/storage/`, `handle_key()` methods
 
+## TUI: When to Extract a Dedicated Widget
+
+Extract a dedicated widget (a new concrete struct implementing a trait) when either of these is true:
+
+1. **Multiple instances of the same specialized input appear in one form** — two RST fields on one screen is the clearest signal. Duplication of construction logic (`set_default` called twice) is the code smell.
+2. **A generic type is carrying specialized behavior via flags or post-construction setters** — if `FormField` grew a `clear_on_first_input` flag that only applies to RST fields, that behavior belongs in a dedicated `RstField` type, even if there were only one RST field.
+
+The general principle: **extract a widget to encapsulate its own logic and behavior**, not only when you have duplicates. A widget owns its invariants (defaults, reset semantics, mode-aware updates) and enforces them internally — callers should not need to know how it works.
+
+A well-extracted widget:
+- Is constructed with its domain constraints baked in (`RstField::new(label, default)`) rather than applied post-construction
+- Has `reset()` semantics appropriate to the input type (RST restores to default; text clears to empty)
+- Does not leak implementation details (no public flags, no caller-managed state)
+
 ## TUI: draw_* Function Structure
 
 - High-level `draw_*` functions should **read like prose** — delegate formatting and row-building to small private helpers; the top-level function orchestrates, it does not inline per-cell logic

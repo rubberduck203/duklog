@@ -1,50 +1,207 @@
 //! Reusable form widget for text input screens.
 
+use std::fmt;
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-/// A single field within a [`Form`].
-#[derive(Debug, Clone)]
-pub struct FormField {
-    /// Display label shown to the left of the input.
-    pub label: String,
+/// A single input field within a [`Form`].
+pub trait Field: fmt::Debug {
+    /// Display label shown above/beside the input.
+    fn label(&self) -> &str;
     /// Current text value.
-    pub value: String,
-    /// Validation error message, if any.
-    pub error: Option<String>,
+    fn value(&self) -> &str;
     /// Whether the field must be non-empty on submit.
-    pub required: bool,
-    /// If true, the next `insert_char` or `delete_char` clears the current value before acting.
-    /// Used for pre-populated defaults (e.g. RST "59") that should be replaced on first keystroke.
-    pub clear_on_first_input: bool,
+    fn required(&self) -> bool;
+    /// Validation error message, if any.
+    fn error(&self) -> Option<&str>;
+    /// Sets a validation error on this field.
+    fn set_error(&mut self, msg: String);
+    /// Clears the validation error.
+    fn clear_error(&mut self);
+    /// Appends a character to the field value.
+    fn insert_char(&mut self, ch: char);
+    /// Removes the last character from the field value.
+    fn delete_char(&mut self);
+    /// Explicitly sets the field value (e.g. loading an existing record for editing).
+    fn set_value(&mut self, value: &str);
+    /// Clears the field value.
+    fn clear_value(&mut self);
+    /// Resets the field to its initial state (empty value for text fields; default
+    /// report for RST fields).
+    fn reset(&mut self);
+    /// Updates the displayed default and marks the field as unedited.
+    ///
+    /// Used by mode-cycling to update RST defaults without overwriting user edits.
+    /// For non-RST fields this is a no-op.
+    fn set_mode_default(&mut self, _default: &str) {}
+}
+
+/// A generic single-line text input field.
+#[derive(Debug)]
+pub struct FormField {
+    label: String,
+    value: String,
+    error: Option<String>,
+    required: bool,
 }
 
 impl FormField {
-    /// Creates a new form field.
+    /// Creates a new text field with the given label and required flag.
     pub fn new(label: impl Into<String>, required: bool) -> Self {
         Self {
             label: label.into(),
             value: String::new(),
             error: None,
             required,
-            clear_on_first_input: false,
+        }
+    }
+}
+
+impl Field for FormField {
+    fn label(&self) -> &str {
+        &self.label
+    }
+    fn value(&self) -> &str {
+        &self.value
+    }
+    fn required(&self) -> bool {
+        self.required
+    }
+    fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+    fn set_error(&mut self, msg: String) {
+        self.error = Some(msg);
+    }
+    fn clear_error(&mut self) {
+        self.error = None;
+    }
+    fn insert_char(&mut self, ch: char) {
+        self.value.push(ch);
+    }
+    fn delete_char(&mut self) {
+        self.value.pop();
+    }
+    fn set_value(&mut self, value: &str) {
+        self.value = value.to_string();
+    }
+    fn clear_value(&mut self) {
+        self.value.clear();
+    }
+    fn reset(&mut self) {
+        self.value.clear();
+        self.error = None;
+    }
+}
+
+/// An RST signal-report input field.
+///
+/// Pre-populated with the mode's default report (e.g. `"59"` for SSB). The first
+/// keystroke — insert or backspace — replaces the default entirely, so operators
+/// who want to change it start typing immediately without backspacing. Operators
+/// who accept the default Tab past the field and the value is preserved unchanged.
+///
+/// When the mode changes (via [`Field::set_mode_default`]), the displayed value and
+/// stored default update automatically if the operator has not yet edited the field.
+/// Once edited, the operator's report is preserved across mode changes.
+#[derive(Debug)]
+pub struct RstField {
+    label: String,
+    value: String,
+    default: String,
+    edited: bool,
+    error: Option<String>,
+}
+
+impl RstField {
+    /// Creates a new RST field pre-populated with `default`.
+    pub fn new(label: impl Into<String>, default: impl Into<String>) -> Self {
+        let default = default.into();
+        Self {
+            label: label.into(),
+            value: default.clone(),
+            default,
+            edited: false,
+            error: None,
+        }
+    }
+}
+
+impl Field for RstField {
+    fn label(&self) -> &str {
+        &self.label
+    }
+    fn value(&self) -> &str {
+        &self.value
+    }
+    fn required(&self) -> bool {
+        true
+    }
+    fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+    fn set_error(&mut self, msg: String) {
+        self.error = Some(msg);
+    }
+    fn clear_error(&mut self) {
+        self.error = None;
+    }
+    fn insert_char(&mut self, ch: char) {
+        if !self.edited {
+            self.value.clear();
+            self.edited = true;
+        }
+        self.value.push(ch);
+    }
+    fn delete_char(&mut self) {
+        if !self.edited {
+            self.value.clear();
+            self.edited = true;
+        } else {
+            self.value.pop();
+        }
+    }
+    fn set_value(&mut self, value: &str) {
+        self.value = value.to_string();
+        self.edited = true;
+    }
+    fn clear_value(&mut self) {
+        self.value.clear();
+        self.edited = false;
+    }
+    fn reset(&mut self) {
+        self.value = self.default.clone();
+        self.edited = false;
+        self.error = None;
+    }
+    fn set_mode_default(&mut self, default: &str) {
+        if !self.edited {
+            self.default = default.to_string();
+            self.value = self.default.clone();
         }
     }
 }
 
 /// A multi-field text form with focus management.
-#[derive(Debug, Clone)]
+///
+/// Fields are stored as `Box<dyn Field>` because a form always contains a heterogeneous
+/// mix of [`FormField`] and [`RstField`] values. A generic type parameter `F: Field`
+/// would require all fields to share the same concrete type, which forces the boxing
+/// back to the call site anyway (as `Form<Box<dyn Field>>`). The `Box<dyn Field>`
+/// approach is idiomatic for owned, mixed-type collections in Rust.
+#[derive(Debug)]
 pub struct Form {
-    fields: Vec<FormField>,
+    fields: Vec<Box<dyn Field>>,
     focus: usize,
 }
 
 impl Form {
     /// Creates a new form with the given fields. Focus starts on the first field.
-    pub fn new(fields: Vec<FormField>) -> Self {
+    pub fn new(fields: Vec<Box<dyn Field>>) -> Self {
         Self { fields, focus: 0 }
     }
 
@@ -76,114 +233,99 @@ impl Form {
         self.focus = (self.focus + self.fields.len() - 1) % self.fields.len();
     }
 
-    /// Inserts a character at the end of the focused field.
-    ///
-    /// If `clear_on_first_input` is set on the focused field, the current value is cleared
-    /// before inserting (replacing the pre-populated default on first keystroke).
+    /// Inserts a character into the focused field.
     pub fn insert_char(&mut self, ch: char) {
         if let Some(field) = self.fields.get_mut(self.focus) {
-            if field.clear_on_first_input {
-                field.value.clear();
-                field.clear_on_first_input = false;
-            }
-            field.value.push(ch);
+            field.insert_char(ch);
         }
     }
 
     /// Deletes the last character from the focused field.
-    ///
-    /// If `clear_on_first_input` is set, the entire value is cleared instead of popping
-    /// one character (treats the backspace as "replace default").
     pub fn delete_char(&mut self) {
         if let Some(field) = self.fields.get_mut(self.focus) {
-            if field.clear_on_first_input {
-                field.value.clear();
-                field.clear_on_first_input = false;
-            } else {
-                field.value.pop();
-            }
+            field.delete_char();
         }
     }
 
     /// Sets an error message on a field by index.
     pub fn set_error(&mut self, index: usize, error: String) {
         if let Some(field) = self.fields.get_mut(index) {
-            field.error = Some(error);
+            field.set_error(error);
         }
     }
 
     /// Clears all field errors.
     pub fn clear_errors(&mut self) {
         for field in &mut self.fields {
-            field.error = None;
+            field.clear_error();
         }
     }
 
     /// Returns `true` if any field has an error set.
     pub fn has_errors(&self) -> bool {
-        self.fields.iter().any(|f| f.error.is_some())
+        self.fields.iter().any(|f| f.error().is_some())
     }
 
-    /// Sets the value of the field at `index` and disarms `clear_on_first_input`.
+    /// Explicitly sets the value of the field at `index`.
     ///
-    /// Use this for explicit values (e.g. loading an existing QSO for editing).
-    /// The first keystroke after `set_value` appends normally rather than replacing.
+    /// For [`RstField`]s this marks the field as edited, so subsequent mode
+    /// changes will not overwrite the operator's value.
     /// No-op if `index` is out of bounds.
-    pub fn set_value(&mut self, index: usize, value: impl Into<String>) {
+    pub fn set_value(&mut self, index: usize, value: impl AsRef<str>) {
         if let Some(field) = self.fields.get_mut(index) {
-            field.value = value.into();
-            field.clear_on_first_input = false;
+            field.set_value(value.as_ref());
         }
     }
 
-    /// Sets a pre-populated default value on the field at `index` and arms `clear_on_first_input`.
-    ///
-    /// The value is shown to the operator but the first keystroke (insert or delete) replaces it
-    /// entirely, so changing the default requires no backspacing. Operators who accept the default
-    /// can Tab past the field without typing — the value is preserved as-is.
-    ///
-    /// No-op if `index` is out of bounds.
-    pub fn set_default(&mut self, index: usize, value: impl Into<String>) {
-        if let Some(field) = self.fields.get_mut(index) {
-            field.value = value.into();
-            field.clear_on_first_input = true;
-        }
-    }
-
-    /// Clears the value of the field at `index` and disarms `clear_on_first_input`.
-    /// No-op if out of bounds.
+    /// Clears the value of the field at `index`. No-op if out of bounds.
     pub fn clear_value(&mut self, index: usize) {
         if let Some(field) = self.fields.get_mut(index) {
-            field.value.clear();
-            field.clear_on_first_input = false;
+            field.clear_value();
         }
     }
 
     /// Returns the value of the field at `index`, or an empty string if out of bounds.
     pub fn value(&self, index: usize) -> &str {
-        self.fields
-            .get(index)
-            .map(|f| f.value.as_str())
-            .unwrap_or("")
+        self.fields.get(index).map(|f| f.value()).unwrap_or("")
     }
 
     /// Returns all field values as a vector of string slices.
     pub fn values(&self) -> Vec<&str> {
-        self.fields.iter().map(|f| f.value.as_str()).collect()
+        self.fields.iter().map(|f| f.value()).collect()
     }
 
-    /// Resets all field values and errors.
+    /// Forwards a mode-default update to the field at `index`.
+    ///
+    /// For [`RstField`]s, updates the displayed value and stored default only if
+    /// the operator has not yet edited the field. For all other field types this
+    /// is a no-op.
+    /// No-op if `index` is out of bounds.
+    pub fn set_mode_default(&mut self, index: usize, default: &str) {
+        if let Some(field) = self.fields.get_mut(index) {
+            field.set_mode_default(default);
+        }
+    }
+
+    /// Resets the field at `index` to its initial state. No-op if out of bounds.
+    ///
+    /// For [`RstField`]s this restores the current default report and clears the
+    /// edited flag. For [`FormField`]s this clears the value.
+    pub fn reset_field(&mut self, index: usize) {
+        if let Some(field) = self.fields.get_mut(index) {
+            field.reset();
+        }
+    }
+
+    /// Resets all fields and returns focus to the first field.
     pub fn reset(&mut self) {
         for field in &mut self.fields {
-            field.value.clear();
-            field.error = None;
-            field.clear_on_first_input = false;
+            field.reset();
         }
         self.focus = 0;
     }
 
-    /// Returns a reference to the fields.
-    pub fn fields(&self) -> &[FormField] {
+    /// Returns a reference to the field list.
+    pub fn fields(&self) -> &[Box<dyn Field>] {
         &self.fields
     }
 }
@@ -197,7 +339,7 @@ pub fn draw_form_field(form: &Form, field_idx: usize, frame: &mut Frame, area: R
     let row_height = 3_u16;
     let is_focused = field_idx == form.focus;
 
-    let border_color = if field.error.is_some() {
+    let border_color = if field.error().is_some() {
         Color::Red
     } else if is_focused {
         Color::Yellow
@@ -205,10 +347,10 @@ pub fn draw_form_field(form: &Form, field_idx: usize, frame: &mut Frame, area: R
         Color::DarkGray
     };
 
-    let label = if field.required {
-        format!("{} *", field.label)
+    let label = if field.required() {
+        format!("{} *", field.label())
     } else {
-        field.label.clone()
+        field.label().to_string()
     };
 
     let block = Block::default()
@@ -216,7 +358,7 @@ pub fn draw_form_field(form: &Form, field_idx: usize, frame: &mut Frame, area: R
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color));
 
-    let mut spans = vec![Span::raw(&field.value)];
+    let mut spans = vec![Span::raw(field.value())];
     if is_focused {
         spans.push(Span::styled(
             "\u{2588}",
@@ -228,7 +370,7 @@ pub fn draw_form_field(form: &Form, field_idx: usize, frame: &mut Frame, area: R
     frame.render_widget(paragraph, area);
 
     // Draw error below the field if there's space
-    if let Some(ref err) = field.error {
+    if let Some(err) = field.error() {
         let error_line = Paragraph::new(Span::styled(err, Style::default().fg(Color::Red)));
         let err_area = Rect {
             x: area.x + 2,
@@ -263,9 +405,9 @@ mod tests {
 
     fn make_form() -> Form {
         Form::new(vec![
-            FormField::new("Callsign", true),
-            FormField::new("Operator", true),
-            FormField::new("Park Ref", false),
+            Box::new(FormField::new("Callsign", true)),
+            Box::new(FormField::new("Operator", true)),
+            Box::new(FormField::new("Park Ref", false)),
         ])
     }
 
@@ -384,68 +526,124 @@ mod tests {
             form.delete_char();
             assert_eq!(form.value(0), "");
         }
+    }
+
+    mod rst_field {
+        use super::*;
+
+        fn make_rst_form() -> Form {
+            Form::new(vec![
+                Box::new(FormField::new("Their Call", true)),
+                Box::new(RstField::new("RST Sent", "59")),
+                Box::new(RstField::new("RST Rcvd", "59")),
+            ])
+        }
 
         #[test]
-        fn clear_on_first_input_clears_before_insert() {
-            let mut form = make_form();
-            form.set_default(0, "59");
-            assert_eq!(form.value(0), "59");
+        fn first_insert_replaces_default() {
+            let mut form = make_rst_form();
+            form.set_focus(1);
             form.insert_char('5');
             assert_eq!(
-                form.value(0),
+                form.value(1),
                 "5",
                 "first char should replace default, not append"
             );
             form.insert_char('7');
-            assert_eq!(form.value(0), "57");
+            assert_eq!(form.value(1), "57");
         }
 
         #[test]
-        fn delete_char_on_default_clears_value() {
-            let mut form = make_form();
-            form.set_default(0, "59");
+        fn backspace_on_default_clears_entirely() {
+            let mut form = make_rst_form();
+            form.set_focus(1);
             form.delete_char();
             assert_eq!(
-                form.value(0),
+                form.value(1),
                 "",
                 "backspace on default should clear entirely"
             );
         }
 
         #[test]
-        fn clear_on_first_input_flag_disarmed_after_insert() {
-            let mut form = make_form();
-            form.set_default(0, "59");
+        fn subsequent_inserts_append_after_first() {
+            let mut form = make_rst_form();
+            form.set_focus(1);
             form.insert_char('5');
-            // flag is now false; subsequent inserts append normally
             form.insert_char('9');
-            assert_eq!(form.value(0), "59");
+            assert_eq!(form.value(1), "59");
         }
 
         #[test]
-        fn clear_on_first_input_rearms_on_set_default() {
-            let mut form = make_form();
-            form.set_default(0, "59");
-            form.insert_char('5'); // disarms flag
-            assert_eq!(form.value(0), "5");
-            form.set_default(0, "59"); // re-arm
-            form.insert_char('7');
+        fn tab_past_preserves_default() {
+            let form = make_rst_form();
+            assert_eq!(form.value(1), "59");
+            assert_eq!(form.value(2), "59");
+        }
+
+        #[test]
+        fn set_value_marks_as_edited() {
+            let mut form = make_rst_form();
+            form.set_value(1, "57");
+            form.set_focus(1);
+            form.insert_char('X');
             assert_eq!(
-                form.value(0),
-                "7",
-                "set_default should re-arm the clear flag"
+                form.value(1),
+                "57X",
+                "set_value should mark as edited — insert must append"
             );
         }
 
         #[test]
-        fn normal_field_unaffected_by_set_default_on_other_field() {
-            let mut form = make_form();
-            form.set_default(1, "59"); // arm field 1
-            // type into field 0 — should not clear anything
-            form.insert_char('A');
-            form.insert_char('B');
-            assert_eq!(form.value(0), "AB");
-            assert_eq!(form.value(1), "59"); // field 1 unchanged, still armed
+        fn set_mode_default_updates_when_unedited() {
+            let mut form = make_rst_form();
+            form.set_mode_default(1, "599");
+            assert_eq!(form.value(1), "599");
+        }
+
+        #[test]
+        fn set_mode_default_preserves_when_edited() {
+            let mut form = make_rst_form();
+            form.set_focus(1);
+            form.insert_char('5'); // now edited
+            form.set_mode_default(1, "599");
+            assert_eq!(form.value(1), "5", "edited RST must survive mode change");
+        }
+
+        #[test]
+        fn reset_field_restores_default() {
+            let mut form = make_rst_form();
+            form.set_focus(1);
+            form.insert_char('5'); // edited
+            form.reset_field(1);
+            assert_eq!(form.value(1), "59");
+            // flag is cleared — next insert should replace again
+            form.insert_char('7');
+            assert_eq!(form.value(1), "7");
+        }
+
+        #[test]
+        fn set_mode_default_updates_default_for_future_reset() {
+            let mut form = make_rst_form();
+            form.set_mode_default(1, "599");
+            form.set_focus(1);
+            form.insert_char('6'); // edit
+            form.reset_field(1);
+            assert_eq!(form.value(1), "599", "reset should restore updated default");
+        }
+
+        #[test]
+        fn non_rst_field_unaffected_by_set_mode_default() {
+            let mut form = make_rst_form();
+            form.set_mode_default(0, "anything"); // no-op on FormField
+            assert_eq!(form.value(0), "");
+        }
+
+        #[test]
+        fn rst_required_is_always_true() {
+            let form = make_rst_form();
+            assert!(form.fields()[1].required());
+            assert!(form.fields()[2].required());
         }
     }
 
@@ -457,7 +655,7 @@ mod tests {
             let mut form = make_form();
             form.set_error(0, "bad callsign".into());
             assert!(form.has_errors());
-            assert_eq!(form.fields()[0].error, Some("bad callsign".into()));
+            assert_eq!(form.fields()[0].error(), Some("bad callsign"));
         }
 
         #[test]
@@ -532,54 +730,10 @@ mod tests {
         }
 
         #[test]
-        fn clear_value_disarms_clear_on_first_input() {
+        fn set_mode_default_out_of_bounds_is_noop() {
             let mut form = make_form();
-            form.set_default(0, "59");
-            assert!(form.fields()[0].clear_on_first_input);
-            form.clear_value(0);
-            assert!(!form.fields()[0].clear_on_first_input);
-            assert_eq!(form.value(0), "");
-            // first insert now appends normally
-            form.set_focus(0);
-            form.insert_char('5');
-            assert_eq!(form.value(0), "5");
-        }
-
-        #[test]
-        fn set_default_sets_value_and_arms_flag() {
-            let mut form = make_form();
-            form.set_default(0, "59");
-            assert_eq!(form.value(0), "59");
-            assert!(form.fields()[0].clear_on_first_input);
-        }
-
-        #[test]
-        fn set_default_out_of_bounds_is_noop() {
-            let mut form = make_form();
-            form.set_default(99, "59");
+            form.set_mode_default(99, "59");
             assert_eq!(form.values(), vec!["", "", ""]);
-        }
-
-        #[test]
-        fn set_value_disarms_clear_on_first_input() {
-            let mut form = make_form();
-            form.set_default(0, "59"); // arms flag
-            assert!(form.fields()[0].clear_on_first_input);
-            form.set_value(0, "57"); // explicit value — disarms
-            assert!(!form.fields()[0].clear_on_first_input);
-        }
-
-        #[test]
-        fn set_value_after_set_default_appends_normally() {
-            let mut form = make_form();
-            form.set_default(0, "59");
-            form.set_value(0, "57"); // disarms
-            form.insert_char('X');
-            assert_eq!(
-                form.value(0),
-                "57X",
-                "insert after set_value must append, not replace"
-            );
         }
     }
 
@@ -599,30 +753,43 @@ mod tests {
         }
 
         #[test]
-        fn reset_disarms_clear_on_first_input() {
-            let mut form = make_form();
-            form.set_default(0, "59");
-            assert!(form.fields()[0].clear_on_first_input);
+        fn rst_field_reset_restores_default_not_empty() {
+            let mut form = Form::new(vec![Box::new(RstField::new("RST Sent", "59"))]);
+            form.insert_char('5'); // edit
             form.reset();
-            assert!(
-                !form.fields()[0].clear_on_first_input,
-                "reset must disarm the flag"
+            assert_eq!(
+                form.value(0),
+                "59",
+                "reset on RstField must restore default"
             );
         }
 
         #[test]
-        fn after_reset_insert_appends_not_replaces() {
-            let mut form = make_form();
-            form.set_default(0, "59");
+        fn rst_field_after_reset_first_key_replaces() {
+            let mut form = Form::new(vec![Box::new(RstField::new("RST Sent", "59"))]);
+            form.insert_char('5'); // edit
             form.reset();
-            form.insert_char('A');
-            assert_eq!(form.value(0), "A");
-            form.insert_char('B');
-            assert_eq!(
-                form.value(0),
-                "AB",
-                "after reset, typing must append normally"
-            );
+            form.insert_char('7'); // first key after reset should replace
+            assert_eq!(form.value(0), "7");
+        }
+    }
+
+    mod fields_accessor {
+        use super::*;
+
+        #[test]
+        fn returns_correct_labels() {
+            let form = make_form();
+            let labels: Vec<&str> = form.fields().iter().map(|f| f.label()).collect();
+            assert_eq!(labels, vec!["Callsign", "Operator", "Park Ref"]);
+        }
+
+        #[test]
+        fn required_flags() {
+            let form = make_form();
+            assert!(form.fields()[0].required());
+            assert!(form.fields()[1].required());
+            assert!(!form.fields()[2].required());
         }
     }
 
@@ -719,24 +886,16 @@ mod tests {
                 "should render error text"
             );
         }
-    }
-
-    mod fields_accessor {
-        use super::*;
 
         #[test]
-        fn returns_correct_labels() {
-            let form = make_form();
-            let labels: Vec<&str> = form.fields().iter().map(|f| f.label.as_str()).collect();
-            assert_eq!(labels, vec!["Callsign", "Operator", "Park Ref"]);
-        }
-
-        #[test]
-        fn required_flags() {
-            let form = make_form();
-            assert!(form.fields()[0].required);
-            assert!(form.fields()[1].required);
-            assert!(!form.fields()[2].required);
+        fn rst_field_renders_default_value() {
+            let form = Form::new(vec![Box::new(RstField::new("RST Sent", "59"))]);
+            let output = render_single_field(&form, 0, 40, 3);
+            assert!(
+                output.contains("RST Sent *"),
+                "RST field is always required"
+            );
+            assert!(output.contains("59"), "should render the default RST value");
         }
     }
 }
