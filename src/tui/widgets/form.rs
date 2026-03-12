@@ -124,10 +124,15 @@ impl Form {
         self.fields.iter().any(|f| f.error.is_some())
     }
 
-    /// Sets the value of the field at `index`. No-op if out of bounds.
+    /// Sets the value of the field at `index` and disarms `clear_on_first_input`.
+    ///
+    /// Use this for explicit values (e.g. loading an existing QSO for editing).
+    /// The first keystroke after `set_value` appends normally rather than replacing.
+    /// No-op if `index` is out of bounds.
     pub fn set_value(&mut self, index: usize, value: impl Into<String>) {
         if let Some(field) = self.fields.get_mut(index) {
             field.value = value.into();
+            field.clear_on_first_input = false;
         }
     }
 
@@ -145,10 +150,12 @@ impl Form {
         }
     }
 
-    /// Clears the value of the field at `index`. No-op if out of bounds.
+    /// Clears the value of the field at `index` and disarms `clear_on_first_input`.
+    /// No-op if out of bounds.
     pub fn clear_value(&mut self, index: usize) {
         if let Some(field) = self.fields.get_mut(index) {
             field.value.clear();
+            field.clear_on_first_input = false;
         }
     }
 
@@ -170,6 +177,7 @@ impl Form {
         for field in &mut self.fields {
             field.value.clear();
             field.error = None;
+            field.clear_on_first_input = false;
         }
         self.focus = 0;
     }
@@ -524,6 +532,20 @@ mod tests {
         }
 
         #[test]
+        fn clear_value_disarms_clear_on_first_input() {
+            let mut form = make_form();
+            form.set_default(0, "59");
+            assert!(form.fields()[0].clear_on_first_input);
+            form.clear_value(0);
+            assert!(!form.fields()[0].clear_on_first_input);
+            assert_eq!(form.value(0), "");
+            // first insert now appends normally
+            form.set_focus(0);
+            form.insert_char('5');
+            assert_eq!(form.value(0), "5");
+        }
+
+        #[test]
         fn set_default_sets_value_and_arms_flag() {
             let mut form = make_form();
             form.set_default(0, "59");
@@ -536,6 +558,28 @@ mod tests {
             let mut form = make_form();
             form.set_default(99, "59");
             assert_eq!(form.values(), vec!["", "", ""]);
+        }
+
+        #[test]
+        fn set_value_disarms_clear_on_first_input() {
+            let mut form = make_form();
+            form.set_default(0, "59"); // arms flag
+            assert!(form.fields()[0].clear_on_first_input);
+            form.set_value(0, "57"); // explicit value — disarms
+            assert!(!form.fields()[0].clear_on_first_input);
+        }
+
+        #[test]
+        fn set_value_after_set_default_appends_normally() {
+            let mut form = make_form();
+            form.set_default(0, "59");
+            form.set_value(0, "57"); // disarms
+            form.insert_char('X');
+            assert_eq!(
+                form.value(0),
+                "57X",
+                "insert after set_value must append, not replace"
+            );
         }
     }
 
@@ -552,6 +596,33 @@ mod tests {
             assert_eq!(form.value(0), "");
             assert_eq!(form.focus(), 0);
             assert!(!form.has_errors());
+        }
+
+        #[test]
+        fn reset_disarms_clear_on_first_input() {
+            let mut form = make_form();
+            form.set_default(0, "59");
+            assert!(form.fields()[0].clear_on_first_input);
+            form.reset();
+            assert!(
+                !form.fields()[0].clear_on_first_input,
+                "reset must disarm the flag"
+            );
+        }
+
+        #[test]
+        fn after_reset_insert_appends_not_replaces() {
+            let mut form = make_form();
+            form.set_default(0, "59");
+            form.reset();
+            form.insert_char('A');
+            assert_eq!(form.value(0), "A");
+            form.insert_char('B');
+            assert_eq!(
+                form.value(0),
+                "AB",
+                "after reset, typing must append normally"
+            );
         }
     }
 

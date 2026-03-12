@@ -800,12 +800,6 @@ fn draw_header(state: &QsoEntryState, log: Option<&Log>, frame: &mut Frame, area
     }
 }
 
-/// Renders the recent QSOs table widget.
-///
-/// Row count adapts to the available `Rect` height — no hard-coded limit.
-/// Column sets are fully branched on log type; park and frequency are always
-/// separate columns so there is never any ambiguity about which value is shown.
-#[mutants::skip]
 fn format_timestamp(qso: &Qso) -> String {
     qso.timestamp.format("%H:%M").to_string()
 }
@@ -869,6 +863,12 @@ fn build_recent_rows<F: Fn(&Qso) -> Row<'static>>(
         .collect()
 }
 
+/// Renders the recent QSOs table widget.
+///
+/// Row count adapts to the available `Rect` height — no hard-coded limit.
+/// Column sets are fully branched on log type; park and frequency are always
+/// separate columns so there is never any ambiguity about which value is shown.
+#[mutants::skip]
 fn draw_recent_qsos(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
     let recent_block = Block::default()
         .title(" Recent QSOs ")
@@ -1437,6 +1437,39 @@ mod tests {
             state.handle_key(alt_press(KeyCode::Char('m')));
             assert_eq!(state.form().value(RST_SENT), "57");
             assert_eq!(state.form().value(RST_RCVD), "55");
+        }
+
+        #[test]
+        fn mode_change_rearms_flag_when_rst_updated() {
+            // When a mode change updates an unedited RST field the flag must be
+            // re-armed so the new default can also be replaced on first keystroke.
+            let mut state = QsoEntryState::new();
+            // Both RST fields start armed (set_default called in build_form_for_type)
+            assert!(state.form().fields()[RST_SENT].clear_on_first_input);
+            state.handle_key(alt_press(KeyCode::Char('m'))); // SSB → CW, value "59" → "599"
+            assert!(
+                state.form().fields()[RST_SENT].clear_on_first_input,
+                "flag must be re-armed after mode-change RST update"
+            );
+            assert!(
+                state.form().fields()[RST_RCVD].clear_on_first_input,
+                "flag must be re-armed after mode-change RST update"
+            );
+        }
+
+        #[test]
+        fn mode_change_does_not_rearm_flag_when_rst_edited() {
+            // When the user has manually edited RST the mode change guard fires
+            // (value != old default) so set_default is never called — flag stays false.
+            let mut state = QsoEntryState::new();
+            state.handle_key(press(KeyCode::Tab)); // → RST Sent
+            state.handle_key(press(KeyCode::Char('5'))); // first char replaces default → "5"
+            assert!(!state.form().fields()[RST_SENT].clear_on_first_input);
+            state.handle_key(alt_press(KeyCode::Char('m'))); // SSB → CW; guard: "5" != "59", skip
+            assert!(
+                !state.form().fields()[RST_SENT].clear_on_first_input,
+                "flag must remain disarmed for a manually-edited RST field"
+            );
         }
     }
 
@@ -2376,6 +2409,41 @@ mod tests {
                 "FD comments should not be uppercased"
             );
         }
+
+        #[test]
+        fn clear_fast_fields_rearms_rst_clear_on_first_input() {
+            // After clear_fast_fields the RST flag must be re-armed so the next QSO's
+            // operator can replace the default on first keystroke without backspacing.
+            let mut state = QsoEntryState::new();
+            // Disarm the flag by typing into RST Sent
+            state.handle_key(press(KeyCode::Tab)); // → RST Sent
+            state.handle_key(press(KeyCode::Char('5')));
+            assert!(!state.form().fields()[RST_SENT].clear_on_first_input);
+
+            state.clear_fast_fields();
+            assert!(
+                state.form().fields()[RST_SENT].clear_on_first_input,
+                "clear_fast_fields must re-arm RST Sent"
+            );
+            assert!(
+                state.form().fields()[RST_RCVD].clear_on_first_input,
+                "clear_fast_fields must re-arm RST Rcvd"
+            );
+        }
+
+        #[test]
+        fn clear_fast_fields_rst_is_replaced_on_first_keystroke() {
+            // After clear_fast_fields the first keystroke into RST replaces the default.
+            let mut state = QsoEntryState::new();
+            state.clear_fast_fields();
+            state.handle_key(press(KeyCode::Tab)); // → RST Sent
+            state.handle_key(press(KeyCode::Char('5')));
+            assert_eq!(
+                state.form().value(RST_SENT),
+                "5",
+                "first char after clear_fast_fields must replace default"
+            );
+        }
     }
 
     mod recent_qsos {
@@ -2633,6 +2701,22 @@ mod tests {
             state.start_editing(0, &make_test_qso());
             assert!(!state.form().has_errors());
             assert_eq!(state.error(), None);
+        }
+
+        #[test]
+        fn start_editing_disarms_rst_clear_on_first_input() {
+            // start_editing loads a real QSO's RST via set_value, which must disarm
+            // the clear_on_first_input flag armed by set_default at form init. If it
+            // doesn't, the first keystroke would silently wipe the loaded RST value.
+            let mut state = QsoEntryState::new();
+            state.set_log_context(&make_pota_log());
+            let qso = make_test_qso(); // rst_sent="57", rst_rcvd="55"
+            state.start_editing(0, &qso);
+
+            // Tab to RST Sent and type a character — should append, not replace
+            state.handle_key(press(KeyCode::Tab)); // → RST_SENT (index 1)
+            state.handle_key(press(KeyCode::Char('8')));
+            assert_eq!(state.form().value(RST_SENT), "578");
         }
 
         #[test]
@@ -3152,8 +3236,9 @@ mod tests {
 
             #[test]
             fn snap_general_default() {
-                let state = QsoEntryState::new();
+                let mut state = QsoEntryState::new();
                 let log = make_general_log();
+                state.set_log_context(&log);
                 let terminal = render_full(&state, Some(&log));
                 assert_snapshot!(terminal.backend());
             }
