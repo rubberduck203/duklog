@@ -98,7 +98,30 @@ app.current_log
 
 Display format: `[label]  N/10 QSOs` (POTA) / `[label]  ACTIVATED` (POTA activated) / `[label]  N QSOs` (all other).
 
+## Recent QSOs Panel (`draw_recent_qsos`)
+
+Column sets are fully branched on `QsoFormType` — no fallback/mixing between columns:
+
+| Log type | Columns |
+|---|---|
+| General | Time \| Call \| Band \| Mode \| RST sent/rcvd \| Freq |
+| POTA | Time \| Call \| Band \| Mode \| RST sent/rcvd \| Their Park \| Freq |
+| FD / WFD | Time \| Call \| Band \| Mode \| Exchange rcvd \| Freq |
+
+Park and Freq are always separate columns in POTA — never conflated via fallback logic.
+
+`QsoEntryState::recent_qsos` stores enough QSOs to fill any reasonable terminal height
+(not a hard-coded 3). `draw_recent_qsos` renders all of them into the `Constraint::Min(3)`
+area; the Table widget clips naturally at the area boundary.
+
+## Snapshot Files as UI Reference
+
+Snapshot files in `src/tui/screens/snapshots/` are human-readable text renderings of each screen. **Read them before editing a `draw_*` function** to understand the current column layout, widths, and labels. They are the fastest way to "see" the UI without running the app.
+
+Naming convention: `duklog__tui__screens__<module>__tests__rendering__<test_name>.snap`
+
 ## Key ADRs
 
 - [ADR-0002](../../docs/adr/0002-explicit-screen-dispatch.md) — Why explicit match dispatch over ScreenState trait
 - [ADR-0003](../../docs/adr/0003-dynamic-form-construction.md) — Why dynamic form reconstruction over fixed fields with conditional rendering
+- [ADR-0005](../../docs/adr/0005-widget-rendering-test-strategy.md) — Widget rendering test strategy (⚠️ under review)

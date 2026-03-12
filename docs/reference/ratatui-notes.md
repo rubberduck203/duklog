@@ -112,6 +112,72 @@ Track `cursor: usize` byte offset; render before/at/after as separate `Span`s; `
 
 > **PR #32 feedback**: check ratatui third-party widget list before hand-rolling cursor logic. Consider adopting `tui-textarea` for any future editable field screens.
 
+## Testing Widgets
+
+Ratatui provides `TestBackend` for rendering without a real terminal. Two patterns are
+in use in duklog — see **ADR-0005** for the ongoing decision between them.
+
+### Pattern A — `buffer_to_string` + `.contains()` (current baseline)
+
+```rust
+fn buffer_to_string(buf: &Buffer) -> String {
+    let mut s = String::new();
+    for y in 0..buf.area.height {
+        for x in 0..buf.area.width {
+            s.push(buf[(x, y)].symbol().chars().next().unwrap_or(' '));
+        }
+        s.push('\n');
+    }
+    s
+}
+
+fn render_my_widget(state: &MyState, width: u16, height: u16) -> String {
+    let backend = TestBackend::new(width, height);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal.draw(|frame| draw_my_widget(state, frame, frame.area())).unwrap();
+    buffer_to_string(terminal.backend().buffer())
+}
+
+#[test]
+fn shows_callsign() {
+    let output = render_my_widget(&state, 80, 24);
+    assert!(output.contains("W1AW"));
+}
+```
+
+**Strength**: easy to write, tests semantic intent.
+**Weakness**: cannot distinguish correct vs. incorrect column position.
+
+### Pattern B — `insta` snapshots (introduced in Phase 5.6)
+
+Ratatui's official recommendation. `terminal.backend()` implements `Display` as a
+row-by-row text representation of the rendered screen.
+
+```rust
+use insta::assert_snapshot;
+
+#[test]
+fn recent_qsos_pota_no_park() {
+    let mut terminal = Terminal::new(TestBackend::new(80, 10)).unwrap();
+    terminal.draw(|frame| draw_recent_qsos(&state, frame, frame.area())).unwrap();
+    assert_snapshot!(terminal.backend());
+}
+```
+
+First run creates `snapshots/my_module__recent_qsos_pota_no_park.snap` — a literal
+picture of the terminal layout. Subsequent runs diff against it.
+
+Update snapshots after intentional changes: `cargo insta review`
+
+**Strength**: catches column position bugs; snapshot file is human-readable UI picture.
+**Weakness**: brittle during active layout development; requires review step on changes.
+Colors are not captured (known insta limitation).
+
+### Rule of thumb (provisional — see ADR-0005)
+
+- Use snapshots for **stabilised layout components** where column/row position matters.
+- Use `.contains()` for **semantic/logic assertions** (field present/absent by log type).
+
 ## Dependencies
 
 ratatui 0.29 uses crossterm 0.28 by default. Pin both to match:

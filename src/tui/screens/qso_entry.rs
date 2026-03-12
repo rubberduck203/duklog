@@ -268,9 +268,12 @@ impl QsoEntryState {
         self.error = Some(msg);
     }
 
-    /// Populates recent QSOs from a log (last 3, newest first) and rebuilds the form for the log type.
+    /// Populates recent QSOs from a log (newest first) and rebuilds the form for the log type.
+    ///
+    /// Stores up to 20 QSOs; `draw_recent_qsos` limits display to what fits in the
+    /// available `Rect` height so the row count adapts to the terminal size.
     pub fn set_log_context(&mut self, log: &Log) {
-        self.recent_qsos = log.header().qsos.iter().rev().take(3).cloned().collect();
+        self.recent_qsos = log.header().qsos.iter().rev().take(20).cloned().collect();
         let new_type = match log {
             Log::General(_) => QsoFormType::General,
             Log::Pota(_) => QsoFormType::Pota,
@@ -283,10 +286,12 @@ impl QsoEntryState {
         }
     }
 
-    /// Adds a QSO to the recent list, keeping only the last 3 (newest first).
+    /// Adds a QSO to the recent list (newest first), capped at 20.
+    ///
+    /// Display is further limited by `draw_recent_qsos` based on available `Rect` height.
     pub fn add_recent_qso(&mut self, qso: Qso) {
         self.recent_qsos.insert(0, qso);
-        self.recent_qsos.truncate(3);
+        self.recent_qsos.truncate(20);
     }
 
     /// Returns `true` if the form is in edit mode.
@@ -796,7 +801,74 @@ fn draw_header(state: &QsoEntryState, log: Option<&Log>, frame: &mut Frame, area
 }
 
 /// Renders the recent QSOs table widget.
+///
+/// Row count adapts to the available `Rect` height — no hard-coded limit.
+/// Column sets are fully branched on log type; park and frequency are always
+/// separate columns so there is never any ambiguity about which value is shown.
 #[mutants::skip]
+fn format_timestamp(qso: &Qso) -> String {
+    qso.timestamp.format("%H:%M").to_string()
+}
+
+fn format_rst(qso: &Qso) -> String {
+    format!("{}/{}", qso.rst_sent, qso.rst_rcvd)
+}
+
+fn format_frequency(qso: &Qso) -> String {
+    qso.frequency.map(|f| f.to_string()).unwrap_or_default()
+}
+
+fn recent_qso_row_general(qso: &Qso) -> Row<'static> {
+    // Time | Call | Band | Mode | RST | Freq
+    Row::new(vec![
+        format_timestamp(qso),
+        qso.their_call.clone(),
+        qso.band.to_string(),
+        qso.mode.to_string(),
+        format_rst(qso),
+        format_frequency(qso),
+    ])
+}
+
+fn recent_qso_row_pota(qso: &Qso) -> Row<'static> {
+    // Time | Call | Band | Mode | RST | Park | Freq
+    // Park and Freq are always distinct columns — no fallback mixing.
+    Row::new(vec![
+        format_timestamp(qso),
+        qso.their_call.clone(),
+        qso.band.to_string(),
+        qso.mode.to_string(),
+        format_rst(qso),
+        qso.their_park.clone().unwrap_or_default(),
+        format_frequency(qso),
+    ])
+}
+
+fn recent_qso_row_contest(qso: &Qso) -> Row<'static> {
+    // Time | Call | Band | Mode | Exchange | Freq
+    Row::new(vec![
+        format_timestamp(qso),
+        qso.their_call.clone(),
+        qso.band.to_string(),
+        qso.mode.to_string(),
+        qso.exchange_rcvd.clone().unwrap_or_default(),
+        format_frequency(qso),
+    ])
+}
+
+fn build_recent_rows<F: Fn(&Qso) -> Row<'static>>(
+    state: &QsoEntryState,
+    max_rows: usize,
+    to_row: F,
+) -> Vec<Row<'static>> {
+    state
+        .recent_qsos()
+        .iter()
+        .take(max_rows)
+        .map(to_row)
+        .collect()
+}
+
 fn draw_recent_qsos(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
     let recent_block = Block::default()
         .title(" Recent QSOs ")
@@ -806,56 +878,66 @@ fn draw_recent_qsos(state: &QsoEntryState, frame: &mut Frame, area: Rect) {
     let recent_inner = recent_block.inner(area);
     frame.render_widget(recent_block, area);
 
-    if !state.recent_qsos().is_empty() {
-        let rows: Vec<Row> = state
-            .recent_qsos()
-            .iter()
-            .map(|qso| {
-                let time = qso.timestamp.format("%H:%M").to_string();
-                let (col5, col6) = match state.form_type {
-                    QsoFormType::General => {
-                        let rst = format!("{}/{}", qso.rst_sent, qso.rst_rcvd);
-                        let freq = qso.frequency.map(|f| f.to_string()).unwrap_or_default();
-                        (rst, freq)
-                    }
-                    QsoFormType::Pota => {
-                        let rst = format!("{}/{}", qso.rst_sent, qso.rst_rcvd);
-                        let last = qso
-                            .their_park
-                            .as_deref()
-                            .map(|p| p.to_string())
-                            .or_else(|| qso.frequency.map(|f| f.to_string()))
-                            .unwrap_or_default();
-                        (rst, last)
-                    }
-                    QsoFormType::FieldDay | QsoFormType::WinterFieldDay => {
-                        let exchange = qso.exchange_rcvd.clone().unwrap_or_default();
-                        let freq = qso.frequency.map(|f| f.to_string()).unwrap_or_default();
-                        (exchange, freq)
-                    }
-                };
-                Row::new(vec![
-                    time,
-                    qso.their_call.clone(),
-                    qso.band.to_string(),
-                    qso.mode.to_string(),
-                    col5,
-                    col6,
-                ])
-            })
-            .collect();
+    if state.recent_qsos().is_empty() {
+        return;
+    }
 
-        let widths = [
-            Constraint::Length(6),
-            Constraint::Length(10),
-            Constraint::Length(5),
-            Constraint::Length(5),
-            Constraint::Length(8),
-            Constraint::Min(10),
-        ];
+    // Limit rows to what actually fits — Rect height is the source of truth.
+    let max_rows = recent_inner.height as usize;
 
-        let table = Table::new(rows, widths);
-        frame.render_widget(table, recent_inner);
+    match state.form_type {
+        QsoFormType::General => {
+            let widths = [
+                Constraint::Length(6),
+                Constraint::Length(10),
+                Constraint::Length(5),
+                Constraint::Length(5),
+                Constraint::Length(8),
+                Constraint::Min(10),
+            ];
+            frame.render_widget(
+                Table::new(
+                    build_recent_rows(state, max_rows, recent_qso_row_general),
+                    widths,
+                ),
+                recent_inner,
+            );
+        }
+        QsoFormType::Pota => {
+            let widths = [
+                Constraint::Length(6),
+                Constraint::Length(10),
+                Constraint::Length(5),
+                Constraint::Length(5),
+                Constraint::Length(8),
+                Constraint::Length(12),
+                Constraint::Min(8),
+            ];
+            frame.render_widget(
+                Table::new(
+                    build_recent_rows(state, max_rows, recent_qso_row_pota),
+                    widths,
+                ),
+                recent_inner,
+            );
+        }
+        QsoFormType::FieldDay | QsoFormType::WinterFieldDay => {
+            let widths = [
+                Constraint::Length(6),
+                Constraint::Length(10),
+                Constraint::Length(5),
+                Constraint::Length(5),
+                Constraint::Length(10),
+                Constraint::Min(10),
+            ];
+            frame.render_widget(
+                Table::new(
+                    build_recent_rows(state, max_rows, recent_qso_row_contest),
+                    widths,
+                ),
+                recent_inner,
+            );
+        }
     }
 }
 
@@ -2324,7 +2406,7 @@ mod tests {
         }
 
         #[test]
-        fn set_log_context_caps_at_3() {
+        fn set_log_context_stores_up_to_20() {
             let mut state = QsoEntryState::new();
             let mut log = Log::Pota(
                 PotaLog::new(
@@ -2335,12 +2417,12 @@ mod tests {
                 )
                 .unwrap(),
             );
-            for i in 0..5 {
+            for i in 0..25 {
                 log.add_qso(make_qso(&format!("W{i}AW"), Band::M20, Mode::Ssb));
             }
 
             state.set_log_context(&log);
-            assert_eq!(state.recent_qsos().len(), 3);
+            assert_eq!(state.recent_qsos().len(), 20);
         }
 
         #[test]
@@ -2353,15 +2435,14 @@ mod tests {
         }
 
         #[test]
-        fn add_recent_qso_caps_at_3() {
+        fn add_recent_qso_caps_at_20() {
             let mut state = QsoEntryState::new();
-            state.add_recent_qso(make_qso("A1A", Band::M20, Mode::Ssb));
-            state.add_recent_qso(make_qso("B2B", Band::M20, Mode::Ssb));
-            state.add_recent_qso(make_qso("C3C", Band::M20, Mode::Ssb));
-            state.add_recent_qso(make_qso("D4D", Band::M20, Mode::Ssb));
-            assert_eq!(state.recent_qsos().len(), 3);
-            assert_eq!(state.recent_qsos()[0].their_call, "D4D");
-            assert_eq!(state.recent_qsos()[2].their_call, "B2B");
+            for i in 0..25 {
+                state.add_recent_qso(make_qso(&format!("W{i}AW"), Band::M20, Mode::Ssb));
+            }
+            assert_eq!(state.recent_qsos().len(), 20);
+            // Newest (last added) is first
+            assert_eq!(state.recent_qsos()[0].their_call, "W24AW");
         }
     }
 
@@ -2643,16 +2724,7 @@ mod tests {
 
         use super::*;
 
-        fn buffer_to_string(buf: &ratatui::buffer::Buffer) -> String {
-            let mut s = String::new();
-            for y in 0..buf.area.height {
-                for x in 0..buf.area.width {
-                    s.push(buf[(x, y)].symbol().chars().next().unwrap_or(' '));
-                }
-                s.push('\n');
-            }
-            s
-        }
+        use crate::tui::test_utils::buffer_to_string;
 
         fn render_qso_entry(
             state: &QsoEntryState,
@@ -2804,7 +2876,8 @@ mod tests {
         }
 
         #[test]
-        fn renders_pota_park_priority_over_frequency() {
+        fn renders_pota_park_and_freq_both_visible() {
+            // Both park and freq have dedicated columns — neither displaces the other.
             let log = make_log();
             let mut state = QsoEntryState::new();
             state.set_log_context(&log);
@@ -2823,9 +2896,10 @@ mod tests {
             .unwrap();
             state.add_recent_qso(qso);
             let output = render_qso_entry(&state, Some(&log), 80, 30);
+            assert!(output.contains("K-5678"), "park should appear");
             assert!(
-                output.contains("K-5678"),
-                "park should appear when both park and freq set"
+                output.contains("14225"),
+                "freq should appear alongside park"
             );
         }
 
@@ -3048,6 +3122,305 @@ mod tests {
                 !output.contains("Their Exchange"),
                 "default has no Their Exchange"
             );
+        }
+
+        // Snapshot and targeted tests for draw_recent_qsos column layout.
+        //
+        // Snapshot tests (assert_snapshot!) capture the full rendered layout so
+        // column-position bugs are immediately visible in the .snap diff.
+        // Targeted tests (.contains()) assert semantic presence/absence.
+        //
+        // See ADR-0005 for the ongoing decision between these approaches.
+        mod recent_qsos_rendering {
+            use insta::assert_snapshot;
+
+            use super::*;
+
+            /// Render only `draw_recent_qsos` into a terminal of the given size.
+            ///
+            /// Returns the `Terminal` so callers can use `terminal.backend()` for
+            /// `assert_snapshot!` (Display) or `terminal.backend().buffer()` for
+            /// `buffer_to_string`.
+            fn render_recent(
+                state: &QsoEntryState,
+                width: u16,
+                height: u16,
+            ) -> Terminal<TestBackend> {
+                let backend = TestBackend::new(width, height);
+                let mut terminal = Terminal::new(backend).unwrap();
+                terminal
+                    .draw(|frame| {
+                        draw_recent_qsos(state, frame, frame.area());
+                    })
+                    .unwrap();
+                terminal
+            }
+
+            fn pota_qso_with_park(call: &str, park: &str, freq: Option<u32>) -> Qso {
+                Qso::new(
+                    call.to_string(),
+                    "59".to_string(),
+                    "59".to_string(),
+                    Band::M20,
+                    Mode::Ssb,
+                    Utc.with_ymd_and_hms(2026, 3, 10, 14, 30, 0).unwrap(),
+                    String::new(),
+                    Some(park.to_string()),
+                    None,
+                    freq,
+                )
+                .unwrap()
+            }
+
+            fn pota_qso_no_park(call: &str, freq: Option<u32>) -> Qso {
+                Qso::new(
+                    call.to_string(),
+                    "59".to_string(),
+                    "59".to_string(),
+                    Band::M20,
+                    Mode::Ssb,
+                    Utc.with_ymd_and_hms(2026, 3, 10, 14, 30, 0).unwrap(),
+                    String::new(),
+                    None,
+                    None,
+                    freq,
+                )
+                .unwrap()
+            }
+
+            fn general_qso(call: &str, freq: Option<u32>) -> Qso {
+                Qso::new(
+                    call.to_string(),
+                    "59".to_string(),
+                    "59".to_string(),
+                    Band::M20,
+                    Mode::Ssb,
+                    Utc.with_ymd_and_hms(2026, 3, 10, 14, 30, 0).unwrap(),
+                    String::new(),
+                    None,
+                    None,
+                    freq,
+                )
+                .unwrap()
+            }
+
+            fn fd_qso(call: &str, exchange: &str, freq: Option<u32>) -> Qso {
+                Qso::new(
+                    call.to_string(),
+                    "59".to_string(),
+                    "59".to_string(),
+                    Band::M20,
+                    Mode::Ssb,
+                    Utc.with_ymd_and_hms(2026, 3, 10, 14, 30, 0).unwrap(),
+                    String::new(),
+                    None,
+                    Some(exchange.to_string()),
+                    freq,
+                )
+                .unwrap()
+            }
+
+            // --- Snapshot tests: verify full column layout ---
+
+            #[test]
+            fn snap_general_with_freq() {
+                let mut state = QsoEntryState::new();
+                state.add_recent_qso(general_qso("W3ABC", Some(14_225)));
+                assert_snapshot!(render_recent(&state, 80, 4).backend());
+            }
+
+            #[test]
+            fn snap_general_no_freq() {
+                let mut state = QsoEntryState::new();
+                state.add_recent_qso(general_qso("W3ABC", None));
+                assert_snapshot!(render_recent(&state, 80, 4).backend());
+            }
+
+            #[test]
+            fn snap_pota_park_and_freq() {
+                let mut state = QsoEntryState::new();
+                let log = Log::Pota(
+                    PotaLog::new(
+                        "W1AW".to_string(),
+                        None,
+                        "K-0001".to_string(),
+                        "FN31".to_string(),
+                    )
+                    .unwrap(),
+                );
+                state.set_log_context(&log);
+                state.add_recent_qso(pota_qso_with_park("W3ABC", "K-5678", Some(14_225)));
+                assert_snapshot!(render_recent(&state, 80, 4).backend());
+            }
+
+            #[test]
+            fn snap_pota_park_no_freq() {
+                let mut state = QsoEntryState::new();
+                let log = Log::Pota(
+                    PotaLog::new(
+                        "W1AW".to_string(),
+                        None,
+                        "K-0001".to_string(),
+                        "FN31".to_string(),
+                    )
+                    .unwrap(),
+                );
+                state.set_log_context(&log);
+                state.add_recent_qso(pota_qso_with_park("W3ABC", "K-5678", None));
+                assert_snapshot!(render_recent(&state, 80, 4).backend());
+            }
+
+            /// Regression test for issue #37: POTA contact with no park and a frequency
+            /// must show the frequency in the freq column, not the park column.
+            #[test]
+            fn snap_pota_freq_no_park() {
+                let mut state = QsoEntryState::new();
+                let log = Log::Pota(
+                    PotaLog::new(
+                        "W1AW".to_string(),
+                        None,
+                        "K-0001".to_string(),
+                        "FN31".to_string(),
+                    )
+                    .unwrap(),
+                );
+                state.set_log_context(&log);
+                state.add_recent_qso(pota_qso_no_park("W3ABC", Some(14_225)));
+                assert_snapshot!(render_recent(&state, 80, 4).backend());
+            }
+
+            #[test]
+            fn snap_pota_neither_park_nor_freq() {
+                let mut state = QsoEntryState::new();
+                let log = Log::Pota(
+                    PotaLog::new(
+                        "W1AW".to_string(),
+                        None,
+                        "K-0001".to_string(),
+                        "FN31".to_string(),
+                    )
+                    .unwrap(),
+                );
+                state.set_log_context(&log);
+                state.add_recent_qso(pota_qso_no_park("W3ABC", None));
+                assert_snapshot!(render_recent(&state, 80, 4).backend());
+            }
+
+            #[test]
+            fn snap_fd_exchange_and_freq() {
+                let mut state = QsoEntryState::new();
+                let log = make_fd_log();
+                state.set_log_context(&log);
+                state.add_recent_qso(fd_qso("W3ABC", "3A CT", Some(14_225)));
+                assert_snapshot!(render_recent(&state, 80, 4).backend());
+            }
+
+            #[test]
+            fn snap_fd_exchange_no_freq() {
+                let mut state = QsoEntryState::new();
+                let log = make_fd_log();
+                state.set_log_context(&log);
+                state.add_recent_qso(fd_qso("W3ABC", "3A CT", None));
+                assert_snapshot!(render_recent(&state, 80, 4).backend());
+            }
+
+            #[test]
+            fn snap_wfd_exchange_and_freq() {
+                let mut state = QsoEntryState::new();
+                let log = make_wfd_log();
+                state.set_log_context(&log);
+                state.add_recent_qso(fd_qso("W3ABC", "2H EPA", Some(14_225)));
+                assert_snapshot!(render_recent(&state, 80, 4).backend());
+            }
+
+            #[test]
+            fn snap_wfd_exchange_no_freq() {
+                let mut state = QsoEntryState::new();
+                let log = make_wfd_log();
+                state.set_log_context(&log);
+                state.add_recent_qso(fd_qso("W3ABC", "2H EPA", None));
+                assert_snapshot!(render_recent(&state, 80, 4).backend());
+            }
+
+            /// Issue #40: row count adapts to terminal height.
+            /// height=10 gives 9 inner rows; 10 QSOs fills all 9 visibly.
+            #[test]
+            fn snap_general_tall_terminal_shows_more_rows() {
+                let mut state = QsoEntryState::new();
+                for i in 0..10 {
+                    state.add_recent_qso(general_qso(
+                        &format!("W{i}AW"),
+                        Some(14_000 + i as u32 * 25),
+                    ));
+                }
+                assert_snapshot!(render_recent(&state, 80, 10).backend());
+            }
+
+            // --- Targeted semantic tests ---
+
+            #[test]
+            fn pota_freq_column_independent_of_park() {
+                // When park is present, freq should also be visible (separate column).
+                let mut state = QsoEntryState::new();
+                let log = Log::Pota(
+                    PotaLog::new(
+                        "W1AW".to_string(),
+                        None,
+                        "K-0001".to_string(),
+                        "FN31".to_string(),
+                    )
+                    .unwrap(),
+                );
+                state.set_log_context(&log);
+                state.add_recent_qso(pota_qso_with_park("W3ABC", "K-5678", Some(14_225)));
+                let output = buffer_to_string(render_recent(&state, 80, 4).backend().buffer());
+                assert!(output.contains("K-5678"), "park should appear");
+                assert!(
+                    output.contains("14225"),
+                    "freq should also appear alongside park"
+                );
+            }
+
+            #[test]
+            fn pota_no_park_freq_still_visible() {
+                // Regression for #37: freq must appear even when park is absent.
+                let mut state = QsoEntryState::new();
+                let log = Log::Pota(
+                    PotaLog::new(
+                        "W1AW".to_string(),
+                        None,
+                        "K-0001".to_string(),
+                        "FN31".to_string(),
+                    )
+                    .unwrap(),
+                );
+                state.set_log_context(&log);
+                state.add_recent_qso(pota_qso_no_park("W3ABC", Some(14_225)));
+                let output = buffer_to_string(render_recent(&state, 80, 4).backend().buffer());
+                assert!(
+                    output.contains("14225"),
+                    "freq should appear in freq column"
+                );
+                assert!(!output.contains("K-"), "no park ref should appear");
+            }
+
+            #[test]
+            fn row_count_adapts_to_height() {
+                // Issue #40: row count is driven by Rect height, not a hard-coded constant.
+                // height=4 → 3 inner rows (Borders::TOP costs 1); height=10 → 9 inner rows.
+                let mut state = QsoEntryState::new();
+                for i in 0..8 {
+                    state.add_recent_qso(general_qso(&format!("W{i}AW"), None));
+                }
+                let short = buffer_to_string(render_recent(&state, 80, 4).backend().buffer());
+                let tall = buffer_to_string(render_recent(&state, 80, 10).backend().buffer());
+                let short_rows = (0..8)
+                    .filter(|i| short.contains(&format!("W{i}AW")))
+                    .count();
+                let tall_rows = (0..8).filter(|i| tall.contains(&format!("W{i}AW"))).count();
+                assert_eq!(short_rows, 3, "height=4 should show exactly 3 rows");
+                assert_eq!(tall_rows, 8, "height=10 should show all 8 QSOs");
+            }
         }
     }
 

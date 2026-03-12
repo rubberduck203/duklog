@@ -1,0 +1,12 @@
+# Insta snapshot configuration
+# https://insta.rs/docs/settings/
+#
+# update = "unseen"  — new snapshots are auto-accepted on first run.
+# Changed snapshots (regressions) fail and require deliberate acceptance:
+#   INSTA_UPDATE=always cargo test
+#
+# This means:
+#   - Writing a new snapshot test: just run `make test`, snapshot is created.
+#   - Intentional layout change: run `INSTA_UPDATE=always cargo test` to accept.
+#   - Unintentional regression: test fails, no silent overwrites.
+update: unseen

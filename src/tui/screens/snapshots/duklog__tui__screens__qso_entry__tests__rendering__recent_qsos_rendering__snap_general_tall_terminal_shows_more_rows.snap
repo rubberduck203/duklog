@@ -1,0 +1,14 @@
+---
+source: src/tui/screens/qso_entry.rs
+expression: "render_recent(&state, 80, 10).backend()"
+---
+" Recent QSOs ───────────────────────────────────────────────────────────────────"
+"14:30  W9AW       20M   SSB   59/59    14225                                    "
+"14:30  W8AW       20M   SSB   59/59    14200                                    "
+"14:30  W7AW       20M   SSB   59/59    14175                                    "
+"14:30  W6AW       20M   SSB   59/59    14150                                    "
+"14:30  W5AW       20M   SSB   59/59    14125                                    "
+"14:30  W4AW       20M   SSB   59/59    14100                                    "
+"14:30  W3AW       20M   SSB   59/59    14075                                    "
+"14:30  W2AW       20M   SSB   59/59    14050                                    "
+"14:30  W1AW       20M   SSB   59/59    14025                                    "

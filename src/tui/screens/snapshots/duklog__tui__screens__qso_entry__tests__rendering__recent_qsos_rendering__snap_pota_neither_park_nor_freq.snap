@@ -1,0 +1,8 @@
+---
+source: src/tui/screens/qso_entry.rs
+expression: "render_recent(&state, 80, 4).backend()"
+---
+" Recent QSOs ───────────────────────────────────────────────────────────────────"
+"14:30  W3ABC      20M   SSB   59/59                                             "
+"                                                                                "
+"                                                                                "

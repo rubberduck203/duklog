@@ -62,6 +62,7 @@ The TUI uses explicit `match self.screen` dispatch in `App`, with an `Action` en
 | [ADR-0002](adr/0002-explicit-screen-dispatch.md) | Explicit screen dispatch over ScreenState trait | `tui/` |
 | [ADR-0003](adr/0003-dynamic-form-construction.md) | Dynamic form construction for QSO entry | `tui/screens/` |
 | [ADR-0004](adr/0004-hand-written-adif-reader.md) | Hand-written ADIF reader over serde ADIF format | `adif/`, `storage/` |
+| [ADR-0005](adr/0005-widget-rendering-test-strategy.md) | Widget rendering test strategy (⚠️ under review) | `tui/` |
 
 ## Dependencies
 
