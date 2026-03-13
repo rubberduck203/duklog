@@ -143,7 +143,7 @@ FD and WFD do not exchange RST. Row 1 Col 2/3 capture the contest class (e.g. `3
 
 **Modes** (default SSB): SSB, CW, FT8, FT4, JS8, PSK31, RTTY, FM, AM, Digi
 
-When you change modes, the RST fields auto-update to the new mode's default — unless you've manually edited them.
+**RST fields** are pre-filled with the mode's default ("59" for SSB/FM/AM; "599" for CW/PSK31/RTTY; "-10" dB SNR for FT8/FT4/JS8/Digi). The first keystroke (any character or Backspace) replaces the entire default, so you can start typing the real report immediately without backspacing. Operators who accept the default can Tab past the RST fields without typing — the default is preserved. When you change modes, unedited RST fields auto-update to the new mode's default.
 
 If you log a contact with the same callsign, band, and mode as an existing QSO in the current log, a duplicate warning is displayed. The QSO is still saved — the operator may intentionally work the same station on the same band/mode.
 

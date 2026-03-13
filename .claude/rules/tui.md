@@ -79,6 +79,21 @@ QSO list dispatches `EditQso(index)` on Enter. `App::apply_action` populates the
 - `draw_form` — renders all fields vertically in a single column
 - `draw_form_field` — renders a single field at a caller-supplied `Rect`; used by screens needing custom spatial layouts (multi-column rows)
 
+**Two concrete field types** (both implement `Field` trait):
+- `FormField` — generic single-line text input; value starts empty; `reset()` clears to empty
+- `RstField` — RST signal-report input; pre-populated with a mode default (e.g. `"59"`); first keystroke replaces the default entirely; `reset()` restores the default (not empty); mode changes update the default only if unedited
+
+**`Form` field API**:
+- `Form::new(Vec<Box<dyn Field>>)` — fields are owned trait objects; mix `FormField` and `RstField` freely
+- `set_value(index, value)` — for loading real data (e.g. `start_editing`); on `RstField` marks as edited
+- `set_mode_default(index, default)` — forwards to `RstField::set_mode_default`; no-op on `FormField`; used by `cycle_mode`
+- `reset_field(index)` — calls `field.reset()`; for `RstField` restores default; used by `clear_fast_fields`
+- `clear_value(index)` — clears to empty; used for non-RST fields in `clear_fast_fields`
+
+**Why `Box<dyn Field>`**: a form always contains a heterogeneous mix of `FormField` and `RstField`. A generic `Form<F: Field>` would require all fields to share one concrete type, which pushes the boxing to the call site anyway. `Box<dyn Field>` is idiomatic for owned mixed-type collections.
+
+**`Clone` on screen state structs**: `QsoEntryState` and `LogCreateState` do not derive `Clone` — `Form` cannot be `Clone` (holds `Box<dyn Field>`), and neither struct is ever cloned. Do not add `Clone` to screen state structs unless there is a concrete use site.
+
 ## Status Bar Widget (`widgets/status_bar.rs`)
 
 `StatusBarContext` fields:
